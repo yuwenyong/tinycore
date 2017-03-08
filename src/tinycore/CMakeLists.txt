@@ -14,6 +14,8 @@ set(tinycore_srcs
         ${sources_networking}
         ${sources_utilities})
 
+link_directories("/usr/local/lib64")
 include_directories(${CMAKE_SOURCE_DIR}/src/)
 
 add_library(tinycore SHARED ${tinycore_srcs})
+target_link_libraries(tinycore pthread boost_system boost_log)

@@ -56,7 +56,37 @@ public:
 };
 
 
+class InvalidArguments: public Exception {
+public:
+    using Exception::Exception;
+};
+
+
+class SizeLimit: public Exception {
+public:
+    using Exception::Exception;
+};
+
+
+class CountLimit: public Exception {
+public:
+    using Exception::Exception;
+};
+
+
 class ParsingError: public Exception {
+public:
+    using Exception::Exception;
+};
+
+
+class AlreadyExist: public Exception {
+public:
+    using Exception::Exception;
+};
+
+
+class NotExist: public Exception {
 public:
     using Exception::Exception;
 };

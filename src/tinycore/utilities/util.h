@@ -6,8 +6,9 @@
 #define TINYCORE_UTIL_H
 
 #include "tinycore/common/common.h"
-
 #include <boost/format.hpp>
+#include <boost/algorithm/string.hpp>
+
 
 class TC_COMMON_API String {
 public:
@@ -24,6 +25,21 @@ public:
         return fmter.str();
     }
 
+    static StringVector split(const std::string &s, bool keepEmpty=true) {
+        StringVector result;
+        boost::split(result, s, boost::is_space(), keepEmpty?boost::token_compress_off:boost::token_compress_on);
+        return result;
+    }
+
+    static StringVector split(const std::string &s, char delim, bool keepEmpty=true) {
+        StringVector result;
+        boost::split(result, s, [delim](char c) {
+            return c == delim;
+        }, keepEmpty?boost::token_compress_off:boost::token_compress_on);
+        return result;
+    }
+
+    static StringVector split(const std::string &s, const std::string &delim, bool keepEmtpy=true);
 protected:
     template <typename T, typename... Args>
     static void _format(FormatType &fmter, T &&value, Args&&... args) {

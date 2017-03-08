@@ -93,6 +93,10 @@ typedef std::vector<std::string> StringVector;
 #define M_PI            3.14159265358979323846
 #endif
 
+#define SET_MASK(lhs, rhs)  lhs |= (rhs)
+#define CLR_MASK(lhs, rhs)  lhs &= (~(rhs))
+#define TST_MASK(lhs, rhs)  (((lhs) & (rhs)) == (rhs))
+
 template<typename T, typename ...Args>
 std::unique_ptr<T> make_unique(Args&& ...args) {
     return std::unique_ptr<T>(new T(std::forward<Args>(args)...));

@@ -40,12 +40,35 @@ public:
     float getFloat(const std::string &name) const;
     float getFloat(const std::string &name, float def) const;
     std::list<std::string> getKeysByString(const std::string &name);
+
+    void setStrng(const std::string &name, const std::string &value) {
+        setValue(name, value);
+    }
+
+    void setBool(const std::string &name, bool value) {
+        setValue(name, value ? "true" : "false");
+    }
+
+    void setInt(const std::string &name, int value) {
+        setValue(name, value);
+    }
+
+    void setFloat(const std::string &name, float value) {
+        setValue(name, value);
+    }
+
     static ConfigMgr* instance();
 protected:
     template<typename T>
     T getValue(const std::string &name) const;
     template<typename T>
     T getValue(const std::string &name, T def) const;
+
+    template<typename T>
+    void setValue(const std::string &name, T value) {
+        std::lock_guard<std::mutex> lock(_configLock);
+        _config.put(ConfigPathType(name, '/'), value);
+    }
 
     std::string _fileName;
     ConfigType _config;
