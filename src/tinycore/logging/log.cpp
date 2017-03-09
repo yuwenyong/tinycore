@@ -6,6 +6,7 @@
 #include <boost/log/utility/setup.hpp>
 #include <boost/functional/factory.hpp>
 #include "tinycore/logging/appenderconsole.h"
+#include "tinycore/logging/appenderfile.h"
 #include "tinycore/debugging/errors.h"
 #include "tinycore/configuration/configmgr.h"
 #include "tinycore/utilities/util.h"
@@ -20,6 +21,7 @@ Logger* Log::_mainLogger = nullptr;
 
 void Log::initialize() {
     registerAppender<AppenderConsole>();
+    registerAppender<AppenderFile>();
     logging::add_common_attributes();
     _loadFromConfig();
 }

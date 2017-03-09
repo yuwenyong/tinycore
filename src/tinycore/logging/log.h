@@ -40,6 +40,10 @@ public:
         return iter == _loggers.end() ? nullptr : iter->second;
     }
 
+    static const std::string& getLogsDir() {
+        return _logsDir;
+    }
+
     template <typename... Args>
     static void debug(const char *format, Args&&... args) {
         ASSERT(_mainLogger != nullptr);

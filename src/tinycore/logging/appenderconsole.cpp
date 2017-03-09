@@ -6,7 +6,7 @@
 #include <boost/core/null_deleter.hpp>
 
 
-AppenderConsole::SinkTypePtr AppenderConsole::_createSink() const {
+Appender::SinkTypePtr AppenderConsole::_createSink() const {
     using SinkBackend = sinks::text_ostream_backend;
     using SinkFrontend = sinks::synchronous_sink<SinkBackend>;
     auto backend = boost::make_shared<SinkBackend >();
