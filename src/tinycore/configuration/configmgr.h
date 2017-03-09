@@ -41,7 +41,7 @@ public:
     float getFloat(const std::string &name, float def) const;
     std::list<std::string> getKeysByString(const std::string &name);
 
-    void setStrng(const std::string &name, const std::string &value) {
+    void setString(const std::string &name, const std::string &value) {
         setValue(name, value);
     }
 

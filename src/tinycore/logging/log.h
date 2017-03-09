@@ -11,6 +11,7 @@
 #include <boost/ptr_container/ptr_map.hpp>
 #include <boost/mpl/string.hpp>
 #include "tinycore/logging/appender.h"
+#include "tinycore/logging/appendercustom.h"
 #include "tinycore/logging/logger.h"
 #include "tinycore/debugging/trace.h"
 
@@ -33,6 +34,11 @@ public:
         std::string type = boost::mpl::c_str<typename T::AppenderType>::value;
         ASSERT(_appenderFactory.find(type) == _appenderFactory.end());
         _appenderFactory[type] = AppenderFactory<T>();
+    }
+
+    template <typename T>
+    static void registerSink() {
+        registerAppender<AppenderCustom<T>>();
     }
 
     static Logger* getLogger(const std::string &name) {

@@ -24,10 +24,7 @@ bool Appender::_filter(const logging::value_ref<LogLevel , tag::attr_severity> &
 
 void Appender::_formatter(const logging::record_view &rec, logging::formatting_ostream &strm) const {
     if (_flags & APPENDER_FLAGS_TIMESTAMP) {
-        using Datetime = boost::posix_time::ptime;
-        using Date = boost::gregorian::date;
-        using Time = boost::posix_time::time_duration;
-        const Datetime *timeStamp = rec[attr_timestamp].get_ptr<Datetime>();
+        const DateTime *timeStamp = rec[attr_timestamp].get_ptr<DateTime>();
         strm << '[' << boost::gregorian::to_iso_extended_string(timeStamp->date()) << ' '
              << boost::posix_time::to_simple_string(timeStamp->time_of_day()) << ']';
     }

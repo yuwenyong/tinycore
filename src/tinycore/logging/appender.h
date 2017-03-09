@@ -12,6 +12,7 @@
 #include <boost/log/core.hpp>
 #include <boost/functional/factory.hpp>
 #include <boost/phoenix.hpp>
+#include <boost/date_time.hpp>
 #include "tinycore/logging/logger.h"
 
 
@@ -21,9 +22,14 @@ namespace expr = boost::log::expressions;
 namespace attrs = boost::log::attributes;
 
 
+using DateTime = boost::posix_time::ptime;
+using Date = boost::gregorian::date;
+using Time = boost::posix_time::time_duration;
+
+
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_severity, "Severity", LogLevel)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_channel, "Channel", std::string)
-BOOST_LOG_ATTRIBUTE_KEYWORD(attr_timestamp, "TimeStamp", boost::posix_time::ptime)
+BOOST_LOG_ATTRIBUTE_KEYWORD(attr_timestamp, "TimeStamp", DateTime)
 
 
 enum AppenderFlags {
@@ -66,10 +72,8 @@ public:
 
     SinkTypePtr makeSink() const {
         auto sink = _createSink();
-        sink->set_filter(boost::phoenix::bind(&Appender::_filter, this, attr_severity.or_none(),
-                                              attr_channel.or_none()));
-        sink->set_formatter(boost::phoenix::bind(&Appender::_formatter, this, boost::phoenix::arg_names::arg1,
-                                                 boost::phoenix::arg_names::arg2));
+        _setFilter(sink);
+        _setFormatter(sink);
         return sink;
     }
 
@@ -82,6 +86,17 @@ public:
     }
 protected:
     virtual SinkTypePtr _createSink() const = 0;
+
+    void _setFilter(SinkTypePtr sink) const {
+        sink->set_filter(boost::phoenix::bind(&Appender::_filter, this, attr_severity.or_none(),
+                                              attr_channel.or_none()));
+    }
+
+    void _setFormatter(SinkTypePtr sink) const {
+        sink->set_formatter(boost::phoenix::bind(&Appender::_formatter, this, boost::phoenix::arg_names::arg1,
+                                                 boost::phoenix::arg_names::arg2));
+    }
+
     bool _filter(const logging::value_ref<LogLevel , tag::attr_severity> &level,
                  const logging::value_ref<std::string, tag::attr_channel> &channel) const;
     void _formatter(const logging::record_view &rec, logging::formatting_ostream &strm) const;
