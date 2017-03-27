@@ -10,6 +10,28 @@
 #include <mutex>
 
 
+typedef std::tuple<std::string, std::string, std::string, std::string, std::string> URLSplitResult;
+typedef std::map<std::string, std::vector<std::string>> RequestArguments;
+typedef std::vector<std::pair<std::string, std::string>> RequestArgumentsList;
+
+
+class TC_COMMON_API URLParse {
+public:
+    static URLSplitResult urlSplit(std::string url, std::string scheme={}, bool allowFragments=true);
+    static std::string unquote(const std::string &s);
+    static RequestArguments parseQS(const std::string &queryString, bool keepBlankValues=false,
+                                    bool strictParsing=false);
+    static RequestArgumentsList parseQSL(const std::string &queryString, bool keepBlankValues=false,
+                                         bool strictParsing=false);
+protected:
+    static std::tuple<std::string, std::string> _splitNetloc(const std::string &url, size_t start=0);
+
+    static const char * _schemeChars;
+    static bool _hexToCharInited;
+    static std::mutex _hexToCharLock;
+    static std::map<std::string, char> _hexToChar;
+};
+
 //class URLSplitKey {
 //public:
 //    URLSplitKey(std::string url,
@@ -55,28 +77,5 @@
 //    std::string _scheme;
 //    bool _allowFragments;
 //};
-
-
-typedef std::tuple<std::string, std::string, std::string, std::string, std::string> URLSplitResult;
-typedef std::map<std::string, std::vector<std::string>> RequestArguments;
-typedef std::vector<std::pair<std::string, std::string>> RequestArgumentsList;
-
-
-class TC_COMMON_API URLParse {
-public:
-    static URLSplitResult urlSplit(std::string url, std::string scheme={}, bool allowFragments=true);
-    static std::string unquote(const std::string &s);
-    static RequestArguments parseQS(const std::string &queryString, bool keepBlankValues=false,
-                                    bool strictParsing=false);
-    static RequestArgumentsList parseQSL(const std::string &queryString, bool keepBlankValues=false,
-                                         bool strictParsing=false);
-protected:
-    static std::tuple<std::string, std::string> _splitNetloc(const std::string &url, size_t start=0);
-
-    static const char * _schemeChars;
-    static bool _hexToCharInited;
-    static std::mutex _hexToCharLock;
-    static std::map<std::string, char> _hexToChar;
-};
 
 #endif //TINYCORE_URLPARSE_H
