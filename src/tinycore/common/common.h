@@ -104,6 +104,10 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 
 #define BOOST_LOG_DYN_LINK
 
+#ifndef NDEBUG
+#   define BOOST_ASIO_DISABLE_BUFFER_DEBUGGING
+#endif
+
 typedef boost::noncopyable NonCopyable;
 
 #endif //TINYCORE_COMMON_H

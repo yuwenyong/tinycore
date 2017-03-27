@@ -86,4 +86,18 @@ typedef uint32_t uint32;
 typedef uint16_t uint16;
 typedef uint8_t uint8;
 
+
+#ifndef NDEBUG
+#	ifndef _DEBUG
+#		define _DEBUG
+#	endif
+#	ifndef DEBUG
+#		define DEBUG
+#	endif
+#   ifndef _GLIBCXX_DEBUG
+#       define _GLIBCXX_DEBUG
+#   endif
+#endif
+
+
 #endif //TINYCORE_DEFINE_H
