@@ -50,6 +50,7 @@
 #endif
 
 #include <boost/noncopyable.hpp>
+#include <boost/system/error_code.hpp>
 
 #if COMPILER == COMPILER_MICROSOFT
 
@@ -109,5 +110,6 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 #endif
 
 typedef boost::noncopyable NonCopyable;
+typedef boost::system::error_code ErrorCode;
 
 #endif //TINYCORE_COMMON_H

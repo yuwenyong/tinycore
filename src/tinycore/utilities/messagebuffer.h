@@ -8,7 +8,7 @@
 #include "tinycore/common/common.h"
 
 
-class MessageBuffer {
+class TC_COMMON_API MessageBuffer {
 public:
     MessageBuffer()
             : _wpos(0),
