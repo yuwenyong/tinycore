@@ -1,0 +1,3 @@
+add_executable(networking networking.cpp)
+add_dependencies(networking tinycore)
+target_link_libraries(networking tinycore)

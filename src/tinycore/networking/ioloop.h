@@ -10,24 +10,9 @@
 #include <boost/asio/steady_timer.hpp>
 
 
-class Timeout {
-public:
-    friend class IOLoop;
-    typedef boost::asio::steady_timer TimerType;
+class Timeout;
+typedef std::shared_ptr<Timeout> TimeoutPtr;
 
-    Timeout(const Timeout &) = delete;
-    Timeout &operator=(const Timeout &) = delete;
-
-protected:
-    Timeout(IOLoop * ioloop);
-    void _start(float deadline, std::function<void (const ErrorCode&)> callback);
-    void _cancel();
-
-    TimerType _timer;
-};
-
-
-//typedef std::shared_ptr<Timeout> TimeoutPtr;
 
 class TC_COMMON_API IOLoop {
 public:
@@ -38,8 +23,8 @@ public:
     IOLoop();
     ~IOLoop();
     int start();
-    Timeout* addTimeout(float deadline, std::function<void()> callback);
-    void removeTimeout(Timeout* timeout);
+    TimeoutPtr addTimeout(float deadline, std::function<void()> callback);
+    void removeTimeout(TimeoutPtr &timeout);
 
     void addCallback(std::function<void()> callback) {
         _ioService.post(std::move(callback));
@@ -64,7 +49,24 @@ public:
 protected:
     ServiceType _ioService;
     volatile bool _stopped{false};
-    std::set<Timeout*> _timeouts;
+};
+
+
+class TC_COMMON_API Timeout {
+public:
+    friend class IOLoop;
+    typedef boost::asio::steady_timer TimerType;
+
+    Timeout(IOLoop* ioloop);
+    ~Timeout();
+    Timeout(const Timeout &) = delete;
+    Timeout &operator=(const Timeout &) = delete;
+protected:
+
+    void _start(float deadline, std::function<void (const ErrorCode&)> callback);
+    void _cancel();
+
+    TimerType _timer;
 };
 
 #endif //TINYCORE_IOLOOP_H
