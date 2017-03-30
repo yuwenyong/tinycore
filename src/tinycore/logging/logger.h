@@ -9,7 +9,7 @@
 #include <boost/log/sources/severity_channel_logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/keywords/channel.hpp>
-#include "tinycore/utilities/util.h"
+#include "tinycore/utilities/string.h"
 
 namespace logging = boost::log;
 namespace src = boost::log::sources;

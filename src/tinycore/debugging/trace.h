@@ -7,8 +7,7 @@
 
 #include "tinycore/common/common.h"
 //#include <thread>
-#include "tinycore/debugging/errors.h"
-#include "tinycore/utilities/util.h"
+#include "tinycore/utilities/string.h"
 
 
 class TC_COMMON_API Trace {

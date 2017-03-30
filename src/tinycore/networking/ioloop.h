@@ -11,7 +11,7 @@
 
 
 class Timeout;
-typedef std::shared_ptr<Timeout> TimeoutPtr;
+typedef std::weak_ptr<Timeout> TimeoutPtr;
 
 
 class TC_COMMON_API IOLoop {
@@ -24,7 +24,7 @@ public:
     ~IOLoop();
     int start();
     TimeoutPtr addTimeout(float deadline, std::function<void()> callback);
-    void removeTimeout(TimeoutPtr &timeout);
+    void removeTimeout(TimeoutPtr timeout);
 
     void addCallback(std::function<void()> callback) {
         _ioService.post(std::move(callback));
@@ -41,7 +41,7 @@ public:
         }
     }
 
-    ServiceType& handle() {
+    ServiceType& getService() {
         return _ioService;
     }
 

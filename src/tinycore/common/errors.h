@@ -1,12 +1,12 @@
 //
-// Created by yuwenyong on 17-3-3.
+// Created by yuwenyong on 17-3-30.
 //
 
 #ifndef TINYCORE_ERRORS_H
 #define TINYCORE_ERRORS_H
 
-#include "tinycore/common/common.h"
-
+#include <exception>
+#include <stdexcept>
 
 class BaseException: public std::runtime_error {
 public:
@@ -63,12 +63,6 @@ public:
 
 
 class SizeLimit: public Exception {
-public:
-    using Exception::Exception;
-};
-
-
-class CountLimit: public Exception {
 public:
     using Exception::Exception;
 };

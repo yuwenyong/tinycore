@@ -8,16 +8,18 @@
 
 int main() {
     Log::initialize();
-    TimeoutPtr timeout = IOLoop::instance()->addTimeout(5.0, [](){
-        Log::info("Timeout");
+    IOLoop ioloop;
+    TimeoutPtr timeout = ioloop.addTimeout(5.0, [&ioloop](){
+        Log::info("First Timeout");
+        ioloop.stop();
     });
-    TimeoutPtr timeout2 = IOLoop::instance()->addTimeout(10.0, [](){
+    TimeoutPtr timeout2 = ioloop.addTimeout(10.0, [](){
         Log::info("Second Timeout");
     });
-    IOLoop::instance()->removeTimeout(timeout2);
-    IOLoop::instance()->removeTimeout(timeout2);
+//    IOLoop::instance()->removeTimeout(timeout2);
+//    IOLoop::instance()->removeTimeout(timeout2);
     Log::info("Server start");
-    IOLoop::instance()->start();
+    ioloop.start();
     Log::info("Server end");
     return 0;
 }

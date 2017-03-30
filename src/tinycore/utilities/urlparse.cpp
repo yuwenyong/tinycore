@@ -5,8 +5,7 @@
 #include "tinycore/utilities/urlparse.h"
 #include <boost/utility/string_ref.hpp>
 #include <boost/algorithm/string.hpp>
-#include "tinycore/debugging/errors.h"
-#include "tinycore/utilities/util.h"
+#include "tinycore/utilities/string.h"
 
 
 const char * URLParse::_schemeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-.";

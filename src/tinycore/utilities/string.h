@@ -1,9 +1,9 @@
 //
-// Created by yuwenyong on 17-2-7.
+// Created by yuwenyong on 17-3-30.
 //
 
-#ifndef TINYCORE_UTIL_H
-#define TINYCORE_UTIL_H
+#ifndef TINYCORE_STRING_H
+#define TINYCORE_STRING_H
 
 #include "tinycore/common/common.h"
 #include <boost/format.hpp>
@@ -53,4 +53,4 @@ protected:
     }
 };
 
-#endif //TINYCORE_UTIL_H
+#endif //TINYCORE_STRING_H

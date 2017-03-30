@@ -61,5 +61,6 @@ int main() {
     logger3->warn("warn msg from %s", "logger3");
     logger3->error("error msg from %s", "logger3");
     logger3->fatal("fatal msg from %s", "logger3");
+    Log::close();
     return 0;
 }

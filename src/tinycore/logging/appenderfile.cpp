@@ -4,7 +4,6 @@
 
 #include "tinycore/logging/appenderfile.h"
 #include <boost/filesystem.hpp>
-#include "tinycore/debugging/errors.h"
 #include "tinycore/logging/log.h"
 
 

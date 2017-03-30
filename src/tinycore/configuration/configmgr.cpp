@@ -4,7 +4,6 @@
 
 #include "tinycore/configuration/configmgr.h"
 #include <boost/property_tree/ini_parser.hpp>
-#include "tinycore/debugging/errors.h"
 
 
 void ConfigMgr::loadInitial(std::string fileName) {

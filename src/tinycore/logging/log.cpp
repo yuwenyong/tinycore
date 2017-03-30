@@ -7,9 +7,8 @@
 #include <boost/functional/factory.hpp>
 #include "tinycore/logging/appenderconsole.h"
 #include "tinycore/logging/appenderfile.h"
-#include "tinycore/debugging/errors.h"
 #include "tinycore/configuration/configmgr.h"
-#include "tinycore/utilities/util.h"
+#include "tinycore/utilities/string.h"
 
 
 Log::AppenderCreatorMap Log::_appenderFactory;

@@ -52,6 +52,8 @@
 #include <boost/noncopyable.hpp>
 #include <boost/system/error_code.hpp>
 
+#include "tinycore/common/errors.h"
+
 #if COMPILER == COMPILER_MICROSOFT
 
 #include <float.h>
@@ -78,7 +80,15 @@ inline unsigned long long atoull(char const* str) {
 
 #define STRINGIZE(a) #a
 
-TC_COMMON_API const char * strnstr(const char *s1, const char *s2, size_t len2);
+TC_COMMON_API const char * strnstr(const char *s1, size_t len1, const char *s2, size_t len2);
+
+inline const char * strnstr(const char *s1, const char *s2, size_t len2) {
+    return strnstr(s1, strlen(s1), s2, len2);
+}
+
+inline const char * strnstr(const char *s1, size_t len1, const char *s2) {
+    return strnstr(s1, len1, s2, strlen(s2));
+}
 
 typedef std::vector<std::string> StringVector;
 
@@ -111,5 +121,8 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 
 typedef boost::noncopyable NonCopyable;
 typedef boost::system::error_code ErrorCode;
+
+#include <boost/system/system_error.hpp>
+boost::system::system_error
 
 #endif //TINYCORE_COMMON_H
