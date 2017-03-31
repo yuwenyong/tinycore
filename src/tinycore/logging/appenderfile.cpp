@@ -5,6 +5,7 @@
 #include "tinycore/logging/appenderfile.h"
 #include <boost/filesystem.hpp>
 #include "tinycore/logging/log.h"
+#include "tinycore/common/errors.h"
 
 
 AppenderFile::AppenderFile(std::string name, LogLevel level, AppenderFlags flags, const StringVector &extraArgs)
@@ -12,7 +13,7 @@ AppenderFile::AppenderFile(std::string name, LogLevel level, AppenderFlags flags
     if (extraArgs.empty()) {
         std::string error;
         error = "Missing file name for appender" + name;
-        throw InvalidArguments(error);
+        ThrowException(IllegalArguments, error);
     }
     _fileName = extraArgs[0];
     if (extraArgs.size() > 1) {

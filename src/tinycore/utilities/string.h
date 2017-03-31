@@ -21,7 +21,7 @@ public:
     template <typename... Args>
     static std::string format(const char *fmt, Args&&... args) {
         FormatType fmter(fmt);
-        _format(fmter, std::forward<Args>(args)...);
+        format(fmter, std::forward<Args>(args)...);
         return fmter.str();
     }
 
@@ -42,13 +42,13 @@ public:
     static StringVector split(const std::string &s, const std::string &delim, bool keepEmtpy=true);
 protected:
     template <typename T, typename... Args>
-    static void _format(FormatType &fmter, T &&value, Args&&... args) {
+    static void format(FormatType &fmter, T &&value, Args&&... args) {
         fmter % value;
-        _format(fmter, std::forward<Args>(args)...);
+        format(fmter, std::forward<Args>(args)...);
     }
 
     template <typename T>
-    static void _format(FormatType &fmter, T &&value) {
+    static void format(FormatType &fmter, T &&value) {
         fmter % value;
     }
 };

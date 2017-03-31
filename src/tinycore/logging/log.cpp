@@ -9,6 +9,7 @@
 #include "tinycore/logging/appenderfile.h"
 #include "tinycore/configuration/configmgr.h"
 #include "tinycore/utilities/string.h"
+#include "tinycore/common/errors.h"
 
 
 Log::AppenderCreatorMap Log::_appenderFactory;
@@ -76,14 +77,14 @@ void Log::_createAppenderFromConfig(const std::string &appenderName) {
     std::string name = appenderName.substr(9);
     if (tokens.size() < 2) {
         std::string error = "Wrong config line " + options + " for appender " + name;
-        throw ValueError(error);
+        ThrowException(ValueError, error);
     }
     AppenderFlags flags = APPENDER_FLAGS_NONE;
     std::string type = tokens[0];
     LogLevel level = static_cast<LogLevel>(std::stoi(tokens[1]));
     if (level > LOG_LEVEL_FATAL) {
         std::string error = "Wrong log level " + tokens[1] + " for appender " + name;
-        throw ValueError(error);
+        ThrowException(ValueError, error);
     }
     size_t argOffset = 2;
     if (tokens.size() > 2) {
@@ -93,7 +94,7 @@ void Log::_createAppenderFromConfig(const std::string &appenderName) {
     auto factoryFunction = _appenderFactory.find(type);
     if (factoryFunction == _appenderFactory.end()) {
         std::string error = "Unknown type " + type + " for appender " + name;
-        throw ValueError(error);
+        ThrowException(ValueError, error);
     }
     Appender *appender = factoryFunction->second(name, level, flags,
                                                  StringVector(std::next(tokens.begin(), argOffset), tokens.end()));
@@ -109,21 +110,21 @@ void Log::_createLoggerFromConfig(const std::string &loggerName) {
     std::string name = loggerName.substr(7);
     if (options.empty()) {
         std::string error = "Missing config option for logger " + name;
-        throw ValueError(error);
+        ThrowException(ValueError, error);
     }
     StringVector tokens = String::split(options, ',');
     if (tokens.size() != 2) {
         std::string error = "Wrong config option " + options + " for logger " + name;
-        throw ValueError(error);
+        ThrowException(ValueError, error);
     }
     if (_loggers.find(name) != _loggers.end()) {
         std::string error = "Config logger " + name + " already defined";
-        throw AlreadyExist(error);
+        ThrowException(DuplicateKey, error);
     }
     LogLevel level = static_cast<LogLevel>(std::stoi(tokens[0]));
     if (level > LOG_LEVEL_FATAL) {
         std::string error = "Wrong log level " + tokens[0] + " for logger " + name;
-        throw ValueError(error);
+        ThrowException(ValueError, error);
     }
     Logger *logger = boost::factory<Logger*>()(name, level);
     _loggers.insert(name, logger);
@@ -132,7 +133,7 @@ void Log::_createLoggerFromConfig(const std::string &loggerName) {
         auto iter = _appenders.find(appenderName);
         if (iter == _appenders.end()) {
             std::string error = "Appender " + appenderName + "does not exist for logger " + name;
-            throw NotExist(error);
+            ThrowException(NotFound, error);
         }
         iter->second->addLogger(logger);
     }

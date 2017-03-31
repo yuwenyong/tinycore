@@ -6,6 +6,7 @@
 #include <boost/utility/string_ref.hpp>
 #include <boost/algorithm/string.hpp>
 #include "tinycore/utilities/string.h"
+#include "tinycore/common/errors.h"
 
 
 const char * URLParse::_schemeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+-.";
@@ -30,7 +31,7 @@ URLSplitResult URLParse::urlSplit(std::string url, std::string scheme, bool allo
                 rightBracket = netloc.find(']');
                 if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
                     (leftBracket == std::string::npos && rightBracket != std::string::npos)) {
-                    throw ValueError("Invalid IPv6 URL");
+                    ThrowException(ValueError, "Invalid IPv6 URL");
                 }
             }
             if (allowFragments) {
@@ -64,7 +65,7 @@ URLSplitResult URLParse::urlSplit(std::string url, std::string scheme, bool allo
         rightBracket = netloc.find(']');
         if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
             (leftBracket == std::string::npos && rightBracket != std::string::npos)) {
-            throw ValueError("Invalid IPv6 URL");
+            ThrowException(ValueError, "Invalid IPv6 URL");
         }
     }
     if (allowFragments) {
@@ -174,7 +175,7 @@ RequestArgumentsList URLParse::parseQSL(const std::string &queryString, bool kee
             if (strictParsing) {
                 std::string error;
                 error = "bad query field:" + nameValue;
-                throw ValueError(error);
+                ThrowException(ValueError, error);
             }
             if (keepBlankValues) {
                 name = nameValue;

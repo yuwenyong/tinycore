@@ -7,6 +7,7 @@
 #include "tinycore/debugging/trace.h"
 #include "tinycore/utilities/urlparse.h"
 #include "tinycore/utilities/string.h"
+#include "tinycore/common/errors.h"
 
 
 HTTPServer::HTTPServer(std::function<void(HTTPRequest *)> requestCallback,
@@ -74,6 +75,13 @@ void HTTPServer::_doAccept() {
         _doAccept();
     });
 }
+
+
+class _BadRequestException: public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
 
 HTTPConnection::HTTPConnection(BaseIOStreamPtr stream,
                                std::string address,

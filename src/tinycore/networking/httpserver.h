@@ -85,12 +85,6 @@ protected:
 };
 
 
-class _BadRequestException: public Exception {
-public:
-    using Exception::Exception;
-};
-
-
 class HTTPConnection: public std::enable_shared_from_this<HTTPConnection> {
 public:
     typedef BaseIOStream::ConstBufferType ConstBufferType;

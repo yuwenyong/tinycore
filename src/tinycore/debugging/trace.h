@@ -6,6 +6,7 @@
 #define TINYCORE_TRACE_H
 
 #include "tinycore/common/common.h"
+#include "tinycore/common/errors.h"
 //#include <thread>
 #include "tinycore/utilities/string.h"
 
@@ -27,22 +28,21 @@ public:
     static void assertHandler(const char *file, int line, const char *function, const char *message, const char *format,
                               Args&&... args) {
         std::string error;
-        error = String::format("%s:%i in %s ASSERTION FAILED:\n    %s\n    ", file, line, function, message);
-        error += String::format(format, std::forward<Args>(args)...);
-        fprintf(stderr, "\n%s\n", error.c_str());
+        error = String::format(format, std::forward<Args>(args)...);
+        fprintf(stderr, "\n%s:%i in %s ASSERTION FAILED:\n    %s\n    %s\n", file, line, function, message,
+                error.c_str());
         fflush(stderr);
-        throw AssertionError(error);
+        ExceptionHelper::throwException<AssertionError>(file, line, function, message, std::move(error));
     }
 
     template <typename... Args>
     static void fatalHandler(const char *file, int line, const char *function, const char *message, Args&&... args) {
         std::string error;
-        error = String::format("%s:%i in %s FATAL ERROR:\n    ", file, line, function);
-        error += String::format(message, std::forward<Args>(args)...);
-        fprintf(stderr, "\n%s\n", error.c_str());
+        error = String::format(message, std::forward<Args>(args)...);
+        fprintf(stderr, "\n%s:%i in %s FATAL ERROR:\n    %s\n", file, line, function, error.c_str());
         fflush(stderr);
 //        std::this_thread::sleep_for(std::chrono::seconds(10));
-        throw SystemExit(error);
+        ExceptionHelper::throwException<SystemExit>(file, line, function, std::move(error));
     }
 };
 
