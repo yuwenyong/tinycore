@@ -6,6 +6,7 @@
 #define TINYCORE_OBJECTMANAGER_H
 
 #include "tinycore/common/common.h"
+#include <mutex>
 #include <boost/foreach.hpp>
 #include <boost/functional/factory.hpp>
 #include <boost/checked_delete.hpp>
@@ -20,9 +21,11 @@ public:
 
 class ObjectManager {
 public:
-    typedef std::list<CleanupObject> CleanupObjectContainer;
+    typedef std::list<CleanupObject*> CleanupObjectContainer;
 
-    ObjectManager();
+    ObjectManager() {
+
+    }
 
     ~ObjectManager();
 
