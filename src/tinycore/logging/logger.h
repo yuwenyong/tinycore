@@ -72,36 +72,36 @@ public:
 
     template <typename... Args>
     void debug(const char *format, Args&&... args) {
-        _write(LOG_LEVEL_DEBUG, format, std::forward<Args>(args)...);
+        write(LOG_LEVEL_DEBUG, format, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
     void info(const char *format, Args&&... args) {
-        _write(LOG_LEVEL_INFO, format, std::forward<Args>(args)...);
+        write(LOG_LEVEL_INFO, format, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
     void warn(const char *format, Args&&... args) {
-        _write(LOG_LEVEL_WARN, format, std::forward<Args>(args)...);
+        write(LOG_LEVEL_WARN, format, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
     void error(const char *format, Args&&... args) {
-        _write(LOG_LEVEL_ERROR, format, std::forward<Args>(args)...);
+        write(LOG_LEVEL_ERROR, format, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
     void fatal(const char *format, Args&&... args) {
-        _write(LOG_LEVEL_FATAL, format, std::forward<Args>(args)...);
+        write(LOG_LEVEL_FATAL, format, std::forward<Args>(args)...);
     }
 protected:
-    bool _shouldLog(LogLevel level) const {
+    bool shouldLog(LogLevel level) const {
         return _level != LOG_LEVEL_DISABLED && _level <= level;
     }
 
     template <typename... Args>
-    void _write(LogLevel level, const char *format, Args&&... args) {
-        if (!_shouldLog(level)) {
+    void write(LogLevel level, const char *format, Args&&... args) {
+        if (!shouldLog(level)) {
             return;
         }
         LogRecord rec = _logger.open_record(keywords::severity=level);

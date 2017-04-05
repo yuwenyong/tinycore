@@ -11,8 +11,8 @@ Appender::~Appender() {
 }
 
 
-bool Appender::_filter(const logging::value_ref<LogLevel , tag::attr_severity> &level,
-                       const logging::value_ref<std::string, tag::attr_channel> &channel) const {
+bool Appender::filter(const logging::value_ref <LogLevel, tag::attr_severity> &level,
+                      const logging::value_ref <std::string, tag::attr_channel> &channel) const {
     if (level < _level) {
         return false;
     }
@@ -22,7 +22,7 @@ bool Appender::_filter(const logging::value_ref<LogLevel , tag::attr_severity> &
     return true;
 }
 
-void Appender::_formatter(const logging::record_view &rec, logging::formatting_ostream &strm) const {
+void Appender::formatter(const logging::record_view &rec, logging::formatting_ostream &strm) const {
     if (_flags & APPENDER_FLAGS_TIMESTAMP) {
         const DateTime *timeStamp = rec[attr_timestamp].get_ptr<DateTime>();
         strm << '[' << boost::gregorian::to_iso_extended_string(timeStamp->date()) << ' '

@@ -15,7 +15,7 @@ public:
 
     AppenderFile(std::string name, LogLevel level, AppenderFlags flags, const StringVector &extraArgs);
 protected:
-    SinkTypePtr _createSink() const override;
+    SinkTypePtr createSink() const override;
 
     std::string _fileName;
     size_t _maxFileSize{5 * 1024 * 1024};

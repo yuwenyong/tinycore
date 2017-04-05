@@ -24,7 +24,7 @@ public:
     static RequestArgumentsList parseQSL(const std::string &queryString, bool keepBlankValues=false,
                                          bool strictParsing=false);
 protected:
-    static std::tuple<std::string, std::string> _splitNetloc(const std::string &url, size_t start=0);
+    static std::tuple<std::string, std::string> splitNetloc(const std::string &url, size_t start=0);
 
     static const char * _schemeChars;
     static bool _hexToCharInited;

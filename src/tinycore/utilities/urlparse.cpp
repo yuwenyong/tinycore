@@ -26,7 +26,7 @@ URLSplitResult URLParse::urlSplit(std::string url, std::string scheme, bool allo
             scheme = std::move(temp);
             url = url.substr(i + 1);
             if (boost::starts_with(url, "//")) {
-                std::tie(netloc, url) = _splitNetloc(url, 2);
+                std::tie(netloc, url) = splitNetloc(url, 2);
                 leftBracket = netloc.find('[');
                 rightBracket = netloc.find(']');
                 if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
@@ -60,7 +60,7 @@ URLSplitResult URLParse::urlSplit(std::string url, std::string scheme, bool allo
         }
     }
     if (boost::starts_with(url, "//")) {
-        std::tie(netloc, url) = _splitNetloc(url, 2);
+        std::tie(netloc, url) = splitNetloc(url, 2);
         leftBracket = netloc.find('[');
         rightBracket = netloc.find(']');
         if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
@@ -199,7 +199,7 @@ RequestArgumentsList URLParse::parseQSL(const std::string &queryString, bool kee
 }
 
 
-std::tuple<std::string, std::string> URLParse::_splitNetloc(const std::string &url, size_t start) {
+std::tuple<std::string, std::string> URLParse::splitNetloc(const std::string &url, size_t start) {
     size_t delim = url.size(), wdelim;
     char delimiters[3] = {'/', '?', '#'};
     for (char delimiter: delimiters) {

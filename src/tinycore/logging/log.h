@@ -80,12 +80,12 @@ public:
         _mainLogger->fatal(format, std::forward<Args>(args)...);
     }
 protected:
-    static void _loadFromConfig();
-    static void _readAppendersFromConfig();
-    static void _readLoggersFromConfig();
-    static void _createAppenderFromConfig(const std::string &appenderName);
-    static void _createLoggerFromConfig(const std::string &loggerName);
-    static void _createSystemLoggers();
+    static void loadFromConfig();
+    static void readAppendersFromConfig();
+    static void readLoggersFromConfig();
+    static void createAppenderFromConfig(const std::string &appenderName);
+    static void createLoggerFromConfig(const std::string &loggerName);
+    static void createSystemLoggers();
 
     static AppenderCreatorMap _appenderFactory;
     static AppenderMap _appenders;

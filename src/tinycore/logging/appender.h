@@ -71,9 +71,9 @@ public:
     }
 
     SinkTypePtr makeSink() const {
-        auto sink = _createSink();
-        _setFilter(sink);
-        _setFormatter(sink);
+        auto sink = createSink();
+        setFilter(sink);
+        setFormatter(sink);
         return sink;
     }
 
@@ -85,21 +85,21 @@ public:
         _loggers.insert(logger->getName());
     }
 protected:
-    virtual SinkTypePtr _createSink() const = 0;
+    virtual SinkTypePtr createSink() const = 0;
 
-    void _setFilter(SinkTypePtr sink) const {
-        sink->set_filter(boost::phoenix::bind(&Appender::_filter, this, attr_severity.or_none(),
+    void setFilter(SinkTypePtr sink) const {
+        sink->set_filter(boost::phoenix::bind(&Appender::filter, this, attr_severity.or_none(),
                                               attr_channel.or_none()));
     }
 
-    void _setFormatter(SinkTypePtr sink) const {
-        sink->set_formatter(boost::phoenix::bind(&Appender::_formatter, this, boost::phoenix::arg_names::arg1,
+    void setFormatter(SinkTypePtr sink) const {
+        sink->set_formatter(boost::phoenix::bind(&Appender::formatter, this, boost::phoenix::arg_names::arg1,
                                                  boost::phoenix::arg_names::arg2));
     }
 
-    bool _filter(const logging::value_ref<LogLevel , tag::attr_severity> &level,
-                 const logging::value_ref<std::string, tag::attr_channel> &channel) const;
-    void _formatter(const logging::record_view &rec, logging::formatting_ostream &strm) const;
+    bool filter(const logging::value_ref<LogLevel, tag::attr_severity> &level,
+                const logging::value_ref<std::string, tag::attr_channel> &channel) const;
+    void formatter(const logging::record_view &rec, logging::formatting_ostream &strm) const;
 
     std::string _name;
     LogLevel _level;

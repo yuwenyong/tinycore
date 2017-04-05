@@ -20,7 +20,7 @@ public:
     }
 
 protected:
-    SinkTypePtr _createSink() const override {
+    SinkTypePtr createSink() const override {
         using SinkBackend = Sink;
         using SinkFrontend = sinks::synchronous_sink<SinkBackend>;
         auto backend = boost::make_shared<SinkBackend >(_extraArgs);

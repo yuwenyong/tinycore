@@ -76,4 +76,5 @@ protected:
 };
 
 #define sConfigMgr ConfigMgr::instance()
+
 #endif //TINYCORE_CONFIGMGR_H

@@ -19,7 +19,7 @@ public:
     }
 
 protected:
-    SinkTypePtr _createSink() const override;
+    SinkTypePtr createSink() const override;
 };
 
 #endif //TINYCORE_APPENDERCONSOLE_H

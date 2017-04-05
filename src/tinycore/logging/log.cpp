@@ -23,7 +23,7 @@ void Log::initialize() {
     registerAppender<AppenderConsole>();
     registerAppender<AppenderFile>();
     logging::add_common_attributes();
-    _loadFromConfig();
+    loadFromConfig();
 }
 
 void Log::close() {
@@ -33,7 +33,7 @@ void Log::close() {
     core->remove_all_sinks();
 }
 
-void Log::_loadFromConfig() {
+void Log::loadFromConfig() {
     close();
     _logsDir = sConfigMgr->getString("LogsDir", "");
     if (!_logsDir.empty()) {
@@ -45,30 +45,30 @@ void Log::_loadFromConfig() {
 #endif
         }
     }
-    _readAppendersFromConfig();
-    _readLoggersFromConfig();
-    _createSystemLoggers();
+    readAppendersFromConfig();
+    readLoggersFromConfig();
+    createSystemLoggers();
 }
 
 
 
-void Log::_readAppendersFromConfig() {
+void Log::readAppendersFromConfig() {
     auto keys = sConfigMgr->getKeysByString("Appender.");
     while (!keys.empty()) {
-        _createAppenderFromConfig(keys.front());
+        createAppenderFromConfig(keys.front());
         keys.pop_front();
     }
 }
 
-void Log::_readLoggersFromConfig() {
+void Log::readLoggersFromConfig() {
     auto keys = sConfigMgr->getKeysByString("Logger.");
     while (!keys.empty()) {
-        _createLoggerFromConfig(keys.front());
+        createLoggerFromConfig(keys.front());
         keys.pop_front();
     }
 }
 
-void Log::_createAppenderFromConfig(const std::string &appenderName) {
+void Log::createAppenderFromConfig(const std::string &appenderName) {
     if (appenderName.empty()) {
         return;
     }
@@ -102,7 +102,7 @@ void Log::_createAppenderFromConfig(const std::string &appenderName) {
 }
 
 
-void Log::_createLoggerFromConfig(const std::string &loggerName) {
+void Log::createLoggerFromConfig(const std::string &loggerName) {
     if (loggerName.empty()) {
         return;
     }
@@ -139,7 +139,7 @@ void Log::_createLoggerFromConfig(const std::string &loggerName) {
     }
 }
 
-void Log::_createSystemLoggers() {
+void Log::createSystemLoggers() {
     StringVector loggerNames = {"main", };
     size_t count = 0;
     for (const auto &loggerName: loggerNames) {

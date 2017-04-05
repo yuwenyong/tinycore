@@ -36,7 +36,7 @@ AppenderFile::AppenderFile(std::string name, LogLevel level, AppenderFlags flags
     std::cout << "fileName:" << _fileName << std::endl;
 }
 
-Appender::SinkTypePtr AppenderFile::_createSink() const {
+Appender::SinkTypePtr AppenderFile::createSink() const {
     using SinkBackend = sinks::text_file_backend;
     using SinkFrontend = sinks::synchronous_sink<SinkBackend>;
     auto backend = boost::make_shared<SinkBackend >(
