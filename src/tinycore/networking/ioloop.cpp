@@ -4,6 +4,7 @@
 
 #include "tinycore/networking/ioloop.h"
 #include "tinycore/logging/log.h"
+#include "tinycore/common/errors.h"
 
 
 IOLoop::IOLoop() {
@@ -23,9 +24,9 @@ int IOLoop::start() {
     return 0;
 }
 
-TimeoutPtr IOLoop::addTimeout(float deadline, std::function<void()> callback) {
-    std::shared_ptr<Timeout> timer = std::make_shared<Timeout>(this);
-    timer->_start(deadline, [callback, timer](const ErrorCode &error) {
+Timeout IOLoop::addTimeout(float deadline, TimeoutCallbackType callback) {
+    auto timeoutPtr = std::make_shared<_Timeout>(this);
+    timeoutPtr->start(deadline, [callback, timeoutPtr](const ErrorCode &error) {
         if (!error) {
             callback();
         } else {
@@ -35,14 +36,14 @@ TimeoutPtr IOLoop::addTimeout(float deadline, std::function<void()> callback) {
 #endif
         }
     });
-    return TimeoutPtr(timer);
+    return Timeout(timeoutPtr);
 }
 
 
-void IOLoop::removeTimeout(TimeoutPtr timeout) {
-    auto timer = timeout.lock();
-    if (timer) {
-        timer->_cancel();
+void IOLoop::removeTimeout(Timeout timeout) {
+    auto timeoutPtr = timeout.lock();
+    if (timeoutPtr) {
+        timeoutPtr->cancel();
     }
 }
 
@@ -52,25 +53,45 @@ IOLoop* IOLoop::instance() {
 }
 
 
-Timeout::Timeout(IOLoop *ioloop)
+_Timeout::_Timeout(IOLoop *ioloop)
         : _timer(ioloop->getService()) {
 //#ifndef NDEBUG
 //    Log::info("Create timeout");
 //#endif
 }
 
-Timeout::~Timeout() {
+_Timeout::~_Timeout() {
 //#ifndef NDEBUG
 //    Log::info("Destroy timeout");
 //#endif
 }
 
-void Timeout::_start(float deadline, std::function<void(const ErrorCode &)> callback) {
+void _Timeout::start(float deadline, CallbackType callback) {
     _timer.expires_from_now(std::chrono::milliseconds(int(deadline * 1000)));
     _timer.async_wait(std::move(callback));
 }
 
-
-void Timeout::_cancel() {
+void _Timeout::cancel() {
     _timer.cancel();
+}
+
+
+PeriodicCallback::~PeriodicCallback() {
+    stop();
+}
+
+void PeriodicCallback::run() {
+    if (!_running) {
+        return;
+    }
+    try {
+        _callback();
+    } catch (SystemExit &e) {
+        throw;
+    } catch (std::exception &e) {
+        Log::error("Error in periodic callback:%s", e.what());
+    }
+    if (_running) {
+        start();
+    }
 }

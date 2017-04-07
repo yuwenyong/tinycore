@@ -5,7 +5,7 @@
 #include "tinycore/common/errors.h"
 
 
-const char* BaseException::what() const {
+const char* BaseException::what() const noexcept {
     if (_what.empty()) {
         _what += _file;
         _what += ':';
@@ -21,7 +21,7 @@ const char* BaseException::what() const {
 }
 
 
-const char* AssertionError::what() const {
+const char* AssertionError::what() const noexcept {
     if (_what.empty()) {
         _what += _file;
         _what += ':';

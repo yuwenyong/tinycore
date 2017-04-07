@@ -9,13 +9,17 @@
 int main() {
     Log::initialize();
     IOLoop ioloop;
-    TimeoutPtr timeout = ioloop.addTimeout(5.0, [&ioloop](){
+    Timeout timeout = ioloop.addTimeout(10.0, [&ioloop](){
         Log::info("First Timeout");
         ioloop.stop();
     });
-    TimeoutPtr timeout2 = ioloop.addTimeout(10.0, [](){
+    Timeout timeout2 = ioloop.addTimeout(5.0, [](){
         Log::info("Second Timeout");
     });
+    auto repeatTimer = PeriodicCallback::create([]() {
+        Log::info("repeat Timer");
+    }, 1.0f, &ioloop);
+    repeatTimer->start();
 //    IOLoop::instance()->removeTimeout(timeout2);
 //    IOLoop::instance()->removeTimeout(timeout2);
     Log::info("Server start");

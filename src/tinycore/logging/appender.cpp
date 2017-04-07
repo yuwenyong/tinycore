@@ -10,9 +10,8 @@ Appender::~Appender() {
 
 }
 
-
-bool Appender::filter(const logging::value_ref <LogLevel, tag::attr_severity> &level,
-                      const logging::value_ref <std::string, tag::attr_channel> &channel) const {
+bool Appender::filter(const logging::value_ref<LogLevel, tag::attr_severity> &level,
+                      const logging::value_ref<std::string, tag::attr_channel> &channel) const {
     if (level < _level) {
         return false;
     }

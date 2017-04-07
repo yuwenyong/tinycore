@@ -54,8 +54,15 @@ public:
 #define ASSERT_END
 #endif
 
+
 #define WARNING(cond, msg, ...) ASSERT_BEGIN do { if (!(cond)) Trace::warningHandler(__FILE__, __LINE__, __FUNCTION__, (msg), ##__VA_ARGS__); } while(0) ASSERT_END
+
+#ifdef NDEBUG
+#define ASSERT(cond, ...)
+#else
 #define ASSERT(cond, ...) ASSERT_BEGIN do { if (!(cond)) Trace::assertHandler(__FILE__, __LINE__, __FUNCTION__, #cond, ##__VA_ARGS__); } while(0) ASSERT_END
+#endif
+
 #define FATAL(cond, msg, ...) ASSERT_BEGIN do { if (!(cond)) Trace::fatalHandler(__FILE__, __LINE__, __FUNCTION__, (msg), ##__VA_ARGS__); } while(0) ASSERT_END
 
 

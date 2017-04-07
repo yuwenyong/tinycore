@@ -56,7 +56,7 @@ protected:
     }
 
     ObjectMap _objs;
-    std::mutex _objsLock;
+    mutable std::mutex _objsLock;
 };
 
 #define sWatcher Watcher::instance()
