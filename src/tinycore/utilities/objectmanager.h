@@ -29,26 +29,40 @@ public:
 
     ~ObjectManager();
 
-    void registerObject(CleanupObject *object) {
+    template <typename T>
+    T* registerObject() {
         std::lock_guard<std::mutex> lock(_objectsLock);
+        if (finished()) {
+            return nullptr;
+        }
+        T *object = boost::factory<T *>()();
         _cleanupObjects.push_back(object);
+        return object;
     }
 
-    void cleanup() {
+    void finish() {
         std::lock_guard<std::mutex> lock(_objectsLock);
+        if (finished()) {
+            return;
+        }
         BOOST_REVERSE_FOREACH(CleanupObject *object, _cleanupObjects) { object->cleanup(); }
         _cleanupObjects.clear();
+        _finished = true;
+    }
+
+    bool finished() const {
+        return _finished;
     }
 
     static ObjectManager* instance();
 protected:
+    bool _finished{false};
     CleanupObjectContainer _cleanupObjects;
     std::mutex _objectsLock;
 };
 
 
 #define sObjectMgr ObjectManager::instance()
-
 
 template <typename T>
 class Singleton: public CleanupObject {
@@ -59,16 +73,12 @@ public:
     }
 
     static T* instance() {
-        return _singleton ? &(_singleton->instance) : nullptr;
+        if (!_singleton) {
+            _singleton = sObjectMgr->registerObject<Singleton<T>>();
+        }
+        return _singleton ? &(_singleton->_instance) : nullptr;
     }
 
-    static T* createInstance() {
-        if (_singleton == nullptr) {
-            _singleton = boost::factory<Singleton<T> *>()();
-            sObjectMgr->registerObject(_singleton);
-        }
-        return &(_singleton->_instance);
-    }
 protected:
     Singleton() = default;
     T _instance;
@@ -77,5 +87,6 @@ protected:
 
 template <typename T>
 Singleton<T>* Singleton<T>::_singleton = nullptr;
+
 
 #endif //TINYCORE_OBJECTMANAGER_H

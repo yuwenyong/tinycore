@@ -39,7 +39,11 @@ public:
         return result;
     }
 
-    static StringVector split(const std::string &s, const std::string &delim, bool keepEmtpy=true);
+    static StringVector split(const std::string &s, const std::string &delim, bool keepEmpty=true);
+    static StringVector splitLines(const std::string &s, bool keepends=false);
+
+    static void capitalize(std::string &s);
+    static std::string capitalizeCopy(const std::string &s);
 protected:
     template <typename T, typename... Args>
     static void format(FormatType &fmter, T &&value, Args&&... args) {

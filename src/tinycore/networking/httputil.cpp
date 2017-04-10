@@ -4,78 +4,81 @@
 
 #include "tinycore/networking/httputil.h"
 #include <boost/algorithm/string.hpp>
+#include "tinycore/common/errors.h"
+#include "tinycore/utilities/string.h"
 
 
-const std::regex HTTPHeader::lineSep("\r\n");
-const std::regex HTTPHeader::normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][a-z0-9]*)*$");
+const std::regex HTTPHeaders::_normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][a-z0-9]*)*$");
 
+void HTTPHeaders::add(std::string name, std::string value) {
+    normalizeName(name);
+    auto iter = _headers.find(name);
+    if (iter != _headers.end()) {
+        iter->second.first += ',' + value;
+        iter->second.second.push_back(std::move(value));
+    } else {
+        _headers[name] = std::make_pair(std::move(name), {std::move(value), });
+    }
+}
 
-int HTTPHeader::parseLine(const std::string &line) {
+StringVector HTTPHeaders::getList(std::string name) const {
+    normalizeName(name);
+    auto iter = _headers.find(name);
+    if (iter != _headers.end()) {
+        return iter->second.second;
+    } else {
+        return {};
+    }
+}
+
+void HTTPHeaders::parseLine(const std::string &line) {
     size_t pos = line.find(":");
     if (pos == 0 || pos == std::string::npos) {
-        return -1;
+        ThrowException(ValueError, "Need more than 1 value to unpack");
     }
     std::string name = line.substr(0, pos);
     std::string value = line.substr(pos + 1, std::string::npos);
     boost::trim(value);
-    if (value.empty()) {
-        return -1;
-    }
     return add(std::move(name), std::move(value));
 }
 
-int HTTPHeader::add(std::string name, std::string value) {
-    HTTPHeader::normalizeName(name);
-    _headers.insert(std::make_pair(std::move(name), std::move(value)));
-    return 0;
+void HTTPHeaders::set(std::string name, std::string value) {
+    HTTPHeaders::normalizeName(name);
+    _headers[name] = std::make_pair(std::move(name), {std::move(value), });
 }
 
-StringVector HTTPHeader::getList(const std::string &name) const {
-    StringVector values;
-    auto range = _headers.equal_range(name);
-    for (auto iter = range.first; iter != range.second; ++iter) {
-        values.push_back(iter->second);
+const std::string& HTTPHeaders::get(std::string name) const {
+    HTTPHeaders::normalizeName(name);
+    auto iter = _headers.find(name);
+    if (iter == _headers.end()) {
+        ThrowException(KeyError, "Key Error:" + name);
     }
-    return values;
+    return iter->second.first;
 }
 
+void HTTPHeaders::remove(std::string name) {
+    HTTPHeaders::normalizeName(name);
+    auto iter = _headers.find(name);
+    if (iter == _headers.end()) {
+        ThrowException(KeyError, "Key Error:" + name);
+    }
+    _headers.erase(iter);
+}
 
-bool HTTPHeader::get(const std::string &name, std::string &value) const {
+std::string HTTPHeaders::getDefault(const std::string &name, const std::string &default_value) const {
     auto iter = _headers.find(name);
     if (iter != _headers.end()) {
-        value = iter->second;
-        return true;
-    } else {
-        return false;
-    }
-}
-
-std::string HTTPHeader::getDefault(const std::string &name, const std::string &default_value) const {
-    auto iter = _headers.find(name);
-    if (iter != _headers.end()) {
-        return iter->second;
+        return iter->second.first;
     } else {
         return default_value;
     }
 }
 
-void HTTPHeader::update(const HeaderContainer &values) {
-    std::string name;
-    for (auto &kv: values) {
-        name = kv.first;
-        HTTPHeader::normalizeName(name);
-        _headers.insert(std::make_pair(std::move(name), kv.second));
-    }
-}
 
-
-HTTPHeaderUPtr HTTPHeader::parse(std::string headers) {
-    HTTPHeaderUPtr h = make_unique<HTTPHeader>();
-    std::regex_token_iterator<std::string::iterator> rend;
-    std::regex_token_iterator<std::string::iterator> pos(headers.begin(), headers.end(), HTTPHeader::lineSep, -1);
-    std::string line;
-    while (pos != rend) {
-        line = *pos;
+HTTPHeadersPtr HTTPHeaders::parse(std::string headers) {
+    HTTPHeadersPtr h = make_unique<HTTPHeaders>();
+    StringVector lines = String::splitLines(headers);
+    for (auto &line: lines) {
         if (!line.empty()) {
             h->parseLine(line);
         }
@@ -83,21 +86,13 @@ HTTPHeaderUPtr HTTPHeader::parse(std::string headers) {
     return h;
 }
 
-std::string& HTTPHeader::normalizeName(std::string &name) {
-    if (!std::regex_match(name, HTTPHeader::normalizedHeader)) {
-        bool needUpper = true;
-        for (auto iter = name.begin(); iter != name.end(); ++iter) {
-            if (*iter == '-') {
-                needUpper = true;
-            } else if (isalpha(*iter)) {
-                if (needUpper) {
-                    *iter = (char)toupper(*iter);
-                    needUpper = false;
-                } else {
-                    *iter = (char)tolower(*iter);
-                }
-            }
+std::string& HTTPHeaders::normalizeName(std::string &name) {
+    if (!std::regex_match(name, HTTPHeaders::_normalizedHeader)) {
+        StringVector nameParts = String::split(name, '-');
+        for (auto &namePart: nameParts) {
+            String::capitalize(namePart);
         }
+        name = boost::join(nameParts, "-");
     }
     return name;
 }

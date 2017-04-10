@@ -32,6 +32,12 @@ class HTTPHeadersIterator
                 std::forward_iterator_tag
         > {
 public:
+    HTTPHeadersIterator()
+            : _headers(nullptr)
+            , _values(nullptr) {
+
+    }
+
     HTTPHeadersIterator(const HTTPHeadersTraits::HeadersContainerType *headers)
             : HTTPHeadersIterator(headers, headers->begin()) {
     }
@@ -47,7 +53,7 @@ public:
             _valueIter = _values->begin();
             ASSERT(_valueIter != _values->end());
         }
-        fetch();
+        setup();
     }
 
     HTTPHeadersIterator(const HTTPHeadersTraits::HeadersContainerType *headers,
@@ -60,7 +66,7 @@ public:
             _valueIter = values->begin();
             ASSERT(_valueIter != _values->end());
         }
-        fetch();
+        setup();
     }
 
     HTTPHeadersIterator(const HTTPHeadersTraits::HeadersContainerType *headers,
@@ -71,7 +77,7 @@ public:
             , _headerIter(headerIter)
             , _values(values)
             , _valueIter(valueIter) {
-        fetch();
+        setup();
 
     }
 
@@ -110,7 +116,7 @@ private:
                 _values = nullptr;
             }
         }
-        fetch();
+        setup();
     }
 
     bool equal(const HTTPHeadersIterator &other) const {
@@ -123,7 +129,7 @@ private:
         return _headerIter == other._headerIter && _valueIter == other._valueIter;
     }
 
-    void fetch() {
+    void setup() {
         if (!_values) {
             _headerValue.first = nullptr;
             _headerValue.second = nullptr;
@@ -143,34 +149,44 @@ private:
 
 class HTTPHeaders {
 public:
-
+    typedef HTTPHeadersIterator Iterator;
+    typedef HTTPHeadersTraits::HeadersContainerType HeadersContainerType;
 
     HTTPHeaders() {}
-    ~HTTPHeaders() {}
 
-    int parseLine(const std::string &line);
-    int add(std::string name, std::string value);
-    StringVector getList(const std::string &name) const;
-
-    const HeaderContainer& getAll() const {
-        return _headers;
+    HTTPHeaders(const StringMap &nameValues) {
+        update(nameValues);
     }
 
-    bool contain(const std::string &name) const {
-        return _headers.find(name) != _headers.end();
+    void add(std::string name, std::string value);
+    StringVector getList(std::string name) const;
+
+    Iterator begin() const {
+        return Iterator(&_headers);
     }
 
-    bool get(const std::string &name, std::string &value) const;
+    Iterator end() const {
+        return Iterator(&_headers, _headers.end());
+    }
+
+    void parseLine(const std::string &line);
+    void set(std::string name, std::string value);
+    const std::string& get(std::string name) const;
+    void remove(std::string name);
     std::string getDefault(const std::string &name, const std::string &default_value={}) const;
-    void update(const HeaderContainer &values);
 
-    static HTTPHeaderUPtr parse(std::string headers);
+    void update(const StringMap &nameValues) {
+        for(auto &nameValue: nameValues) {
+            set(nameValue.first, nameValue.second);
+        }
+    }
+
+    static HTTPHeadersPtr parse(std::string headers);
+protected:
     static std::string& normalizeName(std::string& name);
 
-    static const std::regex lineSep;
-    static const std::regex normalizedHeader;
-protected:
     HeadersContainerType _headers;
+    static const std::regex _normalizedHeader;
 };
 
 

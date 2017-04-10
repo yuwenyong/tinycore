@@ -6,7 +6,7 @@
 
 
 ObjectManager::~ObjectManager() {
-    cleanup();
+    finish();
 }
 
 
