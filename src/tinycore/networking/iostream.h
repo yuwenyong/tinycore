@@ -8,6 +8,7 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
+#include "tinycore/common/errors.h"
 #include "tinycore/utilities/messagebuffer.h"
 
 
@@ -21,8 +22,11 @@ public:
     typedef boost::asio::ip::tcp::socket SocketType;
     typedef boost::asio::ip::tcp::resolver ResolverType;
     typedef boost::asio::ip::tcp::endpoint EndPointType;
-    typedef boost::asio::mutable_buffer MutableBufferType;
-    typedef boost::asio::const_buffer ConstBufferType;
+//    typedef boost::asio::mutable_buffer MutableBufferType;
+    typedef boost::asio::const_buffer BufferType;
+    typedef std::function<void (BufferType&)> ReadCallbackType;
+    typedef std::function<void ()> WriteCallbackType;
+    typedef std::function<void ()> CloseCallbackType;
 
     BaseIOStream(SocketType &&socket,
                  IOLoop * ioloop,
@@ -30,7 +34,7 @@ public:
                  size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~BaseIOStream();
 
-    const std::string & getRemoteAddress() const {
+    std::string getRemoteAddress() const {
         const auto & end_point = _socket.remote_endpoint();
         return end_point.address().to_string();
     }
@@ -40,49 +44,51 @@ public:
         return end_point.port();
     }
 
-    int readUntil(std::string delimiter, std::function<void (const char *, size_t)> callback);
-    int readBytes(size_t numBytes, std::function<void (const char *, size_t)> callback);
-    int write(ConstBufferType chunk, std::function<void ()> callback= nullptr);
+    void readUntil(std::string delimiter, ReadCallbackType callback);
+    void readBytes(size_t numBytes, ReadCallbackType callback);
+    void write(BufferType chunk, WriteCallbackType callback=nullptr);
 
-    int close() {
-        if (_closed) {
-            return -1;
+    void setCloseCallback(CloseCallbackType callback) {
+        _closeCallback = std::move(callback);
+    }
+
+    void close() {
+        if (!closed()) {
+            _closed = true;
+            asyncClose();
         }
-        _closed = true;
-        _asyncClose();
-        return 0;
     }
 
-    int delayedClose() {
-        _closing = true;
-        return 0;
-    }
-
-    bool isOpen() const {
-        return !_closed && !_closing;
-    }
-
-    bool isReading() const {
+    bool reading() const {
         return static_cast<bool>(_readCallback);
     }
 
-    bool isWriting() const {
+    bool writing() const {
         return !_writeQueue.empty();
+    }
+
+    bool closed() const {
+        return _closed;
     }
 
     size_t getMaxBufferSize() const {
         return _maxBufferSize;
     }
 
-
 protected:
-    virtual void _asyncRead() = 0;
-    virtual void _asyncWrite() = 0;
-    virtual void _asyncClose() = 0;
+    virtual void asyncRead() = 0;
+    virtual void asyncWrite() = 0;
+    virtual void asyncClose() = 0;
 
-    void _readHandler(const ErrorCode &error, size_t transferredBytes);
-    void _writeHandler(const ErrorCode &error, size_t transferredBytes);
-    void _closeHandler(const ErrorCode &error);
+    void readHandler(const ErrorCode &error, size_t transferredBytes);
+    void writeHandler(const ErrorCode &error, size_t transferredBytes);
+    void closeHandler(const ErrorCode &error);
+
+    void checkClosed() const {
+        if (closed()) {
+            ThrowException(IOError, "Stream is closed");
+        }
+    }
 
     SocketType _socket;
     IOLoop *_ioloop;
@@ -92,10 +98,9 @@ protected:
     std::string _readDelimiter;
     size_t _readBytes{0};
     bool _closed{false};
-    bool _closing{false};
-    std::function<void (const char*, size_t)> _readCallback;
-    std::function<void ()> _writeCallback;
-    std::function<void ()> _closeCallback;
+    ReadCallbackType _readCallback;
+    WriteCallbackType _writeCallback;
+    CloseCallbackType _closeCallback;
 };
 
 
@@ -108,9 +113,9 @@ public:
     virtual ~IOStream();
 
 protected:
-    void _asyncRead() override;
-    void _asyncWrite() override;
-    void _asyncClose() override;
+    void asyncRead() override;
+    void asyncWrite() override;
+    void asyncClose() override;
 };
 
 
@@ -129,9 +134,9 @@ public:
     virtual ~SSLIOStream();
 
 protected:
-    void _asyncRead() override;
-    void _asyncWrite() override;
-    void _asyncClose() override;
+    void asyncRead() override;
+    void asyncWrite() override;
+    void asyncClose() override;
 
     SSLSocketType _sslSocket;
     bool _handshaking{false};

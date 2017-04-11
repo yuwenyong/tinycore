@@ -5,6 +5,7 @@
 #include "tinycore/networking/iostream.h"
 #include "tinycore/networking/httpserver.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/logging/log.h"
 
 
 BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBufferSize, size_t readChunkSize)
@@ -17,108 +18,101 @@ BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBuffer
 
 
 BaseIOStream::~BaseIOStream() {
-
+    close();
 }
 
-int BaseIOStream::readUntil(std::string delimiter, std::function<void(const char *, size_t)> callback) {
-    ASSERT(!_readCallback);
-    if (!isOpen()) {
-        return -1;
-    }
+void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
+    ASSERT(!_readCallback, "Already reading");
     _readDelimiter = std::move(delimiter);
     _readCallback = std::move(callback);
-    _asyncRead();
-    return 0;
+    checkClosed();
+    asyncRead();
 }
 
-int BaseIOStream::readBytes(size_t numBytes, std::function<void(const char *, size_t)> callback) {
-    ASSERT(!_readCallback);
-    if (!isOpen()) {
-        return -1;
-    }
+void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
+    ASSERT(!_readCallback, "Already reading");
     if (numBytes == 0) {
-        callback("", 0);
-        return 0;
+        BufferType buff;
+        callback(buff);
+        return;
     }
     _readBytes = numBytes;
     _readCallback = std::move(callback);
-    _asyncRead();
-    return 0;
+    checkClosed();
+    asyncRead();
 }
 
-int BaseIOStream::write(ConstBufferType chunk, std::function<void()> callback) {
-    if (!isOpen()) {
-        return -1;
-    }
-    bool writing = isWriting();
+void BaseIOStream::write(BufferType chunk, WriteCallbackType callback) {
+    checkClosed();
+    bool writing = writing();
     size_t bufferSize = boost::asio::buffer_size(chunk);
     MessageBuffer packet(bufferSize);
     packet.write(boost::asio::buffer_cast<void *>(chunk), bufferSize);
     _writeQueue.push(std::move(packet));
-    _writeCallback = callback;
+    _writeCallback = std::move(callback);
     if (!writing) {
-        _asyncWrite();
+        asyncWrite();
     }
-    return 0;
 }
 
-void BaseIOStream::_readHandler(const ErrorCode &error, size_t transferredBytes) {
+void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) {
     if (error) {
         if (_readCallback) {
             _readCallback = nullptr;
         }
-        close();
-        return;
+        if (error != boost::asio::error::operation_aborted) {
+            Log::warn("Read error %d :%s", error.value(), error.message());
+            close();
+            throw boost::system::system_error(error);
+        }
     }
     _readBuffer.writeCompleted(transferredBytes);
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
-        //TODOLOG
-        if (_readCallback) {
-            _readCallback = nullptr;
-        }
+        _readCallback = nullptr;
+        Log::error("Reached maximum read buffer size");
         close();
-        return;
+        ThrowException(IOError, "Reached maximum read buffer size");
     }
     if (_readBytes > 0) {
         if (_readBuffer.getActiveSize() >= _readBytes) {
-            std::function<void (const char*, size_t)> callback;
+            ReadCallbackType callback = std::move(_readCallback);
             size_t readBytes = _readBytes;
-            callback.swap(_readCallback);
             _readBytes = 0;
-            callback(_readBuffer.getReadPointer(), readBytes);
+            BufferType buffer(_readBuffer.getReadPointer(), readBytes);
+            callback(buffer);
             _readBuffer.readCompleted(readBytes);
         }
     } else if (!_readDelimiter.empty()){
         const char *loc = strnstr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), _readDelimiter.c_str());
         if (loc) {
             size_t readBytes = loc - _readBuffer.getReadPointer() + _readDelimiter.size();
-            std::function<void (const char*, size_t)> callback;
-            callback.swap(_readCallback);
+            ReadCallbackType callback = std::move(_readCallback);
             _readDelimiter.clear();
-            callback(_readBuffer.getReadPointer(), readBytes);
+            BufferType buffer(_readBuffer.getReadPointer(), readBytes);
+            callback(buffer);
             _readBuffer.readCompleted(readBytes);
         }
     }
-    if (!isOpen()) {
+    if (closed()) {
         if (_readCallback) {
             _readCallback = nullptr;
-        }
-        if (!_closed) {
-            close();
         }
         return;
     }
     if (_readCallback) {
-        _asyncRead();
+        asyncRead();
     }
 }
 
-void BaseIOStream::_writeHandler(const ErrorCode &error, size_t transferredBytes) {
+void BaseIOStream::writeHandler(const ErrorCode &error, size_t transferredBytes) {
     if (error) {
         if (_writeCallback) {
             _writeCallback = nullptr;
         }
-        close();
+        if (error != boost::asio::error::operation_aborted) {
+            Log::warn("Write error %d :%s", error.value(), error.message());
+            close();
+        }
         return;
     }
     _writeQueue.front().readCompleted(transferredBytes);
@@ -126,32 +120,28 @@ void BaseIOStream::_writeHandler(const ErrorCode &error, size_t transferredBytes
         _writeQueue.pop();
     }
     if (_writeQueue.empty() && _writeCallback) {
-        std::function<void ()> callback;
-        callback.swap(_writeCallback);
+        WriteCallbackType callback = std::move(_writeCallback);
         callback();
     }
-    if (!isOpen()) {
+    if (closed()) {
         if (_writeCallback) {
             _writeCallback = nullptr;
-        }
-        if (!_closed) {
-            close();
         }
         return;
     }
     if (!_writeQueue.empty()) {
-        _asyncWrite();
+        asyncWrite();
     }
 }
 
-void BaseIOStream::_closeHandler(const ErrorCode &error) {
-    if (error) {
-
-    }
+void BaseIOStream::closeHandler(const ErrorCode &error) {
     if (_closeCallback) {
-        std::function<void ()> callback;
-        callback.swap(_closeCallback);
+        CloseCallbackType callback = std::move(_closeCallback);
         callback();
+    }
+    if (error) {
+        Log::warn("Close error %d :%s", error.value(), error.message());
+        throw boost::system::system_error(error);
     }
 }
 
@@ -159,25 +149,25 @@ IOStream::~IOStream() {
 
 }
 
-void IOStream::_asyncRead() {
+void IOStream::asyncRead() {
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
     _socket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
-                            std::bind(&BaseIOStream::_readHandler, shared_from_this(), std::placeholders::_1,
+                            std::bind(&BaseIOStream::readHandler, shared_from_this(), std::placeholders::_1,
                                       std::placeholders::_2));
 }
 
-void IOStream::_asyncWrite() {
+void IOStream::asyncWrite() {
     MessageBuffer &buffer = _writeQueue.front();
     _socket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
-                             std::bind(&BaseIOStream::_writeHandler, shared_from_this(), std::placeholders::_1,
+                             std::bind(&BaseIOStream::writeHandler, shared_from_this(), std::placeholders::_1,
                                        std::placeholders::_2));
 }
 
-void IOStream::_asyncClose() {
+void IOStream::asyncClose() {
     ErrorCode error;
     _socket.close(error);
-    _closeHandler(error);
+    closeHandler(error);
 }
 
 SSLIOStream::SSLIOStream(SocketType &&socket,
@@ -194,13 +184,14 @@ SSLIOStream::~SSLIOStream() {
 
 }
 
-void SSLIOStream::_asyncRead() {
+void SSLIOStream::asyncRead() {
     if (!_handshaked) {
         ErrorCode error;
         _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
         if (error) {
+            Log::warn("SSL error %d :%s", error.value(), error.message());
             close();
-            return;
+            throw boost::system::system_error(error);
         } else {
             _handshaked = true;
         }
@@ -208,35 +199,36 @@ void SSLIOStream::_asyncRead() {
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
     _sslSocket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
-                               std::bind(&BaseIOStream::_readHandler, shared_from_this(), std::placeholders::_1,
+                               std::bind(&BaseIOStream::readHandler, shared_from_this(), std::placeholders::_1,
                                          std::placeholders::_2));
 }
 
-void SSLIOStream::_asyncWrite() {
+void SSLIOStream::asyncWrite() {
     if (!_handshaked) {
         ErrorCode error;
         _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
         if (error) {
+            Log::warn("SSL error %d :%s", error.value(), error.message());
             close();
-            return;
+            throw boost::system::system_error(error);
         } else {
             _handshaked = true;
         }
     }
     MessageBuffer& buffer = _writeQueue.front();
     _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
-                                std::bind(&BaseIOStream::_writeHandler, shared_from_this(), std::placeholders::_1,
+                                std::bind(&BaseIOStream::writeHandler, shared_from_this(), std::placeholders::_1,
                                           std::placeholders::_2));
 }
 
-void SSLIOStream::_asyncClose() {
+void SSLIOStream::asyncClose() {
     ErrorCode error;
     if (_handshaked) {
         _sslSocket.shutdown(error);
         if (error) {
-
+            Log::warn("SSL error %d :%s", error.value(), error.message());
         }
     }
     _socket.close(error);
-    _closeHandler(error);
+    closeHandler(error);
 }

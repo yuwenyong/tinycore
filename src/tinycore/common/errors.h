@@ -48,6 +48,8 @@ DECLARE_EXCEPTION(KeyError, Exception);
 DECLARE_EXCEPTION(TypeError, Exception);
 DECLARE_EXCEPTION(ValueError, Exception);
 DECLARE_EXCEPTION(IllegalArguments, Exception);
+DECLARE_EXCEPTION(Environment, Exception);
+DECLARE_EXCEPTION(IOError, Environment);
 DECLARE_EXCEPTION(ParsingError, Exception);
 DECLARE_EXCEPTION(DuplicateKey, Exception);
 DECLARE_EXCEPTION(NotFound, Exception);
