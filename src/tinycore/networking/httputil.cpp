@@ -17,7 +17,7 @@ void HTTPHeaders::add(std::string name, std::string value) {
         iter->second.first += ',' + value;
         iter->second.second.push_back(std::move(value));
     } else {
-        _headers[name] = std::make_pair(std::move(name), {std::move(value), });
+        _headers[name] = std::make_pair(std::move(name), {std::move(value)});
     }
 }
 

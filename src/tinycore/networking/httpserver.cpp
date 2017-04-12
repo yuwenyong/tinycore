@@ -3,14 +3,16 @@
 //
 
 #include "tinycore/networking/httpserver.h"
+#include <boost/utility/string_ref.hpp>
 #include "tinycore/networking/ioloop.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/utilities/urlparse.h"
 #include "tinycore/utilities/string.h"
 #include "tinycore/common/errors.h"
+#include "tinycore/logging/log.h"
 
 
-HTTPServer::HTTPServer(std::function<void(HTTPRequest *)> requestCallback,
+HTTPServer::HTTPServer(RequestCallbackType requestCallback,
                        bool noKeepAlive,
                        IOLoop *ioloop,
                        bool xheaders,
@@ -30,49 +32,50 @@ HTTPServer::~HTTPServer() {
 
 }
 
-int HTTPServer::listen(unsigned short port, const std::string &address) {
-    if (_bind(port, address) < 0) {
-        return -1;
-    }
-    return _start();
+void HTTPServer::listen(unsigned short port, const std::string &address) {
+    bind(port, address);
+    start();
 }
 
-int HTTPServer::stop() {
-    _acceptor.close();
-}
-
-int HTTPServer::_bind(unsigned short port, const std::string &address) {
+void HTTPServer::bind(unsigned short port, const std::string &address) {
     BaseIOStream::ResolverType resolver(_ioloop->getService());
     BaseIOStream::EndPointType endpoint = *resolver.resolve({address, port});
     _acceptor.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
     _acceptor.bind(endpoint);
     _acceptor.listen();
-    return 0;
 }
 
-void HTTPServer::_doAccept() {
-    _acceptor.async_accept(_socket, [this](ErrorCode ec) {
+void HTTPServer::stop() {
+    _acceptor.close();
+}
+
+void HTTPServer::doAccept() {
+    _acceptor.async_accept(_socket, [this](const ErrorCode &ec) {
         if (ec) {
-            if (ec == boost::asio::error::operation_aborted) {
-                return;
+            if (ec != boost::asio::error::operation_aborted) {
+                throw boost::system::system_error(ec);
             } else {
-                // logging
+                return;
             }
         } else {
-            BaseIOStreamPtr stream;
-            if (_sslOption) {
-                stream = std::make_shared<SSLIOStream>(std::move(_socket), *_sslOption, _ioloop);
-            } else {
-                stream = std::make_shared<IOStream>(std::move(_socket), _ioloop);
+            try {
+                BaseIOStreamPtr stream;
+                if (_sslOption) {
+                    stream = std::make_shared<SSLIOStream>(std::move(_socket), *_sslOption, _ioloop);
+                } else {
+                    stream = std::make_shared<IOStream>(std::move(_socket), _ioloop);
+                }
+                auto connection = std::make_shared<HTTPConnection>(stream,
+                                                                   stream->getRemoteAddress(),
+                                                                   _requestCallback,
+                                                                   _noKeepAlive,
+                                                                   _xheaders);
+                connection->start();
+            } catch (std::exception &e) {
+                Log::error("Error in connection callback:%s", e.what());
             }
-            auto connection = std::make_shared<HTTPConnection>(stream,
-                                                               stream->getRemoteAddress(),
-                                                               _requestCallback,
-                                                               _noKeepAlive,
-                                                               _xheaders);
-            connection->start();
+            doAccept();
         }
-        _doAccept();
     });
 }
 
@@ -85,128 +88,156 @@ public:
 
 HTTPConnection::HTTPConnection(BaseIOStreamPtr stream,
                                std::string address,
-                               std::function<void(HTTPRequest *)> requestCallback,
+                               const RequestCallbackType &requestCallback,
                                bool noKeepAlive,
                                bool xheaders)
-        : _stream(std::move(stream))
+        : _stream(stream)
+        , _streamKeeper(std::move(stream))
         , _address(std::move(address))
-        , _requestCallback(std::move(requestCallback))
+        , _requestCallback(requestCallback)
         , _noKeepAlive(noKeepAlive)
         , _xheaders(xheaders) {
 
 }
 
-
-int HTTPConnection::start() {
-    auto callback = std::bind(&HTTPConnection::_onHeaders, shared_from_this(), std::placeholders::_1,
-                              std::placeholders::_2);
-    _stream->readUntil("\r\n\r\n", callback);
-    return 0;
+void HTTPConnection::start() {
+    ASSERT(_streamKeeper);
+    auto stream = std::move(_streamKeeper);
+    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
 }
 
-int HTTPConnection::write(const char *chunk, size_t length) {
-    ASSERT(_request);
-    if (_stream->isOpen()) {
-        auto callback = std::bind(&HTTPConnection::_onWriteComplete, shared_from_this());
-        _stream->write(ConstBufferType(chunk, length), callback);
+void HTTPConnection::write(BufferType &chunk) {
+    ASSERT(getRequest(), "Request closed");
+    auto stream = getStream();
+    if (stream && !stream->closed()) {
+        _streamKeeper.reset();
+        stream->write(chunk, std::bind(&HTTPConnection::onWriteComplete, shared_from_this());
     }
-    return 0;
 }
 
-
-int HTTPConnection::finish() {
-    ASSERT(_request);
+void HTTPConnection::finish() {
+    ASSERT(getRequest(), "Request closed");
     _requestFinished = true;
-    if (!_stream->isWriting()) {
-        _finishRequest();
+    auto stream = getStream();
+    _requestKeeper = getRequest();
+    if (stream && !stream->writing()) {
+        finishRequest();
     }
-    return 0;
 }
 
-void HTTPConnection::_onWriteComplete() {
+void HTTPConnection::onWriteComplete() {
+    ASSERT(!_streamKeeper);
+    auto stream = getStream();
+    ASSERT(stream);
+    if (stream->dying()) {
+        _streamKeeper = std::move(stream);
+    }
     if (_requestFinished) {
-        _finishRequest();
+        finishRequest();
     }
 }
 
-void HTTPConnection::_finishRequest() {
+void HTTPConnection::finishRequest() {
+    ASSERT(_requestKeeper);
     bool disconnect = true;
     if (_noKeepAlive) {
         disconnect = true;
     } else {
-        auto headers = _request->getHTTPHeader();
+        auto headers = _requestKeeper->getHTTPHeader();
         std::string connectionHeader = headers->getDefault("Connection");
-        if (_request->supportsHTTP11()) {
+        if (_requestKeeper->supportsHTTP1_1()) {
             disconnect = connectionHeader == "close";
-        } else if (headers->contain("Content-Length") || _request->getMethod() == "HEAD"
-                   || _request->getMethod() == "GET") {
+        } else if (headers->contain("Content-Length")
+                   || _requestKeeper->getMethod() == "HEAD"
+                   || _requestKeeper->getMethod() == "GET") {
             disconnect = connectionHeader != "Keep-Alive";
         }
     }
-    _request.reset();
+    _requestKeeper.reset();
     _requestFinished = false;
     if (disconnect) {
-        _stream->close();
+        auto stream = getStream();
+        ASSERT(stream);
+        stream->close();
         return;
     }
     start();
 }
 
-void HTTPConnection::_onHeaders(const char *data, size_t length) {
+void HTTPConnection::onHeaders(BufferType &data) {
+    ASSERT(!_streamKeeper);
+    auto stream = getStream();
+    ASSERT(stream);
+    if (stream->dying()) {
+        _streamKeeper = stream;
+    }
     try {
-        const char *eol = strnstr(data, length, "\r\n");
-        std::string startLine(data, eol);
-        StringVector requestHeaders;
-        requestHeaders = String::split(startLine);
+        const char *content = boost::asio::buffer_cast<char *>(data);
+        size_t length = boost::asio::buffer_size(data);
+        const char *eol = strnstr(content, length, "\r\n");
+        std::string startLine(content, eol);
+        StringVector requestHeaders = String::split(startLine);
         if (requestHeaders.size() != 3) {
-            throw  _BadRequestException("Malformed HTTP request line");
+            throw _BadRequestException("Malformed HTTP request line");
         }
         std::string method = std::move(requestHeaders[0]);
         std::string uri = std::move(requestHeaders[1]);
         std::string version = std::move(requestHeaders[2]);
-        if (!boost::starts_with(version, "HTTP")) {
-            throw  _BadRequestException("Malformed HTTP version in HTTP Request-Line");
+        if (!boost::starts_with(version, "HTTP/")) {
+            throw _BadRequestException("Malformed HTTP version in HTTP Request-Line");
         }
-        HTTPHeaderUPtr headers = HTTPHeader::parse(std::string(eol, data + length));
-        _request = make_unique<HTTPRequest>(shared_from_this(), std::move(method), std::move(uri), std::move(version),
-                                            std::move(headers), "", _address);
-        auto requestHeader = _request->getHTTPHeader();
+        HTTPHeadersPtr headers = HTTPHeaders::parse(std::string(eol, content + length));
+        _requestKeeper = make_shared<HTTPRequest>(shared_from_this(), std::move(method), std::move(uri),
+                                                  std::move(version), std::move(headers), "", _address);
+        _request = _requestKeeper;
+        auto requestHeader = _requestKeeper->getHTTPHeader();
         std::string contentLengthValue = requestHeader->getDefault("Content-Length");
         if (!contentLengthValue.empty()) {
-            size_t contentLength = (size_t)std::stoi(contentLengthValue);
-            if (contentLength > _stream->getMaxBufferSize()) {
+            size_t contentLength = (size_t) std::stoi(contentLengthValue);
+            if (contentLength > stream->getMaxBufferSize()) {
                 throw _BadRequestException("Content-Length too long");
             }
             if (requestHeader->getDefault("Expect") == "100-continue") {
                 std::string continueLine("HTTP/1.1 100 (Continue)\r\n\r\n");
-                _stream->write(continueLine.c_str(), continueLine.size());
+                BufferType continueLineBuffer(continueLine.c_str(), continueLine.length());
+                stream->write(continueLineBuffer);
             }
-            auto callback = std::bind(&HTTPConnection::_onRequestBody, shared_from_this(), std::placeholders::_1,
-                                      std::placeholders::_2);
-            _stream->readBytes(contentLength, callback);
+            _streamKeeper.reset();
+            stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, shared_from_this(),
+                                                       std::placeholders::_1));
             return;
         }
-        _requestCallback(_request.get());
+        _requestKeeper->setConnection(shared_from_this());
+        _requestCallback(std::move(_requestKeeper));
     } catch (_BadRequestException &e) {
-        _stream->close();
+        Log::info("Malformed HTTP request from %s: %s", _address.c_str(), e.what());
+        stream->close();
     }
 }
 
-void HTTPConnection::_onRequestBody(const char *data, size_t length) {
-    _request->setBody(data, length);
-    auto requestHeader = _request->getHTTPHeader();
+void HTTPConnection::onRequestBody(BufferType &data) {
+    ASSERT(!_streamKeeper);
+    auto stream = getStream();
+    ASSERT(stream);
+    if (stream->dying()) {
+        _streamKeeper = stream;
+    }
+    ASSERT(_requestKeeper);
+    const char *content = boost::asio::buffer_cast<char *>(data);
+    size_t length = boost::asio::buffer_size(data);
+    _requestKeeper->setBody(content, length);
+    auto requestHeader = _requestKeeper->getHTTPHeader();
     std::string contentType = requestHeader->getDefault("Content-Type");
-    if (_request->getMethod() == "POST" || _request->getMethod() == "PUT") {
+    if (_requestKeeper->getMethod() == "POST" || _requestKeeper->getMethod() == "PUT") {
         if (boost::starts_with(contentType, "application/x-www-form-urlencoded")) {
-            auto arguments = URLParse::parseQS(std::string(data, length));
+            auto arguments = URLParse::parseQS(_requestKeeper->getBody(), false);
             for (auto &nv: arguments) {
                 if (!nv.second.empty()) {
-                    _request->addArguments(std::move(nv.first), std::move(nv.second));
+                    _requestKeeper->addArguments(std::move(nv.first), std::move(nv.second));
                 }
             }
         } else if (boost::starts_with(contentType, "multipart/form-data")) {
-            StringVector fields;
-            fields = String::split(contentType, ';');
+            StringVector fields = String::split(contentType, ';');
             bool found = false;
             size_t pos;
             std::string k, v;
@@ -217,21 +248,25 @@ void HTTPConnection::_onRequestBody(const char *data, size_t length) {
                     k = field.substr(0, pos);
                     v = field.substr(pos + 1);
                     if (k == "boundary" && !v.empty()) {
-                        _parseMimeBody(std::move(v), {data, length});
+                        parseMimeBody(std::move(v), {content, length});
                         found = true;
                         break;
                     }
+                } else {
+                    ThrowException(ValueError, "need more than 3 values to unpack");
                 }
             }
             if (!found) {
-                //logging
+                Log::warn("Invalid multipart/form-data");
             }
         }
     }
-    _requestCallback(_request.get());
+    _requestKeeper->setConnection(shared_from_this());
+    _requestCallback(std::move(_requestKeeper));
 }
 
-void HTTPConnection::_parseMimeBody(std::string boundary, std::string data) {
+void HTTPConnection::parseMimeBody(std::string boundary, std::string data) {
+    ASSERT(_requestKeeper);
     if (boost::starts_with(boundary, "\"") && boost::ends_with(boundary, "\"")) {
         if (boundary.length() == 1) {
             boundary.clear();
@@ -248,29 +283,26 @@ void HTTPConnection::_parseMimeBody(std::string boundary, std::string data) {
     if (data.length() <= footerLength) {
         return;
     }
-    std::regex sep("--" + boundary + "\r\n");
-    std::regex_token_iterator<std::string::iterator> rend;
-    std::regex_token_iterator<std::string::iterator> pos(data.begin(), data.end() - footerLength, sep, -1);
-    std::string part, nameHeader, value, name, nameValue, ctype;
-    HTTPHeaderUPtr header;
+    std::string sep("--" + boundary + "\r\n");
+    StringVector parts = String::split(data, sep), nameParts;
+    std::string nameHeader, value, name, nameValue, ctype;
+    HTTPHeadersPtr header;
     size_t eoh, eon;
-    std::map<std::string, std::string> nameValues;
+    StringMap nameValues;
     decltype(nameValues.begin()) nameIter, fileNameIter;
-    StringVector nameParts;
-    while (pos != rend) {
-        part = *pos;
+    for (auto &part: parts) {
         if (part.empty()) {
             continue;
         }
         eoh = part.find("\r\n");
         if (eoh == std::string::npos) {
-            //logging
+            Log::warn("multipart/form-data missing headers");
             continue;
         }
-        header = HTTPHeader::parse(part.substr(0, eoh));
+        header = HTTPHeaders::parse(part.substr(0, eoh)));
         nameHeader = header->getDefault("Content-Disposition");
         if (!boost::starts_with(nameHeader, "form-data;") || !boost::ends_with(part, "\r\n")) {
-            //logging
+            Log::warn("Invalid multipart/form-data");
             continue;
         }
         if (part.length() <= eoh + 6) {
@@ -280,14 +312,12 @@ void HTTPConnection::_parseMimeBody(std::string boundary, std::string data) {
         }
         nameValues.clear();
         nameHeader = nameHeader.substr(10);
-        boost::split(nameParts, nameHeader, [](char ch) {
-            return ch == ';';
-        });
+        nameParts = String::split(nameHeader, ';');
         for (auto &namePart: nameParts) {
             boost::trim(namePart);
             eon = namePart.find('=');
             if (eon == std::string::npos) {
-                continue;
+                ThrowException(ValueError, "need more than 2 values to unpack");
             }
             name = namePart.substr(0, eon);
             nameValue = namePart.substr(eon + 1);
@@ -296,42 +326,43 @@ void HTTPConnection::_parseMimeBody(std::string boundary, std::string data) {
         }
         nameIter = nameValues.find("name");
         if (nameIter == nameValues.end()) {
-            //logging
+            Log::warn("multipart/form-data value missing name")
             continue;
         }
         name = nameIter->second;
         fileNameIter = nameValues.find("filename");
         if (fileNameIter != nameValues.end()) {
             ctype = header->getDefault("Content-Type", "application/unknown");
-            _request->addFile(std::move(name), HTTPFile(std::move(fileNameIter->second),
-                                                        std::move(ctype),
-                                                        std::move(value)));
+            _requestKeeper->addFile(std::move(name), HTTPFile(std::move(fileNameIter->second),
+                                                              std::move(ctype),
+                                                              std::move(value)));
         } else {
-            _request->addArgument(std::move(name), std::move(value));
+            _requestKeeper->addArgument(std::move(name), std::move(value));
         }
     }
 }
+
 
 HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
                          std::string method,
                          std::string uri,
                          std::string version,
-                         HTTPHeaderUPtr &&headers,
+                         HTTPHeadersPtr &&headers,
                          std::string body,
                          std::string remoteIp,
                          std::string protocol,
                          std::string host,
-                         RequestFiles files)
-        :_method(std::move(method))
+                         RequestFilesType files)
+        : _method(std::move(method))
         , _uri(std::move(uri))
         , _version(std::move(version))
         , _headers(std::move(headers))
         , _body(std::move(body))
         , _files(std::move(files))
-        , _connection(std::move(connection))
-        , _startTime(std::chrono::steady_clock::now())
-        , _finishTime(){
-    if (_connection && _connection->getXHeaders()) {
+//        , _connection(std::move(connection))
+        , _startTime(ClockType::now())
+        , _finishTime(TimePointType::min()) {
+    if (connection && connection->getXHeaders()) {
         _remoteIp = _headers->getDefault("X-Forwarded-For", remoteIp);
         _remoteIp = _headers->getDefault("X-Real-Ip", _remoteIp);
         _protocol = _headers->getDefault("X-Forwarded-Proto", protocol);
@@ -343,7 +374,7 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
         _remoteIp = std::move(remoteIp);
         if (!protocol.empty()) {
             _protocol = std::move(protocol);
-        } else if (_connection && std::dynamic_pointer_cast<SSLIOStream>(_connection->getStream())) {
+        } else if (connection && std::dynamic_pointer_cast<SSLIOStream>(connection->getStream())) {
             _protocol = "https";
         } else {
             _protocol = "http";
@@ -356,27 +387,34 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
     }
     std::string scheme, netloc, fragment;
     std::tie(scheme, netloc, _path, _query, fragment) = URLParse::urlSplit(_uri);
-    _arguments = URLParse::parseQS(_query);
+    _arguments = URLParse::parseQS(_query, false);
 }
 
 HTTPRequest::~HTTPRequest() {
 
 }
 
-
-
-int HTTPRequest::write(const char *chunk, size_t length) {
-    return _connection->write(chunk, length);
+void HTTPRequest::write(const char *chunk, size_t length) {
+    ASSERT(_connection);
+    BufferType buffer(chunk, length);
+    _connection->write(buffer);
 }
 
-int HTTPRequest::finish() {
-    _connection->finish();
+void HTTPRequest::finish() {
+    ASSERT(_connection);
+    auto connection = std::move(_connection);
+    connection->finish();
     _finishTime = std::chrono::steady_clock::now();
-    return 0;
 }
 
 float HTTPRequest::requestTime() const {
-    return 0.0f;
+    std::chrono::milliseconds elapse;
+    if (_finishTime == std::chrono::time_point::min()) {
+        elapse = ClockType::now() - _startTime;
+    } else {
+        elapse = _finishTime - _startTime;
+    }
+    return elapse.count() / 1000 + elapse.count() % 1000 / 1000.0f;
 }
 
 void HTTPRequest::addArgument(std::string name, std::string value) {

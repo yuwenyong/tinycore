@@ -42,7 +42,7 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
     asyncRead();
 }
 
-void BaseIOStream::write(BufferType chunk, WriteCallbackType callback) {
+void BaseIOStream::write(BufferType &chunk, WriteCallbackType callback) {
     checkClosed();
     bool writing = writing();
     size_t bufferSize = boost::asio::buffer_size(chunk);

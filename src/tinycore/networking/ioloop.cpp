@@ -67,7 +67,7 @@ _Timeout::~_Timeout() {
 }
 
 void _Timeout::start(float deadline, CallbackType callback) {
-    _timer.expires_from_now(std::chrono::milliseconds(int(deadline * 1000)));
+    _timer.expires_from_now(std::chrono::milliseconds(int64_t(deadline * 1000)));
     _timer.async_wait(std::move(callback));
 }
 

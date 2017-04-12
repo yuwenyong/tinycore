@@ -101,7 +101,7 @@ public:
 private:
     friend class boost::iterator_core_access;
 
-    reference dereference() const {
+    HTTPHeadersTraits::HeaderValueType& dereference() const {
         return _headerValue;
     }
 
@@ -143,7 +143,7 @@ private:
     HTTPHeadersTraits::HeadersContainerIteratorType _headerIter;
     const HTTPHeadersTraits::ValuesContainerType *_values;
     HTTPHeadersTraits::ValuesContainerIteratorType _valueIter;
-    HTTPHeadersTraits::HeaderValueType _headerValue;
+    HTTPHeadersTraits::HeaderValueType _headerValue={nullptr, nullptr};
 };
 
 
@@ -171,6 +171,11 @@ public:
 
     void parseLine(const std::string &line);
     void set(std::string name, std::string value);
+
+    bool contain(const std::string &name) const {
+        return _headers.find(name) != _headers.end();
+    }
+
     const std::string& get(std::string name) const;
     void remove(std::string name);
     std::string getDefault(const std::string &name, const std::string &default_value={}) const;
@@ -189,5 +194,33 @@ protected:
     static const std::regex _normalizedHeader;
 };
 
+
+class HTTPFile {
+public:
+    HTTPFile(std::string fileName,
+             std::string contentType,
+             std::string body)
+            : _fileName(std::move(fileName))
+            , _contentType(std::move(contentType))
+            , _body(std::move(body)) {
+
+    }
+
+    const std::string& getFileName() const {
+        return _fileName;
+    }
+
+    const std::string& getContentType() const {
+        return _contentType;
+    }
+
+    const std::string& getBody() const {
+        return _body;
+    }
+protected:
+    std::string _fileName;
+    std::string _contentType;
+    std::string _body;
+};
 
 #endif //TINYCORE_HTTPUTIL_H

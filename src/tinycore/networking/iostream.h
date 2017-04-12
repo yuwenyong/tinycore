@@ -46,7 +46,7 @@ public:
 
     void readUntil(std::string delimiter, ReadCallbackType callback);
     void readBytes(size_t numBytes, ReadCallbackType callback);
-    void write(BufferType chunk, WriteCallbackType callback=nullptr);
+    void write(BufferType &chunk, WriteCallbackType callback=nullptr);
 
     void setCloseCallback(CloseCallbackType callback) {
         _closeCallback = std::move(callback);
@@ -75,6 +75,9 @@ public:
         return _maxBufferSize;
     }
 
+    bool dying() const {
+        return !(_readCallback || _writeCallback);
+    }
 protected:
     virtual void asyncRead() = 0;
     virtual void asyncWrite() = 0;
@@ -105,6 +108,7 @@ protected:
 
 
 typedef std::shared_ptr<BaseIOStream> BaseIOStreamPtr;
+typedef std::weak_ptr<BaseIOStream> BaseIOStreamWPtr;
 
 
 class IOStream: public BaseIOStream {
