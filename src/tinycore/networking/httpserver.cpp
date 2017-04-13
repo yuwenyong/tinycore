@@ -39,7 +39,9 @@ void HTTPServer::listen(unsigned short port, const std::string &address) {
 
 void HTTPServer::bind(unsigned short port, const std::string &address) {
     BaseIOStream::ResolverType resolver(_ioloop->getService());
-    BaseIOStream::EndPointType endpoint = *resolver.resolve({address, port});
+    BaseIOStream::ResolverType::query query(address, std::to_string(port));
+    BaseIOStream::EndPointType endpoint = *resolver.resolve(query);
+    _acceptor.open(endpoint.protocol());
     _acceptor.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
     _acceptor.bind(endpoint);
     _acceptor.listen();
@@ -100,6 +102,10 @@ HTTPConnection::HTTPConnection(BaseIOStreamPtr stream,
 
 }
 
+HTTPConnection::~HTTPConnection() {
+    std::cout << "Connection Destroy" << std::endl;
+}
+
 void HTTPConnection::start() {
     ASSERT(_streamKeeper);
     auto stream = std::move(_streamKeeper);
@@ -111,7 +117,7 @@ void HTTPConnection::write(BufferType &chunk) {
     auto stream = getStream();
     if (stream && !stream->closed()) {
         _streamKeeper.reset();
-        stream->write(chunk, std::bind(&HTTPConnection::onWriteComplete, shared_from_this());
+        stream->write(chunk, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
     }
 }
 
@@ -172,7 +178,7 @@ void HTTPConnection::onHeaders(BufferType &data) {
         _streamKeeper = stream;
     }
     try {
-        const char *content = boost::asio::buffer_cast<char *>(data);
+        const char *content = boost::asio::buffer_cast<const char *>(data);
         size_t length = boost::asio::buffer_size(data);
         const char *eol = strnstr(content, length, "\r\n");
         std::string startLine(content, eol);
@@ -187,8 +193,8 @@ void HTTPConnection::onHeaders(BufferType &data) {
             throw _BadRequestException("Malformed HTTP version in HTTP Request-Line");
         }
         HTTPHeadersPtr headers = HTTPHeaders::parse(std::string(eol, content + length));
-        _requestKeeper = make_shared<HTTPRequest>(shared_from_this(), std::move(method), std::move(uri),
-                                                  std::move(version), std::move(headers), "", _address);
+        _requestKeeper = std::make_shared<HTTPRequest>(shared_from_this(), std::move(method), std::move(uri),
+                                                       std::move(version), std::move(headers), "", _address);
         _request = _requestKeeper;
         auto requestHeader = _requestKeeper->getHTTPHeader();
         std::string contentLengthValue = requestHeader->getDefault("Content-Length");
@@ -223,7 +229,7 @@ void HTTPConnection::onRequestBody(BufferType &data) {
         _streamKeeper = stream;
     }
     ASSERT(_requestKeeper);
-    const char *content = boost::asio::buffer_cast<char *>(data);
+    const char *content = boost::asio::buffer_cast<const char *>(data);
     size_t length = boost::asio::buffer_size(data);
     _requestKeeper->setBody(content, length);
     auto requestHeader = _requestKeeper->getHTTPHeader();
@@ -299,7 +305,7 @@ void HTTPConnection::parseMimeBody(std::string boundary, std::string data) {
             Log::warn("multipart/form-data missing headers");
             continue;
         }
-        header = HTTPHeaders::parse(part.substr(0, eoh)));
+        header = HTTPHeaders::parse(part.substr(0, eoh));
         nameHeader = header->getDefault("Content-Disposition");
         if (!boost::starts_with(nameHeader, "form-data;") || !boost::ends_with(part, "\r\n")) {
             Log::warn("Invalid multipart/form-data");
@@ -322,11 +328,11 @@ void HTTPConnection::parseMimeBody(std::string boundary, std::string data) {
             name = namePart.substr(0, eon);
             nameValue = namePart.substr(eon + 1);
             boost::trim(nameValue);
-            nameValues.emplace({std::move(name), std::move(nameValue)});
+            nameValues.emplace(std::move(name), std::move(nameValue));
         }
         nameIter = nameValues.find("name");
         if (nameIter == nameValues.end()) {
-            Log::warn("multipart/form-data value missing name")
+            Log::warn("multipart/form-data value missing name");
             continue;
         }
         name = nameIter->second;
@@ -391,7 +397,7 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
 }
 
 HTTPRequest::~HTTPRequest() {
-
+    std::cout << "HTTPRequest Destroy" << std::endl;
 }
 
 void HTTPRequest::write(const char *chunk, size_t length) {
@@ -409,10 +415,10 @@ void HTTPRequest::finish() {
 
 float HTTPRequest::requestTime() const {
     std::chrono::milliseconds elapse;
-    if (_finishTime == std::chrono::time_point::min()) {
-        elapse = ClockType::now() - _startTime;
+    if (_finishTime == TimePointType::min()) {
+        elapse = std::chrono::duration_cast<std::chrono::milliseconds>(ClockType::now() - _startTime);
     } else {
-        elapse = _finishTime - _startTime;
+        elapse = std::chrono::duration_cast<std::chrono::milliseconds>(_finishTime - _startTime);
     }
     return elapse.count() / 1000 + elapse.count() % 1000 / 1000.0f;
 }
@@ -422,7 +428,7 @@ void HTTPRequest::addArgument(std::string name, std::string value) {
     if (iter != _arguments.end()) {
         iter->second.emplace_back(std::move(value));
     } else {
-        _arguments.emplace(std::move(name), {std::move(value)});
+        _arguments.emplace(std::move(name), StringVector{std::move(value)});
     }
 }
 
@@ -442,6 +448,6 @@ void HTTPRequest::addFile(std::string name, HTTPFile file) {
     if (iter != _files.end()) {
         iter->second.emplace_back(std::move(file));
     } else {
-        _files.emplace(std::move(name), {std::move(file)});
+        _files.emplace(std::move(name), std::vector<HTTPFile>{std::move(file)});
     }
 }

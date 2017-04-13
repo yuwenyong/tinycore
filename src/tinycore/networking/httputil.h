@@ -32,6 +32,8 @@ class HTTPHeadersIterator
                 std::forward_iterator_tag
         > {
 public:
+    typedef HTTPHeadersTraits::HeaderValueType reference;
+
     HTTPHeadersIterator()
             : _headers(nullptr)
             , _values(nullptr) {
@@ -101,7 +103,7 @@ public:
 private:
     friend class boost::iterator_core_access;
 
-    HTTPHeadersTraits::HeaderValueType& dereference() const {
+    reference dereference() const {
         return _headerValue;
     }
 
@@ -143,7 +145,7 @@ private:
     HTTPHeadersTraits::HeadersContainerIteratorType _headerIter;
     const HTTPHeadersTraits::ValuesContainerType *_values;
     HTTPHeadersTraits::ValuesContainerIteratorType _valueIter;
-    HTTPHeadersTraits::HeaderValueType _headerValue={nullptr, nullptr};
+    HTTPHeadersTraits::HeaderValueType _headerValue;
 };
 
 
@@ -191,7 +193,7 @@ protected:
     static std::string& normalizeName(std::string& name);
 
     HeadersContainerType _headers;
-    static const std::regex _normalizedHeader;
+//    static const std::regex _normalizedHeader;
 };
 
 

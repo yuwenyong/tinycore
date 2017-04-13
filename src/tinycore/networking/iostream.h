@@ -78,14 +78,14 @@ public:
     bool dying() const {
         return !(_readCallback || _writeCallback);
     }
-protected:
-    virtual void asyncRead() = 0;
-    virtual void asyncWrite() = 0;
-    virtual void asyncClose() = 0;
 
     void readHandler(const ErrorCode &error, size_t transferredBytes);
     void writeHandler(const ErrorCode &error, size_t transferredBytes);
     void closeHandler(const ErrorCode &error);
+protected:
+    virtual void asyncRead() = 0;
+    virtual void asyncWrite() = 0;
+    virtual void asyncClose() = 0;
 
     void checkClosed() const {
         if (closed()) {

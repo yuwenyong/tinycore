@@ -18,7 +18,7 @@ BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBuffer
 
 
 BaseIOStream::~BaseIOStream() {
-    close();
+    std::cout << "BaseIOStream destroy" << std::endl;
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
@@ -44,13 +44,13 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
 
 void BaseIOStream::write(BufferType &chunk, WriteCallbackType callback) {
     checkClosed();
-    bool writing = writing();
+    bool isWriting = writing();
     size_t bufferSize = boost::asio::buffer_size(chunk);
     MessageBuffer packet(bufferSize);
-    packet.write(boost::asio::buffer_cast<void *>(chunk), bufferSize);
+    packet.write(boost::asio::buffer_cast<const void *>(chunk), bufferSize);
     _writeQueue.push(std::move(packet));
     _writeCallback = std::move(callback);
-    if (!writing) {
+    if (!isWriting) {
         asyncWrite();
     }
 }
@@ -61,9 +61,13 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             _readCallback = nullptr;
         }
         if (error != boost::asio::error::operation_aborted) {
-            Log::warn("Read error %d :%s", error.value(), error.message());
+            if (error != boost::asio::error::eof) {
+                Log::warn("Read error %d :%s", error.value(), error.message());
+            }
             close();
-            throw boost::system::system_error(error);
+            if (error != boost::asio::error::eof) {
+                throw boost::system::system_error(error);
+            }
         }
     }
     _readBuffer.writeCompleted(transferredBytes);
@@ -146,7 +150,7 @@ void BaseIOStream::closeHandler(const ErrorCode &error) {
 }
 
 IOStream::~IOStream() {
-
+    std::cout << "IOStream destroy" << std::endl;
 }
 
 void IOStream::asyncRead() {
@@ -175,7 +179,7 @@ SSLIOStream::SSLIOStream(SocketType &&socket,
                          IOLoop *ioloop,
                          size_t maxBufferSize,
                          size_t readChunkSize)
-        : BaseIOStream(socket, ioloop, maxBufferSize, readChunkSize)
+        : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize)
         , _sslSocket(_socket, sslOption.getContext()) {
 
 }

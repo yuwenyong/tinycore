@@ -57,7 +57,7 @@ protected:
 class HTTPServer {
 public:
     typedef boost::asio::ip::tcp::acceptor AcceptorType;
-    typedef std::function<void (HTTPRequestPtr *)> RequestCallbackType;
+    typedef std::function<void (HTTPRequestPtr)> RequestCallbackType;
 
     HTTPServer(const HTTPServer &) = delete;
     HTTPServer& operator=(const HTTPServer&) = delete;
@@ -99,6 +99,7 @@ public:
                    const RequestCallbackType &requestCallback,
                    bool noKeepAlive=false,
                    bool xheaders=false);
+    ~HTTPConnection();
 
     void start();
     void write(BufferType &chunk);
