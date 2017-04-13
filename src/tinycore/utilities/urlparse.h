@@ -11,7 +11,7 @@
 
 
 typedef std::tuple<std::string, std::string, std::string, std::string, std::string> URLSplitResult;
-typedef std::map<std::string, std::vector<std::string>> RequestArguments;
+typedef std::map<std::string, StringVector> RequestArguments;
 typedef std::vector<std::pair<std::string, std::string>> RequestArgumentsList;
 
 
