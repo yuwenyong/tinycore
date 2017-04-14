@@ -9,11 +9,29 @@
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
 
-
+class IOLoop;
 class _Timeout;
-class PeriodicCallback;
 typedef std::weak_ptr<_Timeout> Timeout;
+
+class PeriodicCallback;
 typedef std::shared_ptr<PeriodicCallback> PeriodicCallbackPtr;
+
+class _SignalSet {
+public:
+    typedef std::function<int ()> CallbackType;
+
+    _SignalSet(IOLoop *ioloop= nullptr);
+
+    void signal(int signalNumber, CallbackType callback=nullptr);
+    void start();
+protected:
+    void onSignal(const ErrorCode &error, int signalNumber);
+
+    IOLoop *_ioloop;
+    boost::asio::signal_set _signalSet;
+    bool _running{false};
+    std::map<int, CallbackType> _callbacks;
+};
 
 
 class TC_COMMON_API IOLoop {
@@ -21,6 +39,7 @@ public:
     typedef boost::asio::io_service ServiceType;
     typedef std::function<void()> CallbackType;
     typedef std::function<void()> TimeoutCallbackType;
+    typedef _SignalSet::CallbackType SignalCallbackType;
 
     IOLoop(const IOLoop&) = delete;
     IOLoop& operator=(const IOLoop&) = delete;
@@ -32,6 +51,10 @@ public:
 
     void addCallback(CallbackType callback) {
         _ioService.post(std::move(callback));
+    }
+
+    void signal(int signalNumber, SignalCallbackType callback= nullptr) {
+        _signalSet.signal(signalNumber, std::move(callback));
     }
 
     bool running() const {
@@ -51,7 +74,10 @@ public:
 
     static IOLoop* instance();
 protected:
+    void setupInterrupter();
+
     ServiceType _ioService;
+    _SignalSet _signalSet;
     volatile bool _stopped{false};
 };
 
@@ -78,7 +104,7 @@ class TC_COMMON_API PeriodicCallback: public std::enable_shared_from_this<Period
 public:
     typedef IOLoop::TimeoutCallbackType CallbackType;
 
-    PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop)
+    PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr)
             : _callback(std::move(callback))
             , _callbackTime(callbackTime), _ioloop(ioloop ? ioloop : IOLoop::instance())
             , _running(false) {
@@ -96,7 +122,7 @@ public:
         _running = false;
     }
 
-    static PeriodicCallbackPtr create(CallbackType callback, float callbackTime, IOLoop *ioloop) {
+    static PeriodicCallbackPtr create(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr) {
         return std::make_shared<PeriodicCallback>(std::move(callback), callbackTime, ioloop);
     }
 protected:

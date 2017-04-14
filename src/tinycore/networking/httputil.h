@@ -7,7 +7,7 @@
 
 #include "tinycore/common/common.h"
 #include "tinycore/debugging/trace.h"
-#include <regex>
+#include <boost/regex.hpp>
 #include <boost/iterator/iterator_facade.hpp>
 
 
@@ -193,7 +193,7 @@ protected:
     static std::string& normalizeName(std::string& name);
 
     HeadersContainerType _headers;
-//    static const std::regex _normalizedHeader;
+    static const boost::regex _normalizedHeader;
 };
 
 

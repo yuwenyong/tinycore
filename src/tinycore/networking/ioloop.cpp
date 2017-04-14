@@ -7,8 +7,56 @@
 #include "tinycore/common/errors.h"
 
 
-IOLoop::IOLoop() {
+_SignalSet::_SignalSet(IOLoop *ioloop)
+        : _ioloop(ioloop ? ioloop : IOLoop::instance())
+        , _signalSet(_ioloop->getService()) {
 
+}
+
+void _SignalSet::signal(int signalNumber, CallbackType callback) {
+    if (callback) {
+        _callbacks[signalNumber] = std::move(callback);
+        _signalSet.add(signalNumber);
+        if (_ioloop->running()) {
+            start();
+        }
+    } else {
+        _signalSet.remove(signalNumber);
+        _callbacks.erase(signalNumber);
+    }
+}
+
+void _SignalSet::start() {
+    if (_running || _callbacks.empty()) {
+        return;
+    }
+    _running = true;
+    _signalSet.async_wait(std::bind(&_SignalSet::onSignal, this,  std::placeholders::_1, std::placeholders::_2));
+}
+
+
+void _SignalSet::onSignal(const ErrorCode &error, int signalNumber) {
+    _running = false;
+    if (!error) {
+        auto iter = _callbacks.find(signalNumber);
+        if (iter != _callbacks.end()) {
+            auto retCode = (iter->second)();
+            if (retCode < 0) {
+                _signalSet.remove(signalNumber);
+                _callbacks.erase(iter);
+            }
+        }
+        if (_ioloop->running()) {
+            start();
+        }
+    }
+}
+
+
+IOLoop::IOLoop()
+        : _ioService()
+        , _signalSet(this) {
+    setupInterrupter();
 }
 
 IOLoop::~IOLoop() {
@@ -19,6 +67,7 @@ int IOLoop::start() {
     if (_stopped) {
         return 0;
     }
+    _signalSet.start();
     _ioService.run();
     _stopped = false;
     return 0;
@@ -50,6 +99,26 @@ void IOLoop::removeTimeout(Timeout timeout) {
 IOLoop* IOLoop::instance() {
     static IOLoop ioloop;
     return &ioloop;
+}
+
+void IOLoop::setupInterrupter() {
+    signal(SIGINT, [this](){
+        Log::info("Capture SIGINT");
+        this->stop();
+        return -1;
+    });
+    signal(SIGTERM, [this](){
+        Log::info("Capture SIGTERM");
+        this->stop();
+        return -1;
+    });
+#if defined(SIGQUIT)
+    signal(SIGQUIT, [this](){
+        Log::info("Capture SIGQUIT");
+        this->stop();
+        return -1;
+    });
+#endif
 }
 
 

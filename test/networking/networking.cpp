@@ -13,15 +13,15 @@ int main() {
     IOLoop ioloop;
     Timeout timeout = ioloop.addTimeout(10.0, [&ioloop](){
         Log::info("First Timeout");
-        ioloop.stop();
+//        ioloop.stop();
     });
 //    Timeout timeout2 = ioloop.addTimeout(5.0, [](){
 //        Log::info("Second Timeout");
 //    });
-//    auto repeatTimer = PeriodicCallback::create([]() {
-//        Log::info("repeat Timer");
-//    }, 1.0f, &ioloop);
-//    repeatTimer->start();
+    auto repeatTimer = PeriodicCallback::create([]() {
+        Log::info("repeat Timer");
+    }, 1.0f, &ioloop);
+    repeatTimer->start();
 //    IOLoop::instance()->removeTimeout(timeout2);
 //    IOLoop::instance()->removeTimeout(timeout2);
     HTTPServer server([](HTTPRequestPtr request){

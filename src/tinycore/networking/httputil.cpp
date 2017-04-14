@@ -8,7 +8,7 @@
 #include "tinycore/utilities/string.h"
 
 
-//const std::regex HTTPHeaders::_normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][a-z0-9]*)*$");
+const boost::regex HTTPHeaders::_normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][a-z0-9]*)*$");
 
 void HTTPHeaders::add(std::string name, std::string value) {
     normalizeName(name);
@@ -87,12 +87,12 @@ HTTPHeadersPtr HTTPHeaders::parse(std::string headers) {
 }
 
 std::string& HTTPHeaders::normalizeName(std::string &name) {
-//    if (!std::regex_match(name, HTTPHeaders::_normalizedHeader)) {
+    if (!boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
         StringVector nameParts = String::split(name, '-');
         for (auto &namePart: nameParts) {
             String::capitalize(namePart);
         }
         name = boost::join(nameParts, "-");
-//    }
+    }
     return name;
 }

@@ -114,6 +114,7 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 }
 
 #define BOOST_LOG_DYN_LINK
+#define BOOST_REGEX_DYN_LINK
 
 #ifndef NDEBUG
 #   define BOOST_ASIO_DISABLE_BUFFER_DEBUGGING
