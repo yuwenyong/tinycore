@@ -3,13 +3,14 @@
 //
 
 #include "tinycore/logging/log.h"
+#include "tinycore/configuration/options.h"
 #include "tinycore/networking/ioloop.h"
 #include <regex>
 #include <tinycore/networking/httpserver.h>
 
 
-int main() {
-    Log::initialize();
+int main(int argc, char **argv) {
+    ParseCommandLine(argc, argv);
     IOLoop ioloop;
     Timeout timeout = ioloop.addTimeout(10.0, [&ioloop](){
         Log::info("First Timeout");

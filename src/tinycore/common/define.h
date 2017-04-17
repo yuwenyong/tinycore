@@ -99,5 +99,7 @@ typedef uint8_t uint8;
 #   endif
 #endif
 
+#define TINYCORE_VERSION      "1.2.1"
+#define TINYCORE_VER          "tinycore/" TINYCORE_VERSION
 
 #endif //TINYCORE_DEFINE_H

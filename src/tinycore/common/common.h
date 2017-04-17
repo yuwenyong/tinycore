@@ -123,5 +123,4 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 typedef boost::noncopyable NonCopyable;
 typedef boost::system::error_code ErrorCode;
 
-
 #endif //TINYCORE_COMMON_H
