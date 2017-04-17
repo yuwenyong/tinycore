@@ -7,6 +7,8 @@
 
 #include "tinycore/common/common.h"
 #include <boost/program_options.hpp>
+#include "tinycore/common/errors.h"
+
 
 namespace po = boost::program_options;
 
@@ -14,27 +16,45 @@ class TC_COMMON_API Options {
 public:
     Options();
 
-    void define(const char* name, const char* help) {
+    void define(const char *name, const char *help) {
         _opts.add_options()(name, help);
     }
 
-    template <class T>
-    void define(const char* name, T *arg, const char *help) {
-        _opts.add_options()(std::move(name), po::value<T>(arg), std::move(help));
+    template <typename T>
+    void define(const char *name, const char *help) {
+        _opts.add_options()(name, po::value<T>(), help);
     }
 
-    template <class T>
-    void define(const char* name, T&& def, T *arg, const char *help) {
-        _opts.add_options()(std::move(name), po::value<T>(arg)->default_value(std::forward<T>(def)), std::move(help));
+    template <typename  T>
+    void define(const char *name, T&& def, const char *help) {
+        _opts.add_options()(name, po::value<T>()->default_value(std::forward<T>(def)), help);
     }
 
     void parseCommandLine(int argc, const char * const argv[]);
+
+    bool contain(const char *name) const {
+        return _vm.count(name) != 0;
+    }
+
+    template <typename T>
+    const T& get(const char *name) const {
+        if (!contain(name)) {
+            std::string error = "KeyError:";
+            error += name;
+            ThrowException(KeyError, error);
+        }
+        auto value = _vm[name];
+        return value.as<T>();
+    }
+
     void onExit();
 
     static Options * instance();
 protected:
+    void setupWatcherHook();
+
     po::options_description _opts;
-    std::string _configFile;
+    po::variables_map _vm;
 };
 
 #define sOptions Options::instance()

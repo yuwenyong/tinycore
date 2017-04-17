@@ -8,6 +8,8 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
+#include "tinycore/utilities/objectmanager.h"
+
 
 class IOLoop;
 class _Timeout;
@@ -71,8 +73,6 @@ public:
     ServiceType& getService() {
         return _ioService;
     }
-
-    static IOLoop* instance();
 protected:
     void setupInterrupter();
 
@@ -80,6 +80,8 @@ protected:
     _SignalSet _signalSet;
     volatile bool _stopped{false};
 };
+
+#define sIOLoop Singleton<IOLoop>::instance()
 
 
 class TC_COMMON_API _Timeout {
@@ -106,7 +108,7 @@ public:
 
     PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr)
             : _callback(std::move(callback))
-            , _callbackTime(callbackTime), _ioloop(ioloop ? ioloop : IOLoop::instance())
+            , _callbackTime(callbackTime), _ioloop(ioloop ? ioloop : sIOLoop)
             , _running(false) {
 
     }

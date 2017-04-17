@@ -5,10 +5,11 @@
 #include "tinycore/networking/ioloop.h"
 #include "tinycore/logging/log.h"
 #include "tinycore/common/errors.h"
+#include "tinycore/debugging/watcher.h"
 
 
 _SignalSet::_SignalSet(IOLoop *ioloop)
-        : _ioloop(ioloop ? ioloop : IOLoop::instance())
+        : _ioloop(ioloop ? ioloop : sIOLoop)
         , _signalSet(_ioloop->getService()) {
 
 }
@@ -96,11 +97,6 @@ void IOLoop::removeTimeout(Timeout timeout) {
     }
 }
 
-IOLoop* IOLoop::instance() {
-    static IOLoop ioloop;
-    return &ioloop;
-}
-
 void IOLoop::setupInterrupter() {
     signal(SIGINT, [this](){
         Log::info("Capture SIGINT");
@@ -124,15 +120,15 @@ void IOLoop::setupInterrupter() {
 
 _Timeout::_Timeout(IOLoop *ioloop)
         : _timer(ioloop->getService()) {
-//#ifndef NDEBUG
-//    Log::info("Create timeout");
-//#endif
+#ifndef NDEBUG
+    sWatcher->inc(SYS_TIMEOUT_COUNT);
+#endif
 }
 
 _Timeout::~_Timeout() {
-//#ifndef NDEBUG
-//    Log::info("Destroy timeout");
-//#endif
+#ifndef NDEBUG
+    sWatcher->dec(SYS_TIMEOUT_COUNT);
+#endif
 }
 
 void _Timeout::start(float deadline, CallbackType callback) {

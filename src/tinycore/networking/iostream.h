@@ -113,7 +113,10 @@ typedef std::weak_ptr<BaseIOStream> BaseIOStreamWPtr;
 
 class IOStream: public BaseIOStream {
 public:
-    using BaseIOStream::BaseIOStream;
+    IOStream(SocketType &&socket,
+             IOLoop *ioloop,
+             size_t maxBufferSize = DEFAULT_MAX_BUFFER_SIZE,
+             size_t readChunkSize = DEFAULT_READ_CHUNK_SIZE);
     virtual ~IOStream();
 
 protected:

@@ -6,6 +6,7 @@
 #include <boost/utility/string_ref.hpp>
 #include "tinycore/networking/ioloop.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/debugging/watcher.h"
 #include "tinycore/utilities/urlparse.h"
 #include "tinycore/utilities/string.h"
 #include "tinycore/common/errors.h"
@@ -19,7 +20,7 @@ HTTPServer::HTTPServer(RequestCallbackType requestCallback,
                        SSLOption *sslOption)
         : _requestCallback(std::move(requestCallback))
         , _noKeepAlive(noKeepAlive)
-        , _ioloop(ioloop ? ioloop : IOLoop::instance())
+        , _ioloop(ioloop ? ioloop : sIOLoop)
         , _xheaders(xheaders)
         , _sslOption(sslOption)
         , _acceptor(_ioloop->getService())
@@ -99,11 +100,15 @@ HTTPConnection::HTTPConnection(BaseIOStreamPtr stream,
         , _requestCallback(requestCallback)
         , _noKeepAlive(noKeepAlive)
         , _xheaders(xheaders) {
-
+#ifndef NDEBUG
+    sWatcher->inc(SYS_HTTPCONNECTION_COUNT);
+#endif
 }
 
 HTTPConnection::~HTTPConnection() {
-    std::cout << "Connection Destroy" << std::endl;
+#ifndef NDEBUG
+    sWatcher->dec(SYS_HTTPCONNECTION_COUNT);
+#endif
 }
 
 void HTTPConnection::start() {
@@ -394,10 +399,15 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
     std::string scheme, netloc, fragment;
     std::tie(scheme, netloc, _path, _query, fragment) = URLParse::urlSplit(_uri);
     _arguments = URLParse::parseQS(_query, false);
+#ifndef NDEBUG
+    sWatcher->inc(SYS_HTTPREQUEST_COUNT);
+#endif
 }
 
 HTTPRequest::~HTTPRequest() {
-    std::cout << "HTTPRequest Destroy" << std::endl;
+#ifndef NDEBUG
+    sWatcher->dec(SYS_HTTPREQUEST_COUNT);
+#endif
 }
 
 void HTTPRequest::write(const char *chunk, size_t length) {

@@ -67,6 +67,8 @@ protected:
 template <typename T>
 class Singleton: public CleanupObject {
 public:
+//    friend class ObjectManager;
+
     void cleanup() override {
         boost::checked_delete(this);
         _singleton = nullptr;
@@ -80,7 +82,7 @@ public:
     }
 
 protected:
-    Singleton() = default;
+//    Singleton() = default;
     T _instance;
     static Singleton<T> *_singleton;
 };

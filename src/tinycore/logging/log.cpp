@@ -163,7 +163,7 @@ void Log::createSystemLoggers() {
         }
         for (auto &loggerName: loggerNames) {
             if (_loggers.find(loggerName) == _loggers.end()) {
-                LogLevel level = LOG_LEVEL_INFO;
+                LogLevel level = LOG_LEVEL_DEBUG;
                 Logger *logger = boost::factory<Logger*>()(loggerName, level);
                 appender->addLogger(logger);
                 _loggers.insert(loggerName, logger);

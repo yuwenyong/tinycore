@@ -7,13 +7,27 @@
 
 #include "tinycore/common/common.h"
 #include <mutex>
+#include <boost/signals2.hpp>
+#include <boost/ptr_container/ptr_map.hpp>
 #include "tinycore/logging/log.h"
 #include "tinycore/utilities/string.h"
 
 class Watcher {
 public:
-    typedef std::map<std::string, int> ObjectMap;
+    typedef std::map<std::string, int> ObjectMapType;
     typedef std::function<bool (const std::string &, int)> FilterType;
+    typedef std::function<void (int, int)> SetCallbackType;
+    typedef std::function<void (int, int, int)> IncCallbackType;
+    typedef std::function<void (int, int, int)> DecCallbackType;
+    typedef std::function<void (int)> DelCallbackType;
+    typedef boost::signals2::signal<void (int, int)> SetCallbackSignalType;
+    typedef boost::signals2::signal<void (int, int, int)> IncCallbackSignalType;
+    typedef boost::signals2::signal<void (int, int, int)> DecCallbackSignalType;
+    typedef boost::signals2::signal<void (int)> DelCallbackSignalType;
+    typedef boost::ptr_map<std::string, SetCallbackSignalType> SetCallbackContainerType;
+    typedef boost::ptr_map<std::string, IncCallbackSignalType> IncCallbackContainerType;
+    typedef boost::ptr_map<std::string, DecCallbackSignalType> DecCallbackContainerType;
+    typedef boost::ptr_map<std::string, DelCallbackSignalType> DelCallbackContainerType;
 
     Watcher() = default;
     Watcher(const Watcher&) = delete;
@@ -23,6 +37,10 @@ public:
     void inc(const char *key, int increment=1);
     void dec(const char *key, int decrement=1);
     void del(const char *key);
+    void addSetCallback(const char *key, SetCallbackType callback);
+    void addIncCallback(const char *key, IncCallbackType callback);
+    void addDecCallback(const char *key, DecCallbackType callback);
+    void addDelCallback(const char *key, DelCallbackType callback);
     void dump(FilterType filter, Logger *logger=nullptr) const;
     void dumpAll(Logger *logger=nullptr) const;
     void dumpNonZero(Logger *logger=nullptr) const;
@@ -30,33 +48,42 @@ public:
     static Watcher* instance();
 protected:
     void dumpHeader(Logger *logger) const {
-        const char *content = "-----------------------------------Dump begin-----------------------------------";
+        const char *border = "+----------------------------------------|--------------------+";
         if (logger) {
-            logger->info(content);
+            logger->info(border);
+            logger->info("|%-40s|%-20s|", "key", "value");
         } else {
-            Log::info(content);
+            Log::info(border);
+            Log::info("|%-40s|%-20s|", "key", "value");
         }
     }
 
     void dumpObject(const std::string &key, int value, Logger *logger) const {
+        const char *border = "+----------------------------------------|--------------------+";
         if (logger) {
-            logger->info("%s:%d", key.c_str(), value);
+            logger->info(border);
+            logger->info("|%-40s|%-20d|", key.c_str(), value);
         } else {
-            Log::info("%s:%d", key.c_str(), value);
+            Log::info(border);
+            Log::info("|%-40s|%-20d|", key.c_str(), value);
         }
     }
 
     void dumpFooter(Logger *logger) const {
-        const char *content = "-----------------------------------Dump end-------------------------------------";
+        const char *border = "+----------------------------------------|--------------------+";
         if (logger) {
-            logger->info(content);
+            logger->info(border);
         } else {
-            Log::info(content);
+            Log::info(border);
         }
     }
 
-    ObjectMap _objs;
-    mutable std::mutex _objsLock;
+    mutable std::mutex _lock;
+    ObjectMapType _objs;
+    SetCallbackContainerType _setCallbacks;
+    IncCallbackContainerType _incCallbacks;
+    DecCallbackContainerType _decCallbacks;
+    DelCallbackContainerType _delCallbacks;
 };
 
 #define sWatcher Watcher::instance()

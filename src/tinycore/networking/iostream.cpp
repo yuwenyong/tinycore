@@ -5,6 +5,7 @@
 #include "tinycore/networking/iostream.h"
 #include "tinycore/networking/httpserver.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/log.h"
 
 
@@ -18,7 +19,7 @@ BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBuffer
 
 
 BaseIOStream::~BaseIOStream() {
-    std::cout << "BaseIOStream destroy" << std::endl;
+
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
@@ -149,8 +150,20 @@ void BaseIOStream::closeHandler(const ErrorCode &error) {
     }
 }
 
+IOStream::IOStream(SocketType &&socket,
+                   IOLoop *ioloop,
+                   size_t maxBufferSize,
+                   size_t readChunkSize)
+        : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize) {
+#ifndef NDEBUG
+    sWatcher->inc(SYS_IOSTREAM_COUNT);
+#endif
+}
+
 IOStream::~IOStream() {
-    std::cout << "IOStream destroy" << std::endl;
+#ifndef NDEBUG
+    sWatcher->dec(SYS_IOSTREAM_COUNT);
+#endif
 }
 
 void IOStream::asyncRead() {
@@ -181,11 +194,15 @@ SSLIOStream::SSLIOStream(SocketType &&socket,
                          size_t readChunkSize)
         : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize)
         , _sslSocket(_socket, sslOption.getContext()) {
-
+#ifndef NDEBUG
+    sWatcher->inc(SYS_SSLIOSTREAM_COUNT);
+#endif
 }
 
 SSLIOStream::~SSLIOStream() {
-
+#ifndef NDEBUG
+    sWatcher->dec(SYS_SSLIOSTREAM_COUNT);
+#endif
 }
 
 void SSLIOStream::asyncRead() {
