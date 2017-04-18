@@ -51,6 +51,7 @@
 
 #include <boost/noncopyable.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/date_time.hpp>
 
 
 #if COMPILER == COMPILER_MICROSOFT
@@ -122,6 +123,9 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 
 typedef boost::noncopyable NonCopyable;
 typedef boost::system::error_code ErrorCode;
+using DateTime = boost::posix_time::ptime;
+using Date = boost::gregorian::date;
+using Time = boost::posix_time::time_duration;
 
 #define SYS_TIMEOUT_COUNT "TinyCore.Timeout.Count"
 #define SYS_IOSTREAM_COUNT "TinyCore.IOStream.Count"

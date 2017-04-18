@@ -12,7 +12,6 @@
 #include <boost/log/core.hpp>
 #include <boost/functional/factory.hpp>
 #include <boost/phoenix.hpp>
-#include <boost/date_time.hpp>
 #include "tinycore/logging/logger.h"
 
 
@@ -20,11 +19,6 @@ namespace logging = boost::log;
 namespace sinks = boost::log::sinks;
 namespace expr = boost::log::expressions;
 namespace attrs = boost::log::attributes;
-
-
-using DateTime = boost::posix_time::ptime;
-using Date = boost::gregorian::date;
-using Time = boost::posix_time::time_duration;
 
 
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_severity, "Severity", LogLevel)

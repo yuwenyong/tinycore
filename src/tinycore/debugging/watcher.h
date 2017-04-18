@@ -51,10 +51,10 @@ protected:
         const char *border = "+----------------------------------------|--------------------+";
         if (logger) {
             logger->info(border);
-            logger->info("|%-40s|%-20s|", "key", "value");
+            logger->info("|%-40s|%-20s|", "ObjectKey", "CurrentValue");
         } else {
             Log::info(border);
-            Log::info("|%-40s|%-20s|", "key", "value");
+            Log::info("|%-40s|%-20s|", "ObjectKey", "CurrentValue");
         }
     }
 
