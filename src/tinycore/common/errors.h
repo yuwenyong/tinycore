@@ -45,6 +45,7 @@ public: \
 DECLARE_EXCEPTION(SystemExit, BaseException);
 DECLARE_EXCEPTION(Exception, BaseException);
 DECLARE_EXCEPTION(KeyError, Exception);
+DECLARE_EXCEPTION(IndexError, Exception);
 DECLARE_EXCEPTION(TypeError, Exception);
 DECLARE_EXCEPTION(ValueError, Exception);
 DECLARE_EXCEPTION(IllegalArguments, Exception);
@@ -57,8 +58,10 @@ DECLARE_EXCEPTION(NotFound, Exception);
 
 class AssertionError: public Exception {
 public:
+    using Exception::Exception;
+
     AssertionError(const char *file, int line, const char *func, const std::string &message,
-                   const std::string &extra={})
+                   const std::string &extra)
             : Exception(file, line, func, message)
             , _extra(extra) {
 

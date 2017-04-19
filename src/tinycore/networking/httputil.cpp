@@ -65,7 +65,8 @@ void HTTPHeaders::remove(std::string name) {
     _headers.erase(iter);
 }
 
-std::string HTTPHeaders::getDefault(const std::string &name, const std::string &default_value) const {
+std::string HTTPHeaders::getDefault(std::string name, std::string default_value) const {
+    HTTPHeaders::normalizeName(name);
     auto iter = _headers.find(name);
     if (iter != _headers.end()) {
         return iter->second.first;

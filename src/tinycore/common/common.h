@@ -92,6 +92,7 @@ inline const char * strnstr(const char *s1, size_t len1, const char *s2) {
 
 typedef std::vector<std::string> StringVector;
 typedef std::map<std::string, std::string> StringMap;
+typedef std::set<std::string> StringSet;
 
 #ifdef max
 #undef max
