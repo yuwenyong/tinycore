@@ -42,6 +42,9 @@ public:
     static StringVector split(const std::string &s, const std::string &delim, bool keepEmpty=true);
     static StringVector splitLines(const std::string &s, bool keepends=false);
 
+    static int count(const std::string &s, char c);
+    static int count(const std::string &s, const char *sub);
+
     static void capitalize(std::string &s);
     static std::string capitalizeCopy(const std::string &s);
 protected:

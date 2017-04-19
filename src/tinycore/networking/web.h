@@ -6,6 +6,8 @@
 #define TINYCORE_WEB_H
 
 #include <boost/functional/factory.hpp>
+#include <boost/xpressive/xpressive.hpp>
+#include <boost/any.hpp>
 #include "tinycore/common/common.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
@@ -13,17 +15,34 @@
 #include "tinycore/utilities/httplib.h"
 
 
+class Application;
 
-//class RequestHandler: public std::enable_shared_from_this<RequestHandler> {
-//public:
-//    virtual ~RequestHandler();
-//};
-//
-//
-//class Application {
-//public:
-//
-//};
+
+class RequestHandler: public std::enable_shared_from_this<RequestHandler> {
+public:
+    typedef std::map<std::string, boost::any> ArgsType;
+
+    RequestHandler(Application *application, HTTPRequestPtr request, ArgsType &args);
+    virtual ~RequestHandler();
+};
+
+typedef std::shared_ptr<RequestHandler> RequestHandlerPtr;
+
+template <typename T>
+class RequestHandlerFactory {
+public:
+    typedef RequestHandler::ArgsType ArgsType;
+
+    RequestHandlerPtr operator()(Application *application, HTTPRequestPtr request, ArgsType &args) {
+        return std::make_shared<T>(application, std::move(request), args);
+    }
+};
+
+
+class Application {
+public:
+
+};
 
 class HTTPError: public Exception {
 public:
@@ -96,5 +115,40 @@ public:
 protected:
     boost::factory<T*> _factory;
 };
+
+
+class URLSpec {
+public:
+    typedef boost::xpressive::sregex RegexType;
+    typedef RequestHandler::ArgsType ArgsType;
+    typedef std::function<RequestHandlerPtr (Application*, HTTPRequestPtr, ArgsType&)> HandlerClassType;
+
+    URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args={}, std::string name={});
+
+    template <typename... Args>
+    std::string reverse(Args&&... args) {
+        ASSERT(!_path.empty(), "Cannot reverse url regex");
+        ASSERT(sizeof...(Args) == _groupCount, "required number of arguments not found");
+        return String::format(_path.c_str(), std::forward<Args>(args)...);
+    }
+
+    std::string reverse() {
+        ASSERT(!_path.empty(), "Cannot reverse url regex");
+        ASSERT(_groupCount == 0, "required number of arguments not found");
+        return _path;
+    }
+protected:
+    std::tuple<std::string, int> findGroups();
+
+    std::string _pattern;
+    RegexType _regex;
+    HandlerClassType _handlerClass;
+    ArgsType _args;
+    std::string _name;
+    std::string _path;
+    int _groupCount;
+};
+
+using url = URLSpec;
 
 #endif //TINYCORE_WEB_H

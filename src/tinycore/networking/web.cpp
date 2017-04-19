@@ -3,7 +3,13 @@
 //
 
 #include "tinycore/networking/web.h"
+#include <boost/algorithm/string.hpp>
 #include "tinycore/debugging/trace.h"
+
+
+RequestHandler::~RequestHandler() {
+
+}
 
 
 const char* HTTPError::what() const noexcept {
@@ -114,4 +120,43 @@ void ChunkedTransferEncoding::transformChunk(std::vector<char> &chunk, bool fini
             chunk.insert(chunk.end(), block.begin(), block.end());
         }
     }
+}
+
+URLSpec::URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args, std::string name)
+        : _pattern(std::move(pattern))
+        , _handlerClass(std::move(handlerClass))
+        , _args(std::move(args))
+        , _name(std::move(name)) {
+    if (!boost::ends_with(_pattern, "$")) {
+        _pattern.push_back('$');
+    }
+    _regex = RegexType::compile(_pattern);
+    std::tie(_path, _groupCount) = findGroups();
+}
+
+std::tuple<std::string, int> URLSpec::findGroups() {
+    auto beg = _pattern.begin(), end = _pattern.end();
+    std::string pattern;
+    if (boost::starts_with(pattern, "^")) {
+        std::advance(beg, 1);
+    }
+    if (boost::ends_with(pattern, "$")) {
+        std::advance(end, -1);
+    }
+    pattern.assign(beg, end);
+    if (_regex.mark_count() != String::count(pattern, '(')) {
+        return std::make_tuple("", -1);
+    }
+    StringVector pieces, fragments;
+    std::string::size_type parenLoc;
+    fragments = String::split(pattern, '(');
+    for (auto &fragment: fragments) {
+        parenLoc = fragment.find('(');
+        if (parenLoc != std::string::npos) {
+            pieces.push_back("%s" + fragment.substr(parenLoc + 1));
+        } else {
+            pieces.push_back(std::move(fragment));
+        }
+    }
+    return std::make_tuple(boost::join(pieces, ""), _regex.mark_count());
 }

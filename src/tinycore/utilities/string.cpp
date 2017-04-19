@@ -51,6 +51,26 @@ StringVector String::splitLines(const std::string &s, bool keepends) {
     return result;
 }
 
+int String::count(const std::string &s, char c) {
+    int r = 0;
+    std::string::size_type i = 0;
+    while ((i = s.find(c, i)) != std::string::npos) {
+        ++i;
+        ++r;
+    }
+    return r;
+}
+
+int String::count(const std::string &s, const char *sub) {
+    int r = 0;
+    std::string::size_type i = 0, m = strlen(sub);
+    while ((i = s.find(sub, i)) != std::string::npos) {
+        i += m;
+        ++r;
+    }
+    return r;
+}
+
 void String::capitalize(std::string &s) {
     size_t i, len = s.length();
     if (len > 0) {
