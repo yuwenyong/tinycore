@@ -33,12 +33,12 @@ HTTPServer::~HTTPServer() {
 
 }
 
-void HTTPServer::listen(unsigned short port, const std::string &address) {
-    bind(port, address);
+void HTTPServer::listen(unsigned short port, std::string address) {
+    bind(port, std::move(address));
     start();
 }
 
-void HTTPServer::bind(unsigned short port, const std::string &address) {
+void HTTPServer::bind(unsigned short port, std::string address) {
     BaseIOStream::ResolverType resolver(_ioloop->getService());
     BaseIOStream::ResolverType::query query(address, std::to_string(port));
     BaseIOStream::EndPointType endpoint = *resolver.resolve(query);

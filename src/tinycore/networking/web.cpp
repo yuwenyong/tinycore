@@ -4,11 +4,132 @@
 
 #include "tinycore/networking/web.h"
 #include <boost/algorithm/string.hpp>
+#include <boost/regex.hpp>
 #include "tinycore/debugging/trace.h"
+#include "tinycore/logging/log.h"
 
+
+RequestHandler::RequestHandler(Application *application, HTTPRequestPtr request, ArgsType &args)
+        : _application(application)
+        , _request(std::move(request)) {
+    clear();
+}
 
 RequestHandler::~RequestHandler() {
 
+}
+
+void RequestHandler::start(ArgsType &args) {
+    auto stream = _request->getConnection()->getStream();
+    RequestHandlerWPtr handler = shared_from_this();
+    stream->setCloseCallback([handler](){
+        auto handlerKeeper = handler.lock();
+        if (handlerKeeper) {
+            handlerKeeper->onConnectionClose();
+        }
+    });
+    initialize(args);
+}
+
+void RequestHandler::clear() {
+    _headers = {
+            {"Server", TINYCORE_VER },
+            {"Content-Type", "text/html; charset=UTF-8"},
+    };
+    if (!_request->supportsHTTP1_1()) {
+        if (_request->getHTTPHeader()->getDefault("Connection") == "Keep-Alive") {
+            setHeader("Connection", "Keep-Alive");
+        }
+    }
+    _writeBuffer.reset();
+    _statusCode = 200;
+}
+
+void RequestHandler::setHeader(const std::string &name, const std::string &value) {
+    boost::regex unsafe(R"([\x00-\x1f])");
+    if (value.length() > 4000 || boost::regex_search(value, unsafe)) {
+        std::string error;
+        error = "Unsafe header value " + value;
+        ThrowException(ValueError, error);
+    }
+    _headers[name] = value;
+}
+
+
+Application::Application(HandlersType &handlers,
+                         std::string defaultHost,
+                         TransformsType transforms,
+                         SettingsType settings)
+        : _defaultHost(std::move(defaultHost))
+        , _settings(std::move(settings)) {
+    if (transforms.empty()) {
+        if (_settings.find("gzip") != _settings.end() && boost::any_cast<bool>(_settings["gzip"])) {
+            _transforms.push_back(OutputTransformFactory<GZipContentEncoding>());
+        }
+        _transforms.push_back(OutputTransformFactory<ChunkedTransferEncoding>());
+    } else {
+        _transforms = std::move(transforms);
+    }
+    if (!handlers.empty()) {
+        addHandlers(".*$", handlers);
+    }
+}
+
+Application::~Application() {
+
+}
+
+void Application::addHandlers(std::string hostPattern, HandlersType &hostHandlers) {
+    if (!boost::ends_with(hostPattern, "$")) {
+        hostPattern.push_back('$');
+    }
+    std::unique_ptr<HostHandlerType> handler = make_unique<HostHandlerType>();
+    handler->first = HostPatternType::compile(hostPattern);
+    HandlersType &handlers = handler->second;
+    if (!_handlers.empty() && _handlers.back().second.front().getPattern() == ".*$") {
+        auto iter = _handlers.end();
+        std::advance(iter, -1);
+        _handlers.insert(iter, handler.release());
+    } else {
+        _handlers.push_back(handler.release());
+    }
+    _handlers.transfer(_handlers.end(), hostHandlers);
+    for (auto &spec: handlers) {
+        if (!spec.getName().empty()) {
+            if (_namedHandlers.find(spec.getName()) != _namedHandlers.end()) {
+                Log::warn("Multiple handlers named %s; replacing previous value", spec.getName().c_str());
+            }
+            _namedHandlers[spec.getName()] = &spec;
+        }
+    }
+}
+
+void Application::operator()(HTTPRequestPtr request) {
+
+}
+
+Application::HandlersType Application::defaultHandlers = {};
+
+const Application::HandlersType * Application::getHostHandlers(HTTPRequestPtr request) const {
+    std::string host = request->getHost();
+    boost::to_lower(host);
+    auto pos = host.find(':');
+    if (pos != std::string::npos) {
+        host = host.substr(0, pos);
+    }
+    for (auto &handler: _handlers) {
+        if (boost::xpressive::regex_match(host, handler.first)) {
+            return &handler.second;
+        }
+    }
+    if (!request->getHTTPHeader()->contain("X-Real-Ip")) {
+        for (auto &handler: _handlers) {
+            if (boost::xpressive::regex_match(_defaultHost, handler.first)) {
+                return &handler.second;
+            }
+        }
+    }
+    return nullptr;
 }
 
 
@@ -23,7 +144,7 @@ const char* HTTPError::what() const noexcept {
         _what += getTypeName();
         _what += "\n\t";
         _what += "HTTP ";
-        _what += std::to_string(static_cast<int>(_statusCode));
+        _what += std::to_string(_statusCode);
         _what += " ";
         ASSERT(HTTPResponses.find(_statusCode) != HTTPResponses.end());
         _what += HTTPResponses[_statusCode];
@@ -36,20 +157,6 @@ const char* HTTPError::what() const noexcept {
     }
     return _what.c_str();
 }
-
-
-const StringSet GZipContentEncoding::CONTENT_TYPES = {
-        "text/plain",
-        "text/html",
-        "text/css",
-        "text/xml",
-        "application/x-javascript",
-        "application/xml",
-        "application/atom+xml",
-        "text/javascript",
-        "application/json",
-        "application/xhtml+xml"
-};
 
 GZipContentEncoding::GZipContentEncoding(HTTPRequestPtr request)
         : _gzipFile(_gzipValue) {
@@ -94,6 +201,19 @@ void GZipContentEncoding::transformChunk(std::vector<char> &chunk, bool finishin
     }
 }
 
+const StringSet GZipContentEncoding::CONTENT_TYPES = {
+        "text/plain",
+        "text/html",
+        "text/css",
+        "text/xml",
+        "application/x-javascript",
+        "application/xml",
+        "application/atom+xml",
+        "text/javascript",
+        "application/json",
+        "application/xhtml+xml"
+};
+
 
 void ChunkedTransferEncoding::transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) {
     if (_chunking) {
@@ -121,6 +241,7 @@ void ChunkedTransferEncoding::transformChunk(std::vector<char> &chunk, bool fini
         }
     }
 }
+
 
 URLSpec::URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args, std::string name)
         : _pattern(std::move(pattern))
@@ -160,3 +281,4 @@ std::tuple<std::string, int> URLSpec::findGroups() {
     }
     return std::make_tuple(boost::join(pieces, ""), _regex.mark_count());
 }
+

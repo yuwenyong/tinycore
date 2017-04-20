@@ -101,3 +101,23 @@ std::string String::capitalizeCopy(const std::string &s) {
     }
     return result;
 }
+
+std::string String::formatUTCDate(time_t timeval, bool usegmt) {
+    struct tm now;
+    std::string zone;
+    now = *gmtime(&timeval);
+    if (usegmt) {
+        zone = "GMT";
+    } else {
+        zone = "-0000";
+    }
+    const char *weekDays[] = {
+            "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+    };
+    const char *months[] = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+    return format("%s, %02d %s %04d %02d:%02d:%02d %s", weekDays[now.tm_wday], now.tm_mday, months[now.tm_mon],
+                  now.tm_yday + 1900, now.tm_hour, now.tm_min, now.tm_sec, zone.c_str());
+}

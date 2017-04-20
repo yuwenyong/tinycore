@@ -180,7 +180,7 @@ public:
 
     const std::string& get(std::string name) const;
     void remove(std::string name);
-    std::string getDefault(std::string name, std::string default_value={}) const;
+    std::string getDefault(std::string name, std::string defaultValue="") const;
 
     void update(const StringMap &nameValues) {
         for(auto &nameValue: nameValues) {

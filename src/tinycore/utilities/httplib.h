@@ -12,7 +12,7 @@ const unsigned short HTTP_PORT = 80;
 const unsigned short HTTPS_PORT = 443;
 
 
-enum HTTPStatusCode {
+enum class HTTPStatusCode {
     // informational
     CONTINUE = 100,
     SWITCHING_PROTOCOLS = 101,
@@ -36,7 +36,6 @@ enum HTTPStatusCode {
     SEE_OTHER = 303,
     NOT_MODIFIED = 304,
     USE_PROXY = 305,
-    _UNUSED = 306,
     TEMPORARY_REDIRECT = 307,
 
     // client error
@@ -74,6 +73,6 @@ enum HTTPStatusCode {
     NOT_EXTENDED = 510,
 };
 
-extern std::map<HTTPStatusCode, std::string> HTTPResponses;
+extern std::map<int, std::string> HTTPResponses;
 
 #endif //TINYCORE_HTTPLIB_H

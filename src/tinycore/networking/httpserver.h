@@ -67,8 +67,8 @@ public:
                bool xheaders=false,
                SSLOption *sslOption=nullptr);
     ~HTTPServer();
-    void listen(unsigned short port, const std::string &address="0.0.0.0");
-    void bind(unsigned short port, const std::string &address);
+    void listen(unsigned short port, std::string address="0.0.0.0");
+    void bind(unsigned short port, std::string address);
 
     void start() {
         doAccept();
@@ -86,6 +86,8 @@ protected:
     AcceptorType _acceptor;
     BaseIOStream::SocketType _socket;
 };
+
+typedef std::unique_ptr<HTTPServer> HTTPServerPtr;
 
 
 class HTTPConnection: public std::enable_shared_from_this<HTTPConnection> {
@@ -202,6 +204,14 @@ public:
 
     const std::string& getBody() const {
         return _body;
+    }
+
+    const std::string& getHost() const {
+        return _host;
+    }
+
+    HTTPConnectionPtr getConnection() {
+        return _connection;
     }
 
     void setConnection(HTTPConnectionPtr connection) {

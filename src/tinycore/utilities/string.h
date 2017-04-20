@@ -47,6 +47,12 @@ public:
 
     static void capitalize(std::string &s);
     static std::string capitalizeCopy(const std::string &s);
+
+    static std::string formatUTCDate(bool usegmt=false) {
+        return formatUTCDate(time(nullptr), usegmt);
+    }
+
+    static std::string formatUTCDate(time_t timeval, bool usegmt=false);
 protected:
     template <typename T, typename... Args>
     static void format(FormatType &fmter, T &&value, Args&&... args) {

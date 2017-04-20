@@ -6,11 +6,13 @@
 #include "tinycore/configuration/options.h"
 #include "tinycore/networking/ioloop.h"
 #include <regex>
-#include <tinycore/networking/httpserver.h>
+#include "tinycore/networking/httpserver.h"
+#include "tinycore/networking/web.h"
 
 
 int main(int argc, char **argv) {
     ParseCommandLine(argc, argv);
+    Application app;
     Timeout timeout = sIOLoop->addTimeout(10.0, [](){
         Log::info("First Timeout");
 //        ioloop.stop();
