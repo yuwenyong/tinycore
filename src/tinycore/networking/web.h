@@ -5,11 +5,11 @@
 #ifndef TINYCORE_WEB_H
 #define TINYCORE_WEB_H
 
+#include "tinycore/common/common.h"
 #include <boost/functional/factory.hpp>
 #include <boost/xpressive/xpressive.hpp>
 #include <boost/any.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
-#include "tinycore/common/common.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
 #include "tinycore/networking/httpserver.h"
@@ -22,20 +22,29 @@ class OutputTransform;
 class URLSpec;
 
 
-class RequestHandler: public std::enable_shared_from_this<RequestHandler> {
+class TC_COMMON_API RequestHandler: public std::enable_shared_from_this<RequestHandler> {
 public:
     typedef std::map<std::string, boost::any> ArgsType;
     typedef boost::ptr_vector<OutputTransform> TransformsType;
+    typedef std::map<std::string, boost::any> SettingsType;
 
-    RequestHandler(Application *application, HTTPRequestPtr request, ArgsType &args);
+    friend class Application;
+
+    RequestHandler(Application *application, HTTPRequestPtr request);
     virtual ~RequestHandler();
 
     void start(ArgsType &args);
     virtual void initialize(ArgsType &args);
+    const SettingsType& getSettings() const;
+    virtual void onHead(StringVector args);
+    virtual void onGet(StringVector args);
+    virtual void onPost(StringVector args);
+    virtual void onDelete(StringVector args);
+    virtual void onPut(StringVector args);
+    virtual void onOptions(StringVector args);
 
     virtual void prepare();
     virtual void onConnectionClose();
-
     void clear();
 
     void setStatus(int statusCode) {
@@ -53,13 +62,29 @@ public:
     }
 
     void setHeader(const std::string &name, const std::string &value);
+    void setHeader(const std::string &name, const char *value);
 
     template <typename T>
     void setHeader(const std::string &name, T &&value) {
         _headers[name] = std::to_string(std::forward<T>(value));
     }
 
+    std::string getArgument(const std::string &name, bool strip= true);
+    std::string getArgument(const std::string &name, const std::string &defualtValue, bool strip= true);
+    StringVector getArguments(const std::string &name, bool strip= true);
+
+    void redirect(const std::string &url, bool permanent=false) {
+
+    }
 protected:
+    void execute(TransformsType &transforms, StringVector args) {
+
+    }
+
+    std::string requestSummary() const {
+        return "";
+    }
+
     Application *_application;
     HTTPRequestPtr _request;
     bool _headersWritten{false};
@@ -80,7 +105,7 @@ class RequestHandlerFactory {
 public:
     typedef RequestHandler::ArgsType ArgsType;
 
-    RequestHandlerPtr operator()(Application *application, HTTPRequestPtr request, ArgsType &args) {
+    RequestHandlerPtr operator()(Application *application, HTTPRequestPtr request, ArgsType &args) const {
         auto requestHandler = std::make_shared<T>(application, std::move(request));
         requestHandler->start(args);
         return requestHandler;
@@ -88,7 +113,7 @@ public:
 };
 
 
-class Application {
+class TC_COMMON_API Application {
 public:
     typedef boost::ptr_vector<URLSpec> HandlersType;
     typedef boost::xpressive::sregex HostPatternType;
@@ -98,7 +123,7 @@ public:
     typedef std::map<std::string, boost::any> SettingsType;
     typedef std::function<OutputTransform* (HTTPRequestPtr)> TransformType;
     typedef std::vector<TransformType> TransformsType;
-    typedef std::function<void (HTTPRequestPtr)> LogFunctionType;
+    typedef std::function<void (RequestHandler *)> LogFunctionType;
 
     Application(HandlersType &handlers=defaultHandlers, std::string defaultHost="", TransformsType transforms={},
                 SettingsType settings={});
@@ -127,11 +152,15 @@ public:
     template <typename... Args>
     std::string reverseURL(const std::string &name, Args&&... args);
 
-    void logRequest(HTTPRequestPtr handler);
+    void logRequest(RequestHandler *handler) const;
+
+    const SettingsType& getSettings() const {
+        return _settings;
+    }
 
     static HandlersType defaultHandlers;
 protected:
-    const HandlersType* getHostHandlers(HTTPRequestPtr request) const;
+    HandlersType* getHostHandlers(HTTPRequestPtr request);
 
     TransformsType _transforms;
     HostHandlersType _handlers;
@@ -141,7 +170,7 @@ protected:
 };
 
 
-class HTTPError: public Exception {
+class TC_COMMON_API HTTPError: public Exception {
 public:
     HTTPError(const char *file, int line, const char *func, int statusCode)
             : HTTPError(file, line, func, statusCode, "") {
@@ -156,14 +185,49 @@ public:
 
     const char *what() const noexcept override;
 
-    virtual const char *getTypeName() const override {
+    const char *getTypeName() const override {
         return "HTTPError";
     }
 protected:
     int _statusCode;
 };
 
-class OutputTransform {
+
+class TC_COMMON_API ErrorHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void initialize(ArgsType &args) override;
+    void prepare() override;
+};
+
+
+class TC_COMMON_API RedirectHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void initialize(ArgsType &args) override;
+    void onGet(StringVector args) override;
+protected:
+    std::string _url;
+    bool _permanent{true};
+};
+
+
+class TC_COMMON_API FallbackHandler: public RequestHandler {
+public:
+    typedef HTTPServer::RequestCallbackType FallbackType;
+
+    using RequestHandler::RequestHandler;
+
+    void initialize(ArgsType &args) override;
+    void prepare() override;
+protected:
+    FallbackType _fallback;
+};
+
+
+class TC_COMMON_API OutputTransform {
 public:
     virtual ~OutputTransform() {}
     virtual void transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) =0;
@@ -171,7 +235,7 @@ public:
 };
 
 
-class GZipContentEncoding: public OutputTransform {
+class TC_COMMON_API GZipContentEncoding: public OutputTransform {
 public:
     GZipContentEncoding(HTTPRequestPtr request);
     void transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) override;
@@ -187,7 +251,7 @@ protected:
 };
 
 
-class ChunkedTransferEncoding: public OutputTransform {
+class TC_COMMON_API ChunkedTransferEncoding: public OutputTransform {
 public:
     ChunkedTransferEncoding(HTTPRequestPtr request) {
         _chunking = request->supportsHTTP1_1();
@@ -213,7 +277,7 @@ protected:
 };
 
 
-class URLSpec {
+class TC_COMMON_API URLSpec {
 public:
     typedef boost::xpressive::sregex RegexType;
     typedef RequestHandler::ArgsType ArgsType;
@@ -234,12 +298,24 @@ public:
         return _path;
     }
 
+    const RegexType& getRegex() const {
+        return _regex;
+    }
+
     const std::string& getPattern() const {
         return _pattern;
     }
 
     const std::string& getName() const {
         return _name;
+    }
+
+    HandlerClassType& getHandlerClass() {
+        return _handlerClass;
+    }
+
+    ArgsType& getArgs() {
+        return _args;
     }
 protected:
     std::tuple<std::string, int> findGroups();

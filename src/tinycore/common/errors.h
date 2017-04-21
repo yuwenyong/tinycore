@@ -10,7 +10,7 @@
 #include "tinycore/utilities/string.h"
 
 
-class BaseException: public std::runtime_error {
+class TC_COMMON_API BaseException: public std::runtime_error {
 public:
     BaseException(const char *file, int line, const char *func, const std::string &message)
             : std::runtime_error(message)
@@ -34,7 +34,7 @@ protected:
 
 
 #define DECLARE_EXCEPTION(Exception, ParentException) \
-class Exception: public ParentException { \
+class TC_COMMON_API Exception: public ParentException { \
 public: \
     using ParentException::ParentException; \
     const char *getTypeName() const override { \
@@ -56,7 +56,7 @@ DECLARE_EXCEPTION(DuplicateKey, Exception);
 DECLARE_EXCEPTION(NotFound, Exception);
 
 
-class AssertionError: public Exception {
+class TC_COMMON_API AssertionError: public Exception {
 public:
     using Exception::Exception;
 
@@ -77,7 +77,7 @@ protected:
 };
 
 
-class ExceptionHelper {
+class TC_COMMON_API ExceptionHelper {
 public:
     template <typename Exception, typename... Args>
     static void throwException(const char *file, int line, const char *func, Args&&... args) {

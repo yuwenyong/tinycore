@@ -218,6 +218,14 @@ public:
         _connection = std::move(connection);
     }
 
+    const std::string& getPath() const {
+        return _path;
+    }
+
+    const RequestArguments& getArguments() const {
+        return _arguments;
+    }
+
     void addArgument(std::string name, std::string value);
     void addArguments(std::string name, StringVector values);
     void addFile(std::string name, HTTPFile file);

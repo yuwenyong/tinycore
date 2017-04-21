@@ -9,7 +9,7 @@
 #include "tinycore/logging/log.h"
 
 
-RequestHandler::RequestHandler(Application *application, HTTPRequestPtr request, ArgsType &args)
+RequestHandler::RequestHandler(Application *application, HTTPRequestPtr request)
         : _application(application)
         , _request(std::move(request)) {
     clear();
@@ -29,6 +29,46 @@ void RequestHandler::start(ArgsType &args) {
         }
     });
     initialize(args);
+}
+
+void RequestHandler::initialize(ArgsType &args) {
+
+}
+
+const RequestHandler::SettingsType& RequestHandler::getSettings() const {
+    return _application->getSettings();
+}
+
+void RequestHandler::onHead(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
+void RequestHandler::onGet(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
+void RequestHandler::onPost(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
+void RequestHandler::onDelete(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
+void RequestHandler::onPut(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
+void RequestHandler::onOptions(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
+void RequestHandler::prepare() {
+
+}
+
+void RequestHandler::onConnectionClose() {
+
 }
 
 void RequestHandler::clear() {
@@ -53,6 +93,66 @@ void RequestHandler::setHeader(const std::string &name, const std::string &value
         ThrowException(ValueError, error);
     }
     _headers[name] = value;
+}
+
+void RequestHandler::setHeader(const std::string &name, const char *value) {
+    boost::regex unsafe(R"([\x00-\x1f])");
+    if (strlen(value) > 4000 || boost::regex_search(value, unsafe)) {
+        std::string error;
+        error = "Unsafe header value " + std::string(value);
+        ThrowException(ValueError, error);
+    }
+    _headers[name] = value;
+}
+
+std::string RequestHandler::getArgument(const std::string &name, bool strip) {
+    auto &arguments = _request->getArguments();
+    auto iter = arguments.find(name);
+    if (iter == arguments.end()) {
+        std::string error;
+        error = "Missing argument " + name;
+        ThrowException(HTTPError, 404, error);
+    }
+    std::string value = iter->second.back();
+    boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
+    boost::regex_replace(value, contorlChars, " ");
+    if (strip) {
+        boost::trim(value);
+    }
+    return value;
+}
+
+std::string RequestHandler::getArgument(const std::string &name, const std::string &defualtValue, bool strip) {
+    auto &arguments = _request->getArguments();
+    auto iter = arguments.find(name);
+    if (iter == arguments.end()) {
+        return defualtValue;
+    }
+    std::string value = iter->second.back();
+    boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
+    boost::regex_replace(value, contorlChars, " ");
+    if (strip) {
+        boost::trim(value);
+    }
+    return value;
+}
+
+StringVector RequestHandler::getArguments(const std::string &name, bool strip) {
+    StringVector values;
+    auto &arguments = _request->getArguments();
+    auto iter = arguments.find(name);
+    if (iter == arguments.end()) {
+        return values;
+    }
+    values = iter->second;
+    boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
+    for (auto &value: values) {
+        boost::regex_replace(value, contorlChars, " ");
+        if (strip) {
+            boost::trim(value);
+        }
+    }
+    return values;
 }
 
 
@@ -105,12 +205,66 @@ void Application::addHandlers(std::string hostPattern, HandlersType &hostHandler
 }
 
 void Application::operator()(HTTPRequestPtr request) {
+    RequestHandler::TransformsType transforms;
+    for (auto &transform: _transforms) {
+        transforms.push_back(transform(request));
+    }
+    RequestHandlerPtr handler;
+    StringVector args;
+    auto handlers = getHostHandlers(request);
+    if (!handlers) {
+        RequestHandler::ArgsType handlerArgs = {
+                {"url", "http://" + _defaultHost + "/"}
+        };
+        handler = RequestHandlerFactory<RedirectHandler>()(this, std::move(request), handlerArgs);
+    } else {
+        const std::string &requestPath = request->getPath();
+        boost::xpressive::smatch match;
+        for (auto &spec: *handlers) {
+            if (boost::xpressive::regex_match(requestPath, match, spec.getRegex())) {
+                handler = spec.getHandlerClass()(this, std::move(request), spec.getArgs());
+                for (size_t i = 0; i < match.size(); ++i) {
+                    args.push_back(match[i].str());
+                }
+                for (auto &s: args) {
+                    s = URLParse::unquote(s);
+                }
+                break;
+            }
+        }
+        if (!handler) {
+            RequestHandler::ArgsType handlerArgs = {
+                    {"statusCode", 404}
+            };
+            handler = RequestHandlerFactory<ErrorHandler>()(this, std::move(request), handlerArgs);
+        }
+    }
+    handler->execute(transforms, std::move(args));
+}
 
+void Application::logRequest(RequestHandler *handler) const {
+    auto iter = _settings.find("logFunction");
+    if (iter != _settings.end()) {
+        const LogFunctionType &logFunction = boost::any_cast<const LogFunctionType&>(iter->second);
+        logFunction(handler);
+        return;
+    }
+    int statusCode = handler->getStatus();
+    std::string summary = handler->requestSummary();
+    float requestTime = 1000.0f * handler->_request->requestTime();
+    std::string logInfo = String::format("%d %s %.2fms", statusCode, summary.c_str(), requestTime);
+    if (statusCode < 400) {
+        Log::info(logInfo.c_str());
+    } else if (statusCode < 500) {
+        Log::warn(logInfo.c_str());
+    } else {
+        Log::error(logInfo.c_str());
+    }
 }
 
 Application::HandlersType Application::defaultHandlers = {};
 
-const Application::HandlersType * Application::getHostHandlers(HTTPRequestPtr request) const {
+Application::HandlersType * Application::getHostHandlers(HTTPRequestPtr request) {
     std::string host = request->getHost();
     boost::to_lower(host);
     auto pos = host.find(':');
@@ -157,6 +311,39 @@ const char* HTTPError::what() const noexcept {
     }
     return _what.c_str();
 }
+
+
+void ErrorHandler::initialize(ArgsType &args) {
+    setStatus(boost::any_cast<int>(args["statusCode"]));
+}
+
+void ErrorHandler::prepare() {
+    ThrowException(HTTPError, _statusCode);
+}
+
+
+void RedirectHandler::initialize(ArgsType &args) {
+    _url = boost::any_cast<std::string&>(args["url"]);
+    auto iter = args.find("permanent");
+    if (iter != args.end()) {
+        _permanent = boost::any_cast<bool>(iter->second);
+    }
+}
+
+void RedirectHandler::onGet(StringVector args) {
+    redirect(_url, _permanent);
+}
+
+
+void FallbackHandler::initialize(ArgsType &args) {
+    _fallback = boost::any_cast<FallbackType&>(args["fallback"]);
+}
+
+void FallbackHandler::prepare() {
+    _fallback(_request);
+    _finished = true;
+}
+
 
 GZipContentEncoding::GZipContentEncoding(HTTPRequestPtr request)
         : _gzipFile(_gzipValue) {
