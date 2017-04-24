@@ -15,7 +15,7 @@ void ConfigMgr::loadInitial(std::string fileName) {
         boost::property_tree::read_ini(fileName, config);
         if (config.empty()) {
             error = "empty file (" + fileName + ")";
-            ThrowException(ParsingError, error);
+            ThrowException(ParsingError, std::move(error));
         }
         _fileName = std::move(fileName);
         _config.swap(config);
@@ -25,7 +25,7 @@ void ConfigMgr::loadInitial(std::string fileName) {
         } else {
             error = e.message() + "(" + e.filename() + ":" + std::to_string(e.line()) + ")";
         }
-        ThrowException(ParsingError, error);
+        ThrowException(ParsingError, std::move(error));
     }
 }
 
@@ -92,11 +92,11 @@ T ConfigMgr::getValue(const std::string &name) const {
     } catch (boost::property_tree::ptree_bad_path) {
         std::string error;
         error = "Missing name " + name + " in config file " + _fileName;
-        ThrowException(KeyError, error);
+        ThrowException(KeyError, std::move(error));
     } catch (boost::property_tree::ptree_bad_data) {
         std::string error;
         error = "Bad value defined for name " + name + " in config file " + _fileName;
-        ThrowException(TypeError, error);
+        ThrowException(TypeError, std::move(error));
     }
 }
 

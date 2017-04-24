@@ -53,6 +53,13 @@ public:
     }
 
     static std::string formatUTCDate(time_t timeval, bool usegmt=false);
+    static std::string translate(const std::string &s, const std::array<char, 256> &table,
+                                 const std::vector<char> &deleteChars);
+
+    static std::string translate(const std::string &s, const std::array<char, 256> &table) {
+        std::vector<char> deleteChars;
+        return translate(s, table, deleteChars);
+    }
 protected:
     template <typename T, typename... Args>
     static void format(FormatType &fmter, T &&value, Args&&... args) {

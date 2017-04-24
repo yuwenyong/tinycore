@@ -121,3 +121,21 @@ std::string String::formatUTCDate(time_t timeval, bool usegmt) {
     return format("%s, %02d %s %04d %02d:%02d:%02d %s", weekdayNames[now.tm_wday], now.tm_mday, monthNames[now.tm_mon],
                   now.tm_yday + 1900, now.tm_hour, now.tm_min, now.tm_sec, zone.c_str());
 }
+
+std::string String::translate(const std::string &s, const std::array<char, 256> &table,
+                              const std::vector<char> &deleteChars) {
+    std::array<int, 256> transTable;
+    for (size_t i = 0; i < 256; ++i) {
+        transTable[i] = static_cast<int>(table[i]);
+    }
+    for (auto c: deleteChars) {
+        transTable[static_cast<size_t >(c)] = -1;
+    }
+    std::string result;
+    for (auto c: s) {
+        if (transTable[static_cast<size_t>(c)] != -1) {
+            result.push_back(static_cast<char>(transTable[static_cast<size_t>(c)]));
+        }
+    }
+    return result;
+}

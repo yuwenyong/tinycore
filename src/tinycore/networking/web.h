@@ -341,7 +341,7 @@ std::string Application::reverseURL(const std::string &name, Args&&... args) {
     auto iter = _namedHandlers.find(name);
     if (iter == _namedHandlers.end()) {
         std::string error = name + " not found in named urls";
-        ThrowException(KeyError, error);
+        ThrowException(KeyError, std::move(error));
     }
     return iter->second->reverse(std::forward<Args>(args)...);
 }

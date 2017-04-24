@@ -8,9 +8,11 @@
 #include <regex>
 #include "tinycore/networking/httpserver.h"
 #include "tinycore/networking/web.h"
+//#include <boost/dll.hpp>
 
 
 int main(int argc, char **argv) {
+//    boost::dll::this_line_location();
     ParseCommandLine(argc, argv);
     Application app;
     Timeout timeout = sIOLoop->addTimeout(10.0, [](){

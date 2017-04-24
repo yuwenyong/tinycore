@@ -90,7 +90,7 @@ void RequestHandler::setHeader(const std::string &name, const std::string &value
     if (value.length() > 4000 || boost::regex_search(value, unsafe)) {
         std::string error;
         error = "Unsafe header value " + value;
-        ThrowException(ValueError, error);
+        ThrowException(ValueError, std::move(error));
     }
     _headers[name] = value;
 }
@@ -100,7 +100,7 @@ void RequestHandler::setHeader(const std::string &name, const char *value) {
     if (strlen(value) > 4000 || boost::regex_search(value, unsafe)) {
         std::string error;
         error = "Unsafe header value " + std::string(value);
-        ThrowException(ValueError, error);
+        ThrowException(ValueError, std::move(error));
     }
     _headers[name] = value;
 }
@@ -111,7 +111,7 @@ std::string RequestHandler::getArgument(const std::string &name, bool strip) {
     if (iter == arguments.end()) {
         std::string error;
         error = "Missing argument " + name;
-        ThrowException(HTTPError, 404, error);
+        ThrowException(HTTPError, 404, std::move(error));
     }
     std::string value = iter->second.back();
     boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
@@ -314,7 +314,7 @@ const char* HTTPError::what() const noexcept {
 
 
 void ErrorHandler::initialize(ArgsType &args) {
-    setStatus(boost::any_cast<int>(args["statusCode"]));
+    setStatus(boost::any_cast<int>(args.at("statusCode")));
 }
 
 void ErrorHandler::prepare() {
@@ -323,7 +323,7 @@ void ErrorHandler::prepare() {
 
 
 void RedirectHandler::initialize(ArgsType &args) {
-    _url = boost::any_cast<std::string&>(args["url"]);
+    _url = boost::any_cast<const std::string&>(args.at("url"));
     auto iter = args.find("permanent");
     if (iter != args.end()) {
         _permanent = boost::any_cast<bool>(iter->second);
@@ -336,7 +336,7 @@ void RedirectHandler::onGet(StringVector args) {
 
 
 void FallbackHandler::initialize(ArgsType &args) {
-    _fallback = boost::any_cast<FallbackType&>(args["fallback"]);
+    _fallback = boost::any_cast<FallbackType&>(args.at("fallback"));
 }
 
 void FallbackHandler::prepare() {

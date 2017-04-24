@@ -127,7 +127,7 @@ std::string URLParse::unquote(const std::string &s) {
             res.emplace_back("%");
             res.emplace_back(std::move(*iter));
         } else {
-            res.emplace_back(&(trans->second), 1);
+            res.emplace_back(1, trans->second);
             res.emplace_back(iter->substr(2));
         }
     }
@@ -175,7 +175,7 @@ RequestArgumentsList URLParse::parseQSL(const std::string &queryString, bool kee
             if (strictParsing) {
                 std::string error;
                 error = "bad query field:" + nameValue;
-                ThrowException(ValueError, error);
+                ThrowException(ValueError, std::move(error));
             }
             if (keepBlankValues) {
                 name = nameValue;

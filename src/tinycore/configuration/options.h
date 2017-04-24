@@ -39,9 +39,9 @@ public:
     template <typename T>
     const T& get(const char *name) const {
         if (!contain(name)) {
-            std::string error = "KeyError:";
+            std::string error = "Unrecognized option ";
             error += name;
-            ThrowException(KeyError, error);
+            ThrowException(KeyError, std::move(error));
         }
         auto value = _vm[name];
         return value.as<T>();
