@@ -155,7 +155,7 @@ void HTTPConnection::finishRequest() {
         disconnect = true;
     } else {
         auto headers = _requestKeeper->getHTTPHeader();
-        std::string connectionHeader = headers->getDefault("Connection");
+        std::string connectionHeader = headers->get("Connection");
         if (_requestKeeper->supportsHTTP1_1()) {
             disconnect = connectionHeader == "close";
         } else if (headers->contain("Content-Length")
@@ -202,13 +202,13 @@ void HTTPConnection::onHeaders(BufferType &data) {
                                                        std::move(version), std::move(headers), "", _address);
         _request = _requestKeeper;
         auto requestHeader = _requestKeeper->getHTTPHeader();
-        std::string contentLengthValue = requestHeader->getDefault("Content-Length");
+        std::string contentLengthValue = requestHeader->get("Content-Length");
         if (!contentLengthValue.empty()) {
             size_t contentLength = (size_t) std::stoi(contentLengthValue);
             if (contentLength > stream->getMaxBufferSize()) {
                 throw _BadRequestException("Content-Length too long");
             }
-            if (requestHeader->getDefault("Expect") == "100-continue") {
+            if (requestHeader->get("Expect") == "100-continue") {
                 std::string continueLine("HTTP/1.1 100 (Continue)\r\n\r\n");
                 BufferType continueLineBuffer(continueLine.c_str(), continueLine.length());
                 stream->write(continueLineBuffer);
@@ -238,7 +238,7 @@ void HTTPConnection::onRequestBody(BufferType &data) {
     size_t length = boost::asio::buffer_size(data);
     _requestKeeper->setBody(content, length);
     auto requestHeader = _requestKeeper->getHTTPHeader();
-    std::string contentType = requestHeader->getDefault("Content-Type");
+    std::string contentType = requestHeader->get("Content-Type");
     if (_requestKeeper->getMethod() == "POST" || _requestKeeper->getMethod() == "PUT") {
         if (boost::starts_with(contentType, "application/x-www-form-urlencoded")) {
             auto arguments = URLParse::parseQS(_requestKeeper->getBody(), false);
@@ -311,7 +311,7 @@ void HTTPConnection::parseMimeBody(std::string boundary, std::string data) {
             continue;
         }
         header = HTTPHeaders::parse(part.substr(0, eoh));
-        nameHeader = header->getDefault("Content-Disposition");
+        nameHeader = header->get("Content-Disposition");
         if (!boost::starts_with(nameHeader, "form-data;") || !boost::ends_with(part, "\r\n")) {
             Log::warn("Invalid multipart/form-data");
             continue;
@@ -343,7 +343,7 @@ void HTTPConnection::parseMimeBody(std::string boundary, std::string data) {
         name = nameIter->second;
         fileNameIter = nameValues.find("filename");
         if (fileNameIter != nameValues.end()) {
-            ctype = header->getDefault("Content-Type", "application/unknown");
+            ctype = header->get("Content-Type", "application/unknown");
             _requestKeeper->addFile(std::move(name), HTTPFile(std::move(fileNameIter->second),
                                                               std::move(ctype),
                                                               std::move(value)));
@@ -374,10 +374,10 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
         , _startTime(ClockType::now())
         , _finishTime(TimePointType::min()) {
     if (connection && connection->getXHeaders()) {
-        _remoteIp = _headers->getDefault("X-Forwarded-For", remoteIp);
-        _remoteIp = _headers->getDefault("X-Real-Ip", _remoteIp);
-        _protocol = _headers->getDefault("X-Forwarded-Proto", protocol);
-        _protocol = _headers->getDefault("X-Scheme", _protocol);
+        _remoteIp = _headers->get("X-Forwarded-For", remoteIp);
+        _remoteIp = _headers->get("X-Real-Ip", _remoteIp);
+        _protocol = _headers->get("X-Forwarded-Proto", protocol);
+        _protocol = _headers->get("X-Scheme", _protocol);
         if (_protocol != "http" && _protocol != "https") {
             _protocol = "http";
         }
@@ -394,7 +394,7 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
     if (!host.empty()) {
         _host = std::move(host);
     } else {
-        _host = _headers->getDefault("Host", "127.0.0.1");
+        _host = _headers->get("Host", "127.0.0.1");
     }
     std::string scheme, netloc, fragment;
     std::tie(scheme, netloc, _path, _query, fragment) = URLParse::urlSplit(_uri);

@@ -10,9 +10,11 @@
 #include <boost/xpressive/xpressive.hpp>
 #include <boost/any.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
+#include <boost/optional.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
 #include "tinycore/networking/httpserver.h"
+#include "tinycore/utilities/cookie.h"
 #include "tinycore/utilities/httplib.h"
 
 
@@ -27,6 +29,8 @@ public:
     typedef std::map<std::string, boost::any> ArgsType;
     typedef boost::ptr_vector<OutputTransform> TransformsType;
     typedef std::map<std::string, boost::any> SettingsType;
+    typedef boost::optional<BaseCookie> CookiesType;
+    typedef boost::optional<std::vector<BaseCookie>> NewCookiesType;
 
     friend class Application;
 
@@ -57,8 +61,7 @@ public:
     }
 
     void setHeader(const std::string &name, const DateTime &value) {
-        time_t t = boost::posix_time::to_time_t(value);
-        _headers[name] = String::formatUTCDate(t, true);
+        _headers[name] = String::formatUTCDate(value, true);
     }
 
     void setHeader(const std::string &name, const std::string &value);
@@ -69,9 +72,32 @@ public:
         _headers[name] = std::to_string(std::forward<T>(value));
     }
 
-    std::string getArgument(const std::string &name, bool strip= true);
-    std::string getArgument(const std::string &name, const std::string &defualtValue, bool strip= true);
-    StringVector getArguments(const std::string &name, bool strip= true);
+    std::string getArgument(const std::string &name, bool strip= true) const;
+    std::string getArgument(const std::string &name, const std::string &defaultValue, bool strip= true) const;
+    StringVector getArguments(const std::string &name, bool strip= true) const;
+    const BaseCookie& cookies();
+
+    const std::string& getCookie(const std::string &name, const std::string &defaultValue= {}) {
+        if (cookies().contain(name)) {
+            return cookies().getItem(name).getValue();
+        }
+        return defaultValue;
+    }
+
+    void setCookie(const std::string &name, const std::string &value, const char *domain= nullptr,
+                   const DateTime *expires= nullptr, const char *path= "/", int *expiresDays= nullptr,
+                   const StringMap *args= nullptr);
+
+    void clearCookie(const std::string &name, const char *path= "/", const char *domain= nullptr) {
+        DateTime expires = boost::posix_time::second_clock::universal_time() + boost::gregorian::days(365);
+        setCookie(name, "", domain, &expires, path);
+    }
+
+    void clearAllCookies() {
+        cookies().getAll([this](const std::string &name, const Morsel &morsel) {
+            clearCookie(name);
+        });
+    }
 
     void redirect(const std::string &url, bool permanent=false) {
 
@@ -94,6 +120,8 @@ protected:
     StringMap _headers;
     MessageBuffer _writeBuffer;
     int _statusCode;
+    CookiesType _cookies;
+    NewCookiesType _newCookies;
 };
 
 typedef std::shared_ptr<RequestHandler> RequestHandlerPtr;

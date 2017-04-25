@@ -386,12 +386,12 @@ BaseCookie::EncodeResultType BaseCookie::valueEncode(const std::string &val) {
     return std::make_tuple(val, val);
 }
 
-std::string BaseCookie::output(const StringMap *attrs, std::string header, std::string sep) const {
+std::string BaseCookie::output(const StringMap *attrs, const std::string &header, const std::string &sep) const {
     StringVector result;
     for (auto &kv: _items) {
         result.emplace_back(kv.second.output(attrs, header));
     }
-    return boost::join(result, std::move(sep));
+    return boost::join(result, sep);
 }
 
 void BaseCookie::parseString(const std::string &str, const boost::regex &patt) {

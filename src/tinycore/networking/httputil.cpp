@@ -10,22 +10,21 @@
 
 const boost::regex HTTPHeaders::_normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][a-z0-9]*)*$");
 
-void HTTPHeaders::add(std::string name, std::string value) {
-    normalizeName(name);
-    auto iter = _headers.find(name);
-    if (iter != _headers.end()) {
-        iter->second.first += ',' + value;
-        iter->second.second.push_back(std::move(value));
+void HTTPHeaders::add(const std::string &name, const std::string &value) {
+    std::string normName = normalizeName(name);
+    if (contain(normName)) {
+        _items[normName] += ',' + value;
+        _asList[normName].emplace_back(value);
     } else {
-        _headers[name] = std::make_pair(std::move(name), HTTPHeadersTraits::ValuesContainerType{std::move(value)});
+        setItem(std::move(normName), value);
     }
 }
 
-StringVector HTTPHeaders::getList(std::string name) const {
-    normalizeName(name);
-    auto iter = _headers.find(name);
-    if (iter != _headers.end()) {
-        return iter->second.second;
+StringVector HTTPHeaders::getList(const std::string &name) const {
+    std::string normName = normalizeName(name);
+    auto iter = _asList.find(name);
+    if (iter != _asList.end()) {
+        return iter->second;
     } else {
         return {};
     }
@@ -42,41 +41,32 @@ void HTTPHeaders::parseLine(const std::string &line) {
     return add(std::move(name), std::move(value));
 }
 
-void HTTPHeaders::set(std::string name, std::string value) {
-    HTTPHeaders::normalizeName(name);
-    _headers[name] = std::make_pair(std::move(name), HTTPHeadersTraits::ValuesContainerType{std::move(value)});
+void HTTPHeaders::setItem(const std::string &name, const std::string &value) {
+    std::string normName = HTTPHeaders::normalizeName(name);
+    _items[normName] = value;
+    _asList[normName] = {value, };
 }
 
-const std::string& HTTPHeaders::get(std::string name) const {
-    HTTPHeaders::normalizeName(name);
-    auto iter = _headers.find(name);
-    if (iter == _headers.end()) {
-        ThrowException(KeyError, "Key Error:" + name);
+void HTTPHeaders::delItem(const std::string &name) {
+    std::string normName = HTTPHeaders::normalizeName(name);
+    if (!contain(normName)) {
+        ThrowException(KeyError, normName);
     }
-    return iter->second.first;
+    _items.erase(name);
+    _asList.erase(name);
 }
 
-void HTTPHeaders::remove(std::string name) {
-    HTTPHeaders::normalizeName(name);
-    auto iter = _headers.find(name);
-    if (iter == _headers.end()) {
-        ThrowException(KeyError, "Key Error:" + name);
-    }
-    _headers.erase(iter);
-}
-
-std::string HTTPHeaders::getDefault(std::string name, std::string defaultValue) const {
-    HTTPHeaders::normalizeName(name);
-    auto iter = _headers.find(name);
-    if (iter != _headers.end()) {
-        return iter->second.first;
+const std::string& HTTPHeaders::get(const std::string &name, const std::string &defaultValue) const {
+    std::string normName = HTTPHeaders::normalizeName(name);
+    auto iter = _items.find(name);
+    if (iter != _items.end()) {
+        return iter->second;
     } else {
         return defaultValue;
     }
 }
 
-
-HTTPHeadersPtr HTTPHeaders::parse(std::string headers) {
+HTTPHeadersPtr HTTPHeaders::parse(const std::string &headers) {
     HTTPHeadersPtr h = make_unique<HTTPHeaders>();
     StringVector lines = String::splitLines(headers);
     for (auto &line: lines) {
@@ -87,13 +77,14 @@ HTTPHeadersPtr HTTPHeaders::parse(std::string headers) {
     return h;
 }
 
-std::string& HTTPHeaders::normalizeName(std::string &name) {
-    if (!boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
-        StringVector nameParts = String::split(name, '-');
-        for (auto &namePart: nameParts) {
-            String::capitalize(namePart);
-        }
-        name = boost::join(nameParts, "-");
+std::string HTTPHeaders::normalizeName(const std::string &name) {
+
+    if (boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
+        return name;
     }
-    return name;
+    StringVector nameParts = String::split(name, '-');
+    for (auto &namePart: nameParts) {
+        String::capitalize(namePart);
+    }
+    return boost::join(nameParts, "-");
 }

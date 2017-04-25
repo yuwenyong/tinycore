@@ -49,10 +49,11 @@ public:
     static std::string capitalizeCopy(const std::string &s);
 
     static std::string formatUTCDate(bool usegmt=false) {
-        return formatUTCDate(time(nullptr), usegmt);
+        DateTime now = boost::posix_time::second_clock::universal_time();
+        return formatUTCDate(now, usegmt);
     }
 
-    static std::string formatUTCDate(time_t timeval, bool usegmt=false);
+    static std::string formatUTCDate(const DateTime &timeval, bool usegmt=false);
     static std::string translate(const std::string &s, const std::array<char, 256> &table,
                                  const std::vector<char> &deleteChars);
 

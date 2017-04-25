@@ -102,10 +102,8 @@ std::string String::capitalizeCopy(const std::string &s) {
     return result;
 }
 
-std::string String::formatUTCDate(time_t timeval, bool usegmt) {
-    struct tm now;
+std::string String::formatUTCDate(const DateTime &timeval, bool usegmt) {
     std::string zone;
-    now = *gmtime(&timeval);
     if (usegmt) {
         zone = "GMT";
     } else {
@@ -118,8 +116,11 @@ std::string String::formatUTCDate(time_t timeval, bool usegmt) {
             "Jan", "Feb", "Mar", "Apr", "May", "Jun",
             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     };
-    return format("%s, %02d %s %04d %02d:%02d:%02d %s", weekdayNames[now.tm_wday], now.tm_mday, monthNames[now.tm_mon],
-                  now.tm_yday + 1900, now.tm_hour, now.tm_min, now.tm_sec, zone.c_str());
+    const Date date = timeval.date();
+    const Time time = timeval.time_of_day();
+    return format("%s, %02d %s %04d %02d:%02d:%02d %s", weekdayNames[date.day_of_week().as_number()],
+                  date.day(), monthNames[date.month()], date.year(), time.hours(), time.minutes(), time.seconds(),
+                  zone.c_str());
 }
 
 std::string String::translate(const std::string &s, const std::array<char, 256> &table,

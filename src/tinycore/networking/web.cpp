@@ -77,7 +77,7 @@ void RequestHandler::clear() {
             {"Content-Type", "text/html; charset=UTF-8"},
     };
     if (!_request->supportsHTTP1_1()) {
-        if (_request->getHTTPHeader()->getDefault("Connection") == "Keep-Alive") {
+        if (_request->getHTTPHeader()->get("Connection") == "Keep-Alive") {
             setHeader("Connection", "Keep-Alive");
         }
     }
@@ -105,7 +105,7 @@ void RequestHandler::setHeader(const std::string &name, const char *value) {
     _headers[name] = value;
 }
 
-std::string RequestHandler::getArgument(const std::string &name, bool strip) {
+std::string RequestHandler::getArgument(const std::string &name, bool strip) const {
     auto &arguments = _request->getArguments();
     auto iter = arguments.find(name);
     if (iter == arguments.end()) {
@@ -114,30 +114,30 @@ std::string RequestHandler::getArgument(const std::string &name, bool strip) {
         ThrowException(HTTPError, 404, std::move(error));
     }
     std::string value = iter->second.back();
-    boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
-    boost::regex_replace(value, contorlChars, " ");
+    boost::regex controlChars(R"([\x00-\x08\x0e-\x1f])");
+    boost::regex_replace(value, controlChars, " ");
     if (strip) {
         boost::trim(value);
     }
     return value;
 }
 
-std::string RequestHandler::getArgument(const std::string &name, const std::string &defualtValue, bool strip) {
+std::string RequestHandler::getArgument(const std::string &name, const std::string &defaultValue, bool strip) const {
     auto &arguments = _request->getArguments();
     auto iter = arguments.find(name);
     if (iter == arguments.end()) {
-        return defualtValue;
+        return defaultValue;
     }
     std::string value = iter->second.back();
-    boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
-    boost::regex_replace(value, contorlChars, " ");
+    boost::regex controlChars(R"([\x00-\x08\x0e-\x1f])");
+    boost::regex_replace(value, controlChars, " ");
     if (strip) {
         boost::trim(value);
     }
     return value;
 }
 
-StringVector RequestHandler::getArguments(const std::string &name, bool strip) {
+StringVector RequestHandler::getArguments(const std::string &name, bool strip) const {
     StringVector values;
     auto &arguments = _request->getArguments();
     auto iter = arguments.find(name);
@@ -145,14 +145,62 @@ StringVector RequestHandler::getArguments(const std::string &name, bool strip) {
         return values;
     }
     values = iter->second;
-    boost::regex contorlChars(R"([\x00-\x08\x0e-\x1f])");
+    boost::regex controlChars(R"([\x00-\x08\x0e-\x1f])");
     for (auto &value: values) {
-        boost::regex_replace(value, contorlChars, " ");
+        boost::regex_replace(value, controlChars, " ");
         if (strip) {
             boost::trim(value);
         }
     }
     return values;
+}
+
+const BaseCookie& RequestHandler::cookies() {
+    if (!_cookies) {
+        _cookies = boost::make_optional(BaseCookie());
+        if (_request->getHTTPHeader()->contain("Cookie")) {
+            try {
+                _cookies->load(_request->getHTTPHeader()->getItem("Cookie"));
+            } catch (...) {
+                clearAllCookies();
+            }
+        }
+    }
+    return _cookies.get();
+}
+
+void RequestHandler::setCookie(const std::string &name, const std::string &value, const char *domain,
+                               const DateTime *expires, const char *path, int *expiresDays, const StringMap *args) {
+    boost::regex patt(R"([\x00-\x20])");
+    if (boost::regex_search(name, patt)) {
+        ThrowException(ValueError, String::format("Invalid cookie %s: %s", name.c_str(), value.c_str()));
+    }
+    if (!_newCookies) {
+        _newCookies = boost::make_optional(std::vector<BaseCookie>());
+    }
+    _newCookies->emplace_back();
+    BaseCookie &newCookie = _newCookies->back();
+    newCookie.setItem(name, value);
+    Morsel &morsel = newCookie.getItem(name);
+    if (domain) {
+        morsel.setItem("domain", value);
+    }
+    DateTime temp;
+    if (expiresDays && !expires) {
+        temp = boost::posix_time::second_clock::universal_time() + boost::gregorian::days(*expiresDays);
+        expires = &temp;
+    }
+    if (expires) {
+        morsel.setItem("expires", String::formatUTCDate(*expires, true));
+    }
+    if (path) {
+        morsel.setItem("path", path);
+    }
+    if (args) {
+        for (auto &kv: *args) {
+            morsel.setItem(kv.first, kv.second);
+        }
+    }
 }
 
 
@@ -351,7 +399,7 @@ GZipContentEncoding::GZipContentEncoding(HTTPRequestPtr request)
         _gzipping = true;
     } else {
         auto header = request->getHTTPHeader();
-        std::string acceptEncoding = header->getDefault("Accept-Encoding");
+        std::string acceptEncoding = header->get("Accept-Encoding");
         _gzipping = acceptEncoding.find("gzip") != std::string::npos;
     }
 }
