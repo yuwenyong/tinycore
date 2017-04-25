@@ -25,6 +25,8 @@ public:
     static const std::map<char, std::string> translator;
     static const boost::regex octalPatt;
     static const boost::regex quotePatt;
+    static const char *legalCharsPatt;
+    static const boost::regex cookiePattern;
 };
 
 
@@ -32,7 +34,7 @@ class TC_COMMON_API Morsel {
 public:
     Morsel();
 
-    std::string& operator[](std::string key);
+    void setItem(std::string key, std::string value);
 
     bool isReservedKey(std::string key) const {
         boost::to_lower(key);
@@ -43,11 +45,11 @@ public:
              const std::vector<char> &legalChars= CookieUtil::legalChars,
              const std::array<char, 256> &idmap= CookieUtil::idmap);
 
-    std::string output(const StringMap &attrs= reserved, std::string header= "Set-Cookie:") {
-        return header + " " + outputString(attrs);
+    std::string output(const StringMap *attrs= nullptr, std::string header= "Set-Cookie:") const {
+        return header + " " + outputString(nullptr);
     }
 
-    std::string outputString(const StringMap &attrs= reserved) const;
+    std::string outputString(const StringMap *attrs= nullptr) const;
 
     static const StringMap reserved;
 protected:
@@ -61,7 +63,54 @@ protected:
 
 class TC_COMMON_API BaseCookie {
 public:
+    typedef std::tuple<std::string, std::string> DecodeResultType;
+    typedef std::tuple<std::string, std::string> EncodeResultType;
+    typedef std::map<std::string, Morsel> MorselContainerType;
 
+    BaseCookie() = default;
+
+    BaseCookie(const std::string &input) {
+        load(input);
+    }
+
+    BaseCookie(const StringMap &input) {
+        load(input);
+    }
+
+    void setItem(const std::string &key, const std::string &value) {
+        std::string rval, cval;
+        std::tie(rval, cval) = valueEncode(value);
+        set(key, std::move(rval), std::move(cval));
+    }
+
+    virtual DecodeResultType valueDecode(const std::string &val);
+    virtual EncodeResultType valueEncode(const std::string &val);
+
+    std::string output(const StringMap *attrs= nullptr, std::string header= "Set-Cookie:",
+                       std::string sep= "\015\012") const;
+
+    void load(const std::string &rawdata) {
+        parseString(rawdata);
+    }
+
+    void load(const StringMap &rawdata) {
+        for (auto &kv: rawdata) {
+            setItem(kv.first, kv.second);
+        }
+    }
+protected:
+    void set(const std::string &key, std::string realValue, std::string codedValue) {
+        auto iter = _items.find(key);
+        if (iter == _items.end()) {
+            auto result = _items.emplace(key, Morsel());
+            iter = result.first;
+        }
+        iter->second.set(key, std::move(realValue), std::move(codedValue));
+    }
+
+    void parseString(const std::string &str, const boost::regex &patt =CookieUtil::cookiePattern);
+
+    MorselContainerType _items;
 };
 
 #endif //TINYCORE_COOKIE_H
