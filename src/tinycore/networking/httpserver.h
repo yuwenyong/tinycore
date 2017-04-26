@@ -148,6 +148,7 @@ public:
     typedef std::chrono::steady_clock ClockType;
     typedef ClockType::time_point TimePointType;
     typedef HTTPConnection::BufferType BufferType;
+    typedef URLParse::QueryArguments QueryArgumentsType;
 
     HTTPRequest(const HTTPRequest&) = delete;
     HTTPRequest& operator=(const HTTPRequest&) = delete;
@@ -198,6 +199,10 @@ public:
         return _method;
     }
 
+    const std::string& getURI() const {
+        return _uri;
+    }
+
     void setBody(const char* body, size_t length) {
         _body.assign(body, length);
     }
@@ -222,7 +227,7 @@ public:
         return _path;
     }
 
-    const RequestArguments& getArguments() const {
+    const QueryArgumentsType& getArguments() const {
         return _arguments;
     }
 
@@ -244,7 +249,7 @@ protected:
     TimePointType _finishTime;
     std::string _path;
     std::string _query;
-    RequestArguments _arguments;
+    QueryArgumentsType _arguments;
 };
 
 

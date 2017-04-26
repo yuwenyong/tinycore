@@ -99,9 +99,8 @@ public:
         });
     }
 
-    void redirect(const std::string &url, bool permanent=false) {
-
-    }
+    void redirect(const std::string &url, bool permanent=false);
+    void finish() {}
 protected:
     void execute(TransformsType &transforms, StringVector args) {
 

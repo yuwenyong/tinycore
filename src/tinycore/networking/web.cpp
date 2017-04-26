@@ -157,7 +157,7 @@ StringVector RequestHandler::getArguments(const std::string &name, bool strip) c
 
 const BaseCookie& RequestHandler::cookies() {
     if (!_cookies) {
-        _cookies = boost::make_optional(BaseCookie());
+        _cookies.emplace();
         if (_request->getHTTPHeader()->contain("Cookie")) {
             try {
                 _cookies->load(_request->getHTTPHeader()->getItem("Cookie"));
@@ -176,7 +176,7 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
         ThrowException(ValueError, String::format("Invalid cookie %s: %s", name.c_str(), value.c_str()));
     }
     if (!_newCookies) {
-        _newCookies = boost::make_optional(std::vector<BaseCookie>());
+        _newCookies.emplace();
     }
     _newCookies->emplace_back();
     BaseCookie &newCookie = _newCookies->back();
@@ -201,6 +201,17 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
             morsel.setItem(kv.first, kv.second);
         }
     }
+}
+
+void RequestHandler::redirect(const std::string &url, bool permanent) {
+    if (_headersWritten) {
+        ThrowException(Exception, "Cannot redirect after headers have been written");
+    }
+    setStatus(permanent ? 301 : 302);
+    const boost::regex patt(R"([\x00-\x20]+)");
+    std::string location = URLParse::urlJoin(_request->getURI(), boost::regex_replace(url, patt, ""));
+    setHeader("Location", location);
+    finish();
 }
 
 

@@ -73,11 +73,11 @@ public:
 
     BaseCookie() = default;
 
-    BaseCookie(const std::string &input) {
+    explicit BaseCookie(const std::string &input) {
         load(input);
     }
 
-    BaseCookie(const StringMap &input) {
+    explicit BaseCookie(const StringMap &input) {
         load(input);
     }
 

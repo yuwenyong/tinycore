@@ -21,7 +21,7 @@ public:
 
     HTTPHeaders() {}
 
-    HTTPHeaders(const StringMap &nameValues) {
+    explicit HTTPHeaders(const StringMap &nameValues) {
         update(nameValues);
     }
 
