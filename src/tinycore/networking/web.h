@@ -67,9 +67,14 @@ public:
     void setHeader(const std::string &name, const std::string &value);
     void setHeader(const std::string &name, const char *value);
 
+//    template <typename T>
+//    void setHeader(const std::string &name, T &&value) {
+//        _headers[name] = std::to_string(std::forward<T>(value));
+//    }
+
     template <typename T>
-    void setHeader(const std::string &name, T &&value) {
-        _headers[name] = std::to_string(std::forward<T>(value));
+    void setHeader(const std::string &name, T value) {
+        _headers[name] = std::to_string(value);
     }
 
     std::string getArgument(const std::string &name, bool strip= true) const;

@@ -24,7 +24,11 @@ public:
     static std::tuple<std::string, std::string> urlDefrag(const std::string &url);
     static std::string unquote(const std::string &s);
     static std::string unquotePlus(const std::string &s);
-//    static std::string quote(const std::string &s, const std::string &safe="/");
+    static std::string quote(const std::string &s, std::string safe="/");
+    static std::string quotePlus(const std::string &s, const std::string safe="");
+    static std::string urlEncode(const StringMap &query);
+    static std::string urlEncode(const QueryArgumentsList &query);
+    static std::string urlEncode(const QueryArguments &query);
     static QueryArguments parseQS(const std::string &queryString, bool keepBlankValues=false,
                                     bool strictParsing=false);
     static QueryArgumentsList parseQSL(const std::string &queryString, bool keepBlankValues=false,
@@ -38,6 +42,8 @@ protected:
     static const StringSet _usesParams;
     static const char * _schemeChars;
     static const std::map<std::string, char> _hexToChar;
+    static const char * _alwaysSafe;
+    static const std::map<char, std::string> _safeMap;
 };
 
 //class URLSplitKey {
