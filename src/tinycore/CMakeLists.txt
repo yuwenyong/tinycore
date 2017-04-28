@@ -1,6 +1,7 @@
 file(GLOB sources_common common/*.h common/*.cpp)
 file(GLOB sources_compress compress/*.h compress/*.cpp)
 file(GLOB sources_configuration configuration/*.h configuration/*.cpp)
+file(GLOB sources_crypto crypto/*.h crypto/*.cpp)
 file(GLOB sources_debugging debugging/*.h debugging/*.cpp)
 file(GLOB sources_logging logging/*.h logging/*.cpp)
 file(GLOB sources_networking networking/*.h networking/*.cpp)
@@ -12,6 +13,7 @@ set(tinycore_srcs
         ${sources_common}
         ${sources_compress}
         ${sources_configuration}
+        ${sources_crypto}
         ${sources_debugging}
         ${sources_logging}
         ${sources_networking}

@@ -11,6 +11,8 @@
 #include <boost/any.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/optional.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
 #include "tinycore/networking/httpserver.h"
@@ -105,11 +107,51 @@ public:
     }
 
     void redirect(const std::string &url, bool permanent=false);
-    void finish() {}
+
+    void write(const char *chunk, size_t length) {
+        ASSERT(!_finished);
+        _writeBuffer.insert(_writeBuffer.end(), chunk, chunk + length);
+    }
+
+    void write(const char *chunk) {
+        ASSERT(!_finished);
+        _writeBuffer.insert(_writeBuffer.end(), chunk, chunk + strlen(chunk));
+    }
+
+    void write(const std::string &chunk) {
+        ASSERT(!_finished);
+        _writeBuffer.insert(_writeBuffer.end(), chunk.begin(), chunk.end());
+    }
+
+    void write(const std::vector<char> &chunk) {
+        ASSERT(!_finished);
+        _writeBuffer.insert(_writeBuffer.end(), chunk.begin(), chunk.end());
+    }
+
+    void write(const boost::property_tree::ptree &chunk) {
+        ASSERT(!_finished);
+        setHeader("Content-Type", "text/javascript; charset=UTF-8");
+        std::ostringstream chunkBuffer;
+        boost::property_tree::write_json(chunkBuffer, chunk);
+        write(chunkBuffer.str());
+    }
+
+    void flush(bool includeFooters= false);
+
+    template <typename... Args>
+    void finish(Args&&... args) {
+        write(std::forward<Args>(args)...);
+        finish();
+    }
+
+    void finish();
 protected:
     void execute(TransformsType &transforms, StringVector args) {
 
     }
+
+    std::string generateHeaders() const;
+    void log();
 
     std::string requestSummary() const {
         return "";
@@ -122,7 +164,7 @@ protected:
     bool _autoFinish{true};
     TransformsType _transforms;
     StringMap _headers;
-    MessageBuffer _writeBuffer;
+    std::vector<char> _writeBuffer;
     int _statusCode;
     CookiesType _cookies;
     NewCookiesType _newCookies;

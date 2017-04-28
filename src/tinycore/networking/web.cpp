@@ -81,7 +81,7 @@ void RequestHandler::clear() {
             setHeader("Connection", "Keep-Alive");
         }
     }
-    _writeBuffer.reset();
+    _writeBuffer.clear();
     _statusCode = 200;
 }
 
@@ -212,6 +212,52 @@ void RequestHandler::redirect(const std::string &url, bool permanent) {
     std::string location = URLParse::urlJoin(_request->getURI(), boost::regex_replace(url, patt, ""));
     setHeader("Location", location);
     finish();
+}
+
+void RequestHandler::flush(bool includeFooters) {
+    std::vector<char> chunk = std::move(_writeBuffer);
+    std::string headers;
+    if (!_headersWritten) {
+        _headersWritten = true;
+        for (auto &transfrom: _transforms) {
+            transfrom.transformFirstChunk(_headers, chunk, includeFooters);
+        }
+        headers = generateHeaders();
+    } else {
+        for (auto &transfrom: _transforms) {
+            transfrom.transformChunk(chunk, includeFooters);
+        }
+    }
+    if (_request->getMethod() == "HEAD") {
+        if (!headers.empty()) {
+            _request->write(headers);
+        }
+        return;
+    }
+    if (!chunk.empty()) {
+        headers.append(chunk.data(), chunk.size());
+    }
+    if (!headers.empty()) {
+        _request->write(headers);
+    }
+}
+
+void RequestHandler::finish() {
+    ASSERT(!_finished);
+    if (!_headersWritten) {
+        const std::string &method = _request->getMethod();
+        if (_statusCode == 200 && (method == "GET" || method == "HEAD") && _headers.find("Etag") == _headers.end()) {
+
+        }
+        if (_headers.find("Content-Length") == _headers.end()) {
+            setHeader("Content-Length", _writeBuffer.size());
+        }
+    }
+    _request->getConnection()->getStream()->setCloseCallback(nullptr);
+    flush(true);
+    _request->finish();
+    log();
+    _finished = true;
 }
 
 

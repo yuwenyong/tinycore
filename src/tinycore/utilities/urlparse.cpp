@@ -396,7 +396,7 @@ std::string URLParse::quote(const std::string &s, std::string safe) {
     StringVector tempList;
     for (char c: s) {
         if (safe.find(c) != std::string::npos) {
-            tempList.emplace_back(c, 1);
+            tempList.emplace_back(1, c);
         } else {
             tempList.emplace_back(_safeMap.at(c));
         }
