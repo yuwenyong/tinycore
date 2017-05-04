@@ -8,12 +8,17 @@
 #include <regex>
 #include "tinycore/networking/httpserver.h"
 #include "tinycore/networking/web.h"
+#include "tinycore/crypto/hashlib.h"
 //#include <boost/dll.hpp>
 
 
 int main(int argc, char **argv) {
 //    boost::dll::this_line_location();
     ParseCommandLine(argc, argv);
+    SHA1Object md5("aaaadadwadwad");
+    std::cout << md5.hex() << std::endl;
+    md5.update("haha");
+    std::cout << md5.hex() << std::endl;
     Application app;
     Timeout timeout = sIOLoop->addTimeout(10.0, [](){
         Log::info("First Timeout");

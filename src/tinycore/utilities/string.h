@@ -61,6 +61,14 @@ public:
         std::vector<char> deleteChars;
         return translate(s, table, deleteChars);
     }
+
+    static bool toBool(const std::string &s) {
+        std::string lowerStr = boost::to_lower_copy(s);
+        return lowerStr == "1" || lowerStr == "true" || lowerStr == "yes";
+    }
+
+    static std::string toHexStr(const std::string &s, bool reverse= false);
+    static std::string fromHexStr(const std::string &s, bool reverse= false);
 protected:
     template <typename T, typename... Args>
     static void format(FormatType &fmter, T &&value, Args&&... args) {

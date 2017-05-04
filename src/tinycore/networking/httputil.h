@@ -44,12 +44,12 @@ public:
         return _items.find(name) != _items.end();
     }
 
-    const std::string& getItem(const std::string &name) const {
+    std::string getItem(const std::string &name) const {
         return _items.at(HTTPHeaders::normalizeName(name));
     }
 
     void delItem(const std::string &name);
-    const std::string& get(const std::string &name, const std::string &defaultValue="") const;
+    std::string get(const std::string &name, const std::string &defaultValue="") const;
 
     void update(const StringMap &nameValues) {
         for(auto &nameValue: nameValues) {

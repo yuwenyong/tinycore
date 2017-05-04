@@ -22,7 +22,7 @@ void HTTPHeaders::add(const std::string &name, const std::string &value) {
 
 StringVector HTTPHeaders::getList(const std::string &name) const {
     std::string normName = normalizeName(name);
-    auto iter = _asList.find(name);
+    auto iter = _asList.find(normName);
     if (iter != _asList.end()) {
         return iter->second;
     } else {
@@ -52,13 +52,13 @@ void HTTPHeaders::delItem(const std::string &name) {
     if (!contain(normName)) {
         ThrowException(KeyError, normName);
     }
-    _items.erase(name);
-    _asList.erase(name);
+    _items.erase(normName);
+    _asList.erase(normName);
 }
 
-const std::string& HTTPHeaders::get(const std::string &name, const std::string &defaultValue) const {
+std::string HTTPHeaders::get(const std::string &name, const std::string &defaultValue) const {
     std::string normName = HTTPHeaders::normalizeName(name);
-    auto iter = _items.find(name);
+    auto iter = _items.find(normName);
     if (iter != _items.end()) {
         return iter->second;
     } else {

@@ -84,7 +84,7 @@ public:
     StringVector getArguments(const std::string &name, bool strip= true) const;
     const BaseCookie& cookies();
 
-    const std::string& getCookie(const std::string &name, const std::string &defaultValue= {}) {
+    std::string getCookie(const std::string &name, const std::string &defaultValue= {}) {
         if (cookies().contain(name)) {
             return cookies().getItem(name).getValue();
         }
@@ -150,8 +150,13 @@ protected:
 
     }
 
-    std::string generateHeaders() const;
-    void log();
+    std::string generateHeaders() const {
+        return "";
+    }
+
+    void log() {
+
+    }
 
     std::string requestSummary() const {
         return "";

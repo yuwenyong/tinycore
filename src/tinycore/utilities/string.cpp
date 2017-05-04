@@ -140,3 +140,41 @@ std::string String::translate(const std::string &s, const std::array<char, 256> 
     }
     return result;
 }
+
+std::string String::toHexStr(const std::string &s, bool reverse) {
+    int init = 0;
+    int end = (int)s.length();
+    int op = 1;
+    if (reverse) {
+        init = (int)s.length() - 1;
+        end = -1;
+        op = -1;
+    }
+    std::ostringstream ss;
+    for (int i = init; i != end; i += op) {
+        char buffer[4];
+        sprintf(buffer, "%02X", s[i]);
+        ss << buffer;
+    }
+    return ss.str();
+}
+
+std::string String::fromHexStr(const std::string &s, bool reverse) {
+    std::string out;
+    if (s.length() & 1) {
+        return out;
+    }
+    int init = 0;
+    int end = (int)s.length();
+    int op = 1;
+    if (reverse) {
+        init = (int)s.length() - 2;
+        end = -2;
+        op = -1;
+    }
+    for (int i = init; i != end; i += 2 * op) {
+        char buffer[3] = { s[i], s[i + 1], '\0' };
+        out.push_back((char)strtoul(buffer, NULL, 16));
+    }
+    return out;
+}
