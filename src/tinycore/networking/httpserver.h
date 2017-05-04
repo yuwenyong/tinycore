@@ -203,12 +203,20 @@ public:
         return _uri;
     }
 
+    const std::string& getVersion() const {
+        return _version;
+    }
+
     void setBody(const char* body, size_t length) {
         _body.assign(body, length);
     }
 
     const std::string& getBody() const {
         return _body;
+    }
+
+    const std::string& getRemoteIp() const {
+        return _remoteIp;
     }
 
     const std::string& getHost() const {
@@ -234,6 +242,7 @@ public:
     void addArgument(std::string name, std::string value);
     void addArguments(std::string name, StringVector values);
     void addFile(std::string name, HTTPFile file);
+    std::string dump() const;
 protected:
     std::string _method;
     std::string _uri;

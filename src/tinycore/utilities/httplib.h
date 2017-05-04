@@ -73,6 +73,6 @@ enum class HTTPStatusCode {
     NOT_EXTENDED = 510,
 };
 
-extern std::map<int, std::string> HTTPResponses;
+extern const std::map<int, std::string> HTTPResponses;
 
 #endif //TINYCORE_HTTPLIB_H

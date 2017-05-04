@@ -145,22 +145,24 @@ public:
     }
 
     void finish();
+    void sendError(int statusCode = 500);
+    virtual std::string getErrorHTML(int statusCode);
+    void requireSetting(const std::string &name, const std::string &feature="this feature");
+
+    template <typename... Args>
+    std::string reverseURL(const std::string &name, Args&&... args);
+
+    static const StringSet supportedMethods;
 protected:
-    void execute(TransformsType &transforms, StringVector args) {
-
-    }
-
-    std::string generateHeaders() const {
-        return "";
-    }
-
-    void log() {
-
-    }
+    void execute(TransformsType &transforms, StringVector args);
+    std::string generateHeaders() const;
+    void log();
 
     std::string requestSummary() const {
-        return "";
+        return _request->getMethod() + " " + _request->getURI() + " (" + _request->getRemoteIp() + ")";
     }
+
+    void handleRequestException(std::exception &e);
 
     Application *_application;
     HTTPRequestPtr _request;
@@ -190,6 +192,11 @@ public:
         return requestHandler;
     }
 };
+
+
+#define Asynchronous() { this->_autoFinish = false; }
+#define RemoveSlash()
+#define AddSlash()
 
 
 class TC_COMMON_API Application {
@@ -266,6 +273,10 @@ public:
 
     const char *getTypeName() const override {
         return "HTTPError";
+    }
+
+    int getStatusCode() const {
+        return _statusCode;
     }
 protected:
     int _statusCode;
@@ -423,6 +434,11 @@ std::string Application::reverseURL(const std::string &name, Args&&... args) {
         ThrowException(KeyError, std::move(error));
     }
     return iter->second->reverse(std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+std::string RequestHandler::reverseURL(const std::string &name, Args&&... args) {
+    return _application->reverseURL(name, std::forward<Args>(args)...);
 }
 
 #endif //TINYCORE_WEB_H

@@ -5,6 +5,7 @@
 #include "tinycore/networking/web.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
+#include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/logging/log.h"
 
@@ -247,7 +248,16 @@ void RequestHandler::finish() {
     if (!_headersWritten) {
         const std::string &method = _request->getMethod();
         if (_statusCode == 200 && (method == "GET" || method == "HEAD") && _headers.find("Etag") == _headers.end()) {
-
+            SHA1Object hasher;
+            hasher.update(_writeBuffer.data(), _writeBuffer.size());
+            std::string etag = "\"" + hasher.hex() + "\"";
+            std::string inm = _request->getHTTPHeader()->get("If-None-Match");
+            if (inm.find(etag.c_str()) != std::string::npos) {
+                _writeBuffer.clear();
+                setStatus(304);
+            } else {
+                setHeader("Etag", etag);
+            }
         }
         if (_headers.find("Content-Length") == _headers.end()) {
             setHeader("Content-Length", _writeBuffer.size());
@@ -258,6 +268,111 @@ void RequestHandler::finish() {
     _request->finish();
     log();
     _finished = true;
+}
+
+void RequestHandler::sendError(int statusCode) {
+    if (_headersWritten) {
+        Log::error("Cannot send error response after headers written");
+        if (!_finished) {
+            finish();
+            return;
+        }
+    }
+    clear();
+    setStatus(statusCode);
+    std::string message = getErrorHTML(statusCode);
+    finish(std::move(message));
+}
+
+std::string RequestHandler::getErrorHTML(int statusCode) {
+    const std::string &message = HTTPResponses.at(statusCode);
+    return String::format("<html><title>%d: %s</title><body>%d: %s</body></html>", statusCode, message.c_str(),
+                          statusCode, message.c_str());
+}
+
+void RequestHandler::requireSetting(const std::string &name, const std::string &feature) {
+    const Application::SettingsType &settings = _application->getSettings();
+    if (settings.find("name") == settings.end()) {
+        ThrowException(Exception, String::format("You must define the '%s' setting in your application to use %s",
+                                                 name.c_str(), feature.c_str()));
+    }
+}
+
+const StringSet RequestHandler::supportedMethods = {
+        "GET", "HEAD", "POST", "DELETE", "PUT", "OPTIONS"
+};
+
+void RequestHandler::execute(TransformsType &transforms, StringVector args) {
+    _transforms.transfer(_transforms.end(), transforms);
+    try {
+        const std::string &method = _request->getMethod();
+        if (supportedMethods.find(method) == supportedMethods.end()) {
+            ThrowException(HTTPError, 405);
+        }
+        prepare();
+        if (!_finished) {
+            if (method == "HEAD") {
+                onHead(std::move(args));
+            } else if (method == "GET") {
+                onGet(std::move(args));
+            } else if (method == "POST") {
+                onPost(std::move(args));
+            } else if (method == "DELETE") {
+                onDelete(std::move(args));
+            } else if (method == "PUT") {
+                onPut(std::move(args));
+            } else {
+                ASSERT(method == "OPTIONS");
+                onOptions(std::move(args));
+            }
+            if (_autoFinish && !_finished) {
+                finish();
+            }
+        }
+    } catch (std::exception &e) {
+        handleRequestException(e);
+    }
+}
+
+std::string RequestHandler::generateHeaders() const {
+    StringVector lines;
+    lines.emplace_back(_request->getVersion() + " " + std::to_string(_statusCode) + " "
+                       + HTTPResponses.at(_statusCode));
+    for (auto &header: _headers) {
+        lines.emplace_back(header.first + ": " + header.second);
+    }
+    if (_newCookies) {
+        for (auto &cookieDict: _newCookies.get()) {
+            cookieDict.getAll([&lines](const std::string &key, const Morsel &cookie) {
+                lines.emplace_back("Set-Cookie: " + cookie.outputString());
+            });
+        }
+    }
+    return boost::join(lines, "\r\n") + "\r\n\r\n";
+}
+
+void RequestHandler::log() {
+    _application->logRequest(this);
+}
+
+void RequestHandler::handleRequestException(std::exception &e) {
+    HTTPError *error = dynamic_cast<HTTPError *>(&e);
+    if (dynamic_cast<HTTPError *>(&e)) {
+        std::string summary = requestSummary();
+        Log::warn("%d %s: %s", _statusCode, summary.c_str(), error->what());
+        int statusCode = error->getStatusCode();
+        if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
+            Log::error("Bad HTTP status code: %d", statusCode);
+            sendError(500);
+        } else {
+            sendError(statusCode);
+        }
+    } else {
+        std::string summary = requestSummary();
+        std::string requestInfo = _request->dump();
+        Log::error("Uncaught exception %s\n%s\n%s", error->what(), summary.c_str(), requestInfo.c_str());
+        sendError(500);
+    }
 }
 
 
@@ -406,7 +521,7 @@ const char* HTTPError::what() const noexcept {
         _what += std::to_string(_statusCode);
         _what += " ";
         ASSERT(HTTPResponses.find(_statusCode) != HTTPResponses.end());
-        _what += HTTPResponses[_statusCode];
+        _what += HTTPResponses.at(_statusCode);
         std::string what = std::runtime_error::what();
         if (!what.empty()) {
             _what += " (";

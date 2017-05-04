@@ -461,3 +461,7 @@ void HTTPRequest::addFile(std::string name, HTTPFile file) {
         _files.emplace(std::move(name), std::vector<HTTPFile>{std::move(file)});
     }
 }
+
+std::string HTTPRequest::dump() const {
+    return "";
+}
