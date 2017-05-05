@@ -3,7 +3,6 @@
 //
 
 #include "tinycore/networking/web.h"
-#include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
 #include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/trace.h"

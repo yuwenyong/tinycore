@@ -235,6 +235,10 @@ public:
         return _path;
     }
 
+    const std::string& getQuery() const {
+        return _query;
+    }
+
     const QueryArgumentsType& getArguments() const {
         return _arguments;
     }

@@ -463,5 +463,19 @@ void HTTPRequest::addFile(std::string name, HTTPFile file) {
 }
 
 std::string HTTPRequest::dump() const {
-    return "";
+    StringVector argsList;
+    argsList.emplace_back("protocol=" + _protocol);
+    argsList.emplace_back("host=" + _host);
+    argsList.emplace_back("method=" + _method);
+    argsList.emplace_back("uri=" + _uri);
+    argsList.emplace_back("version=" + _version);
+    argsList.emplace_back("remoteIp=" + _remoteIp);
+    argsList.emplace_back("body=" + _body);
+    std::string args = boost::join(argsList, ",");
+    StringVector headersList;
+    _headers->getAll([&headersList](const std::string &name, const std::string &value){
+         headersList.emplace_back("\"" + name + "\": \"" + value + "\"");
+    });
+    std::string headers = boost::join(headersList, ", ");
+    return String::format("HTTPRequest(%s, headers=\"{%s}\"", args.c_str(), headers.c_str());
 }

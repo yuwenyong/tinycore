@@ -9,6 +9,7 @@
 #include <boost/functional/factory.hpp>
 #include <boost/xpressive/xpressive.hpp>
 #include <boost/any.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/optional.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -193,10 +194,46 @@ public:
     }
 };
 
+#define Asynchronous() { \
+    this->_autoFinish = false; \
+}
 
-#define Asynchronous() { this->_autoFinish = false; }
-#define RemoveSlash()
-#define AddSlash()
+#define RemoveSlash() { \
+    const std::string &path = this->_request->getPath(); \
+    if (boost::ends_with(path, "/")) { \
+        const std::string &method = this->_request->getMethod(); \
+        if (method == "GET" || method == "HEAD") { \
+            std::string uri = boost::trim_right_copy_if(path, boost::is_any_of("/")); \
+            if (!uri.empty()) { \
+                const std::string &query = this->_request->getQuery(); \
+                if (!query.empty()) { \
+                    uri += "?" + query; \
+                } \
+                this->redirect(uri); \
+                return; \
+            } \
+        } else { \
+            ThrowException(HTTPError, 404); \
+        } \
+    } \
+}
+
+#define AddSlash() { \
+    const std::string &path = this->_request->getPath(); \
+    if (!boost::ends_with(path, "/")) { \
+        const std::string &method = this->_request->getMethod(); \
+        if (method == "GET" || method == "HEAD") { \
+            std::string uri = path + "/"; \
+            const std::string &query = this->_request->getQuery(); \
+            if (!query.empty()) { \
+                uri += "?" + query; \
+            } \
+            this->redirect(uri); \
+            return; \
+        } \
+        ThrowException(HTTPError, 404); \
+    } \
+}
 
 
 class TC_COMMON_API Application {
