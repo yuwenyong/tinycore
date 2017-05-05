@@ -6,41 +6,57 @@
 #include "tinycore/configuration/options.h"
 #include "tinycore/networking/ioloop.h"
 #include <regex>
+#include <boost/assign.hpp>
 #include "tinycore/networking/httpserver.h"
 #include "tinycore/networking/web.h"
 #include "tinycore/crypto/hashlib.h"
 //#include <boost/dll.hpp>
 
 
+using namespace boost::assign;
+
+class HelloWorld: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) {
+        write("Hello world");
+    }
+};
+
+
+class Book: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) {
+        std::string price = getArgument("price");
+        write(String::format("Book name:%s, price:%s\n", args[0].c_str(), price.c_str()));
+    }
+
+    void onPost(StringVector args) {
+        write("Create book " + args[0]);
+    }
+
+    void onPut(StringVector args) {
+        write("Update book " + args[0]);
+    }
+
+    void onDelete(StringVector args) {
+        write("Delete book " + args[0]);
+    }
+};
+
+
 int main(int argc, char **argv) {
-//    boost::dll::this_line_location();
     ParseCommandLine(argc, argv);
-    SHA1Object md5("aaaadadwadwad");
-    std::cout << md5.hex() << std::endl;
-    md5.update("haha");
-    std::cout << md5.hex() << std::endl;
-    Application app;
-    Timeout timeout = sIOLoop->addTimeout(10.0, [](){
-        Log::info("First Timeout");
-//        ioloop.stop();
-    });
-//    Timeout timeout2 = ioloop.addTimeout(5.0, [](){
-//        Log::info("Second Timeout");
-//    });
-    auto repeatTimer = PeriodicCallback::create([]() {
-        Log::info("repeat Timer");
-    }, 1.0f);
-    repeatTimer->start();
-//    IOLoop::instance()->removeTimeout(timeout2);
-//    IOLoop::instance()->removeTimeout(timeout2);
-    HTTPServer server([](HTTPRequestPtr request){
-        Log::info("Hello world");
-        request->write("Hello world!!! Dont ignore\r\n");
-        request->finish();
-    }, false);
-    server.listen(7070);
-    Log::info("Server start");
+    Application::HandlersType handlers;
+//    handlers.push_back(url<HelloWorld>("/"));
+//    handlers.push_back(url<Book>(R"(/books/(\w+)/)"));
+    push_back(handlers)(url<HelloWorld>("/"))(url<Book>(R"(/books/(\w+)/)"));
+    Application application(handlers);
+    HTTPServer server(HTTPServerCB(application));
+    server.listen(3080);
     sIOLoop->start();
-    Log::info("Server end");
     return 0;
 }

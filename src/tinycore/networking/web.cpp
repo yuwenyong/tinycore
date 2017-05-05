@@ -6,6 +6,7 @@
 #include <boost/regex.hpp>
 #include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/log.h"
 
 
@@ -13,10 +14,15 @@ RequestHandler::RequestHandler(Application *application, HTTPRequestPtr request)
         : _application(application)
         , _request(std::move(request)) {
     clear();
+#ifndef NDEBUG
+    sWatcher->inc(SYS_REQUESTHANDLER_COUNT);
+#endif
 }
 
 RequestHandler::~RequestHandler() {
-
+#ifndef NDEBUG
+    sWatcher->dec(SYS_REQUESTHANDLER_COUNT);
+#endif
 }
 
 void RequestHandler::start(ArgsType &args) {
@@ -412,7 +418,7 @@ void Application::addHandlers(std::string hostPattern, HandlersType &hostHandler
     } else {
         _handlers.push_back(handler.release());
     }
-    _handlers.transfer(_handlers.end(), hostHandlers);
+    handlers.transfer(handlers.end(), hostHandlers);
     for (auto &spec: handlers) {
         if (!spec.getName().empty()) {
             if (_namedHandlers.find(spec.getName()) != _namedHandlers.end()) {
@@ -648,6 +654,10 @@ void ChunkedTransferEncoding::transformChunk(std::vector<char> &chunk, bool fini
     }
 }
 
+URLSpec::URLSpec(std::string pattern, HandlerClassType handlerClass, std::string name)
+        : URLSpec(std::move(pattern), std::move(handlerClass), {}, std::move(name)) {
+
+}
 
 URLSpec::URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args, std::string name)
         : _pattern(std::move(pattern))

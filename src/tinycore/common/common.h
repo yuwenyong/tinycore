@@ -90,6 +90,17 @@ inline const char * strnstr(const char *s1, size_t len1, const char *s2) {
     return strnstr(s1, len1, s2, strlen(s2));
 }
 
+template <typename T>
+inline T* pointer(T *param) {
+    return param;
+}
+
+template <typename T>
+inline T* pointer(T &param) {
+    static_assert(!std::is_pointer<T>::value, "");
+    return &param;
+}
+
 typedef std::vector<std::string> StringVector;
 typedef std::map<std::string, std::string> StringMap;
 typedef std::set<std::string> StringSet;
@@ -133,5 +144,6 @@ using Time = boost::posix_time::time_duration;
 #define SYS_SSLIOSTREAM_COUNT "TinyCore.SSLIOStream.Count"
 #define SYS_HTTPCONNECTION_COUNT "TinyCore.HTTPConnection.Count"
 #define SYS_HTTPREQUEST_COUNT "TinyCore.HTTPConnection.Count"
+#define SYS_REQUESTHANDLER_COUNT "TinyCore.RequestHandler.Count"
 
 #endif //TINYCORE_COMMON_H

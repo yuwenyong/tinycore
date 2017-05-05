@@ -256,7 +256,7 @@ public:
 
     template <typename... Args>
     HTTPServerPtr listen(unsigned short port, std::string address, Args&&... args) {
-        HTTPServerPtr server = make_unique([this](HTTPRequestPtr request) {
+        HTTPServerPtr server = make_unique<HTTPServer>([this](HTTPRequestPtr request) {
             (*this)(std::move(request));
         }, std::forward<Args>(args)...);
         server->listen(port, std::move(address));
@@ -291,6 +291,9 @@ protected:
     std::string _defaultHost;
     SettingsType _settings;
 };
+
+
+#define HTTPServerCB(app) std::bind(&Application::operator(), pointer(app), std::placeholders::_1)
 
 
 class TC_COMMON_API HTTPError: public Exception {
@@ -404,12 +407,13 @@ protected:
 };
 
 
-class TC_COMMON_API URLSpec {
+class TC_COMMON_API URLSpec: public NonCopyable {
 public:
     typedef boost::xpressive::sregex RegexType;
     typedef RequestHandler::ArgsType ArgsType;
     typedef std::function<RequestHandlerPtr (Application*, HTTPRequestPtr, ArgsType&)> HandlerClassType;
 
+    URLSpec(std::string pattern, HandlerClassType handlerClass, std::string name);
     URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args={}, std::string name={});
 
     template <typename... Args>
@@ -456,7 +460,15 @@ protected:
     int _groupCount;
 };
 
-using url = URLSpec;
+
+//#define url(pattern, HandlerClass, ...) boost::factory<URLSpec*>()(pattern, RequestHandlerFactory<HandlerClass>(), ##__VA_ARGS__)
+
+template <typename HandlerClass, typename... Args>
+URLSpec* url(const std::string &pattern, Args&&... args) {
+    RequestHandlerFactory<HandlerClass> handlerFactory;
+    return boost::factory<URLSpec*>()(pattern, handlerFactory, std::forward<Args>(args)...);
+}
+
 
 template <typename T>
 void Application::addTransform() {
