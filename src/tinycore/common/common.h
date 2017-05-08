@@ -145,5 +145,6 @@ using Time = boost::posix_time::time_duration;
 #define SYS_HTTPCONNECTION_COUNT "TinyCore.HTTPConnection.Count"
 #define SYS_HTTPREQUEST_COUNT "TinyCore.HTTPConnection.Count"
 #define SYS_REQUESTHANDLER_COUNT "TinyCore.RequestHandler.Count"
+#define SYS_WEBSOCKETHANDLER_COUNT "TinyCore.WebSocketHandler.Count"
 
 #endif //TINYCORE_COMMON_H

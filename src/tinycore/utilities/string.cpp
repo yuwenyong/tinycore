@@ -178,3 +178,13 @@ std::string String::fromHexStr(const std::string &s, bool reverse) {
     }
     return out;
 }
+
+std::string String::filter(const std::string &s, std::function<bool(char)> pred) {
+    std::string result;
+    for (char c: s) {
+        if (pred(c)) {
+            result.push_back(c);
+        }
+    }
+    return result;
+}

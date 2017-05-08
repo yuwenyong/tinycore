@@ -69,6 +69,7 @@ public:
 
     static std::string toHexStr(const std::string &s, bool reverse= false);
     static std::string fromHexStr(const std::string &s, bool reverse= false);
+    static std::string filter(const std::string &s, std::function<bool (char)> pred);
 protected:
     template <typename T, typename... Args>
     static void format(FormatType &fmter, T &&value, Args&&... args) {

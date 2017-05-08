@@ -119,6 +119,10 @@ public:
         return _request.lock();
     }
 
+    BaseIOStreamPtr releaseStream() {
+        ASSERT(_streamKeeper);
+        return std::move(_streamKeeper);
+    }
 protected:
     void onWriteComplete();
     void finishRequest();
@@ -218,6 +222,10 @@ public:
 
     const std::string& getRemoteIp() const {
         return _remoteIp;
+    }
+
+    const std::string& getProtocol() const {
+        return _protocol;
     }
 
     const std::string& getHost() const {

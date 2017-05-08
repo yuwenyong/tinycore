@@ -24,6 +24,14 @@ BaseIOStream::~BaseIOStream() {
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
+    const char *loc = strnstr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), delimiter.c_str());
+    if (loc) {
+        size_t readBytes = loc - _readBuffer.getReadPointer() + _readDelimiter.size();
+        BufferType buffer(_readBuffer.getReadPointer(), readBytes);
+        _readBuffer.readCompleted(readBytes);
+        callback(buffer);
+        return;
+    }
     _readDelimiter = std::move(delimiter);
     _readCallback = std::move(callback);
     checkClosed();
@@ -33,8 +41,14 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     if (numBytes == 0) {
-        BufferType buff;
-        callback(buff);
+        BufferType buffer;
+        callback(buffer);
+        return;
+    }
+    if (_readBuffer.getActiveSize() >= _readBytes) {
+        BufferType buffer(_readBuffer.getReadPointer(), _readBytes);
+        _readBuffer.readCompleted(_readBytes);
+        callback(buffer);
         return;
     }
     _readBytes = numBytes;
@@ -84,8 +98,8 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             size_t readBytes = _readBytes;
             _readBytes = 0;
             BufferType buffer(_readBuffer.getReadPointer(), readBytes);
-            callback(buffer);
             _readBuffer.readCompleted(readBytes);
+            callback(buffer);
         }
     } else if (!_readDelimiter.empty()){
         const char *loc = strnstr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), _readDelimiter.c_str());
@@ -94,8 +108,8 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             ReadCallbackType callback = std::move(_readCallback);
             _readDelimiter.clear();
             BufferType buffer(_readBuffer.getReadPointer(), readBytes);
-            callback(buffer);
             _readBuffer.readCompleted(readBytes);
+            callback(buffer);
         }
     }
     if (closed()) {

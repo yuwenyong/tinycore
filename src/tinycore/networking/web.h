@@ -156,7 +156,7 @@ public:
 
     static const StringSet supportedMethods;
 protected:
-    void execute(TransformsType &transforms, StringVector args);
+    virtual void execute(TransformsType &transforms, StringVector args);
     std::string generateHeaders() const;
     void log();
 
