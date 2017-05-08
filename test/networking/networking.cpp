@@ -50,11 +50,10 @@ public:
 
 int main(int argc, char **argv) {
     ParseCommandLine(argc, argv);
-    Application::HandlersType handlers;
-//    handlers.push_back(url<HelloWorld>("/"));
-//    handlers.push_back(url<Book>(R"(/books/(\w+)/)"));
-    push_back(handlers)(url<HelloWorld>("/"))(url<Book>(R"(/books/(\w+)/)"));
-    Application application(handlers);
+    Application application({
+                                    url<HelloWorld>("/"),
+                                    url<Book>(R"(/books/(\w+)/)"),
+                            });
     HTTPServer server(HTTPServerCB(application));
     server.listen(3080);
     sIOLoop->start();

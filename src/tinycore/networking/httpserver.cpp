@@ -433,6 +433,16 @@ float HTTPRequest::requestTime() const {
     return elapse.count() / 1000 + elapse.count() % 1000 / 1000.0f;
 }
 
+//const SSLOption* HTTPRequest::getSSLCertificate() const {
+//    auto stream = _connection->getStream();
+//    auto sslStream = std::dynamic_pointer_cast<SSLIOStream>(stream);
+//    if (sslStream) {
+//
+//    } else {
+//        return nullptr;
+//    }
+//}
+
 void HTTPRequest::addArgument(std::string name, std::string value) {
     auto iter = _arguments.find(name);
     if (iter != _arguments.end()) {

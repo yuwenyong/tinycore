@@ -275,7 +275,7 @@ void RequestHandler::finish() {
     _finished = true;
 }
 
-void RequestHandler::sendError(int statusCode) {
+void RequestHandler::sendError(int statusCode, std::exception *e) {
     if (_headersWritten) {
         Log::error("Cannot send error response after headers written");
         if (!_finished) {
@@ -285,11 +285,11 @@ void RequestHandler::sendError(int statusCode) {
     }
     clear();
     setStatus(statusCode);
-    std::string message = getErrorHTML(statusCode);
+    std::string message = getErrorHTML(statusCode, e);
     finish(std::move(message));
 }
 
-std::string RequestHandler::getErrorHTML(int statusCode) {
+std::string RequestHandler::getErrorHTML(int statusCode, std::exception *e) {
     const std::string &message = HTTPResponses.at(statusCode);
     return String::format("<html><title>%d: %s</title><body>%d: %s</body></html>", statusCode, message.c_str(),
                           statusCode, message.c_str());
@@ -335,7 +335,7 @@ void RequestHandler::execute(TransformsType &transforms, StringVector args) {
             }
         }
     } catch (std::exception &e) {
-        handleRequestException(e);
+        handleRequestException(&e);
     }
 }
 
@@ -360,28 +360,28 @@ void RequestHandler::log() {
     _application->logRequest(this);
 }
 
-void RequestHandler::handleRequestException(std::exception &e) {
-    HTTPError *error = dynamic_cast<HTTPError *>(&e);
-    if (dynamic_cast<HTTPError *>(&e)) {
+void RequestHandler::handleRequestException(std::exception *e) {
+    HTTPError *error = dynamic_cast<HTTPError *>(e);
+    if (error) {
         std::string summary = requestSummary();
         Log::warn("%d %s: %s", _statusCode, summary.c_str(), error->what());
         int statusCode = error->getStatusCode();
         if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
             Log::error("Bad HTTP status code: %d", statusCode);
-            sendError(500);
+            sendError(500, e);
         } else {
-            sendError(statusCode);
+            sendError(statusCode, e);
         }
     } else {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
-        Log::error("Uncaught exception %s\n%s\n%s", error->what(), summary.c_str(), requestInfo.c_str());
-        sendError(500);
+        Log::error("Uncaught exception %s\n%s\n%s", e->what(), summary.c_str(), requestInfo.c_str());
+        sendError(500, e);
     }
 }
 
 
-Application::Application(HandlersType &handlers,
+Application::Application(HandlersType &&handlers,
                          std::string defaultHost,
                          TransformsType transforms,
                          SettingsType settings)
@@ -396,7 +396,7 @@ Application::Application(HandlersType &handlers,
         _transforms = std::move(transforms);
     }
     if (!handlers.empty()) {
-        addHandlers(".*$", handlers);
+        addHandlers(".*$", std::move(handlers));
     }
 }
 
@@ -404,7 +404,7 @@ Application::~Application() {
 
 }
 
-void Application::addHandlers(std::string hostPattern, HandlersType &hostHandlers) {
+void Application::addHandlers(std::string hostPattern, HandlersType &&hostHandlers) {
     if (!boost::ends_with(hostPattern, "$")) {
         hostPattern.push_back('$');
     }
@@ -487,7 +487,7 @@ void Application::logRequest(RequestHandler *handler) const {
     }
 }
 
-Application::HandlersType Application::defaultHandlers = {};
+//Application::HandlersType Application::defaultHandlers = {};
 
 Application::HandlersType * Application::getHostHandlers(HTTPRequestPtr request) {
     std::string host = request->getHost();

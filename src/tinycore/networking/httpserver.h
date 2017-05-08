@@ -190,6 +190,7 @@ public:
     }
 
     float requestTime() const;
+//    const SSLOption * getSSLCertificate() const;
 
     const HTTPHeaders* getHTTPHeader() const {
         return _headers.get();

@@ -10,7 +10,6 @@
 #include <boost/xpressive/xpressive.hpp>
 #include <boost/any.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/optional.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -18,6 +17,7 @@
 #include "tinycore/compress/gzip.h"
 #include "tinycore/networking/httpserver.h"
 #include "tinycore/utilities/cookie.h"
+#include "tinycore/utilities/container.h"
 #include "tinycore/utilities/httplib.h"
 
 
@@ -34,6 +34,7 @@ public:
     typedef std::map<std::string, boost::any> SettingsType;
     typedef boost::optional<BaseCookie> CookiesType;
     typedef boost::optional<std::vector<BaseCookie>> NewCookiesType;
+    typedef boost::property_tree::ptree JSONType;
 
     friend class Application;
 
@@ -129,7 +130,7 @@ public:
         _writeBuffer.insert(_writeBuffer.end(), chunk.begin(), chunk.end());
     }
 
-    void write(const boost::property_tree::ptree &chunk) {
+    void write(const JSONType &chunk) {
         ASSERT(!_finished);
         setHeader("Content-Type", "text/javascript; charset=UTF-8");
         std::ostringstream chunkBuffer;
@@ -146,8 +147,8 @@ public:
     }
 
     void finish();
-    void sendError(int statusCode = 500);
-    virtual std::string getErrorHTML(int statusCode);
+    void sendError(int statusCode = 500, std::exception *e= nullptr);
+    virtual std::string getErrorHTML(int statusCode, std::exception *e= nullptr);
     void requireSetting(const std::string &name, const std::string &feature="this feature");
 
     template <typename... Args>
@@ -163,7 +164,7 @@ protected:
         return _request->getMethod() + " " + _request->getURI() + " (" + _request->getRemoteIp() + ")";
     }
 
-    void handleRequestException(std::exception &e);
+    void handleRequestException(std::exception *e);
 
     Application *_application;
     HTTPRequestPtr _request;
@@ -238,7 +239,7 @@ public:
 
 class TC_COMMON_API Application {
 public:
-    typedef boost::ptr_vector<URLSpec> HandlersType;
+    typedef PtrVector<URLSpec> HandlersType;
     typedef boost::xpressive::sregex HostPatternType;
     typedef std::pair<HostPatternType, HandlersType> HostHandlerType;
     typedef boost::ptr_vector<HostHandlerType> HostHandlersType;
@@ -248,11 +249,11 @@ public:
     typedef std::vector<TransformType> TransformsType;
     typedef std::function<void (RequestHandler *)> LogFunctionType;
 
-    Application(HandlersType &handlers=defaultHandlers, std::string defaultHost="", TransformsType transforms={},
+    Application(HandlersType &&handlers={}, std::string defaultHost="", TransformsType transforms={},
                 SettingsType settings={});
     virtual ~Application();
 
-    void addHandlers(std::string hostPattern, HandlersType &hostHandlers);
+    void addHandlers(std::string hostPattern, HandlersType &&hostHandlers);
 
     template <typename... Args>
     HTTPServerPtr listen(unsigned short port, std::string address, Args&&... args) {
@@ -281,7 +282,7 @@ public:
         return _settings;
     }
 
-    static HandlersType defaultHandlers;
+//    static HandlersType defaultHandlers;
 protected:
     HandlersType* getHostHandlers(HTTPRequestPtr request);
 
