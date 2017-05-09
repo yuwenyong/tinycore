@@ -55,8 +55,7 @@ void WebSocketHandler::close() {
         char data[] = {'\xff', '\x00'};
         BufferType chunk(data, sizeof(data));
         stream->write(chunk);
-        _waiting = sIOLoop->addTimeout(5.0f, std::bind(&WebSocketHandler::abort,
-                                                       std::static_pointer_cast<WebSocketHandler>(shared_from_this())));
+        _waiting = sIOLoop->addTimeout(5.0f, std::bind(&WebSocketHandler::abort, getSelf<WebSocketHandler>()));
     }
 }
 
@@ -66,6 +65,7 @@ void WebSocketHandler::onConnectionClose() {
 }
 
 void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
+    std::cout << "OnExecute" << std::endl;
     _openArgs = std::move(args);
     try {
         _wsRequest = make_unique<WebSocketRequest>(_request);
@@ -90,8 +90,7 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
     ASSERT(stream);
     BufferType buffer(initial.c_str(), initial.size());
     stream->write(buffer);
-    stream->readBytes(8, std::bind(&WebSocketHandler::handleChallenge,
-                                   std::static_pointer_cast<WebSocketHandler>(shared_from_this()),
+    stream->readBytes(8, std::bind(&WebSocketHandler::handleChallenge, getSelf<WebSocketHandler>(),
                                    std::placeholders::_1));
 }
 
@@ -135,9 +134,7 @@ void WebSocketHandler::abort() {
 void WebSocketHandler::receiveMessage() {
     auto stream = getStream();
     _streamKeeper.reset();
-    stream->readBytes(1, std::bind(&WebSocketHandler::onFrameType,
-                                   std::static_pointer_cast<WebSocketHandler>(shared_from_this()),
-                                   std::placeholders::_1));
+    stream->readBytes(1, std::bind(&WebSocketHandler::onFrameType, getSelf<WebSocketHandler>(), std::placeholders::_1));
 }
 
 void WebSocketHandler::onFrameType(BufferType &data) {
@@ -150,12 +147,11 @@ void WebSocketHandler::onFrameType(BufferType &data) {
         std::string delimiter('\xff', 1);
         _streamKeeper.reset();
         stream->readUntil(std::move(delimiter), std::bind(&WebSocketHandler::onEndDelimiter,
-                                                          std::static_pointer_cast<WebSocketHandler>(shared_from_this()),
+                                                          getSelf<WebSocketHandler>(),
                                                           std::placeholders::_1));
     } else if (frameType == 0xff) {
         _streamKeeper.reset();
-        stream->readBytes(1, std::bind(&WebSocketHandler::onLengthIndicator,
-                                       std::static_pointer_cast<WebSocketHandler>(shared_from_this()),
+        stream->readBytes(1, std::bind(&WebSocketHandler::onLengthIndicator, getSelf<WebSocketHandler>(),
                                        std::placeholders::_1));
     } else {
         abort();
@@ -197,41 +193,6 @@ void WebSocketHandler::onLengthIndicator(BufferType &data) {
     close();
 }
 
-//#define _NOT_SUPPORTED() ThrowException(Exception, "Method not supported for Web Sockets")
-//
-//
-//void WebSocketHandler::write(const char *chunk, size_t length) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::redirect(const std::string &url, bool permanent) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::setHeader(const std::string &name, const std::string &value) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::sendError(int statusCode) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::setCookie(const std::string &name, const std::string &value, const char *domain,
-//                                 const DateTime *expires, const char *path, int *expiresDays, const StringMap *args) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::setStatus(int statusCode) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::flush(bool includeFooters) {
-//    _NOT_SUPPORTED();
-//}
-//
-//void WebSocketHandler::finish() {
-//    _NOT_SUPPORTED();
-//}
 
 std::string WebSocketRequest::challengeResponse(const std::string &challenge) {
     auto headers = _request->getHTTPHeader();

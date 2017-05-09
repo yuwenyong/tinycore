@@ -11,6 +11,9 @@
 #include "tinycore/networking/ioloop.h"
 
 
+#define _NOT_SUPPORTED(func) void func() { ThrowException(Exception, #func " not supported for Web Sockets"); }
+
+
 class WebSocketRequest;
 typedef std::unique_ptr<WebSocketRequest> WebSocketRequestPtr;
 
@@ -68,16 +71,14 @@ protected:
     WebSocketRequestPtr _wsRequest;
     Timeout _waiting;
 public:
-//    void write(const char *chunk, size_t length);
-//    void redirect(const std::string &url, bool permanent=false);
-//    void setHeader(const std::string &name, const std::string &value);
-//    void sendError(int statusCode = 500);
-//    void setCookie(const std::string &name, const std::string &value, const char *domain= nullptr,
-//                   const DateTime *expires= nullptr, const char *path= "/", int *expiresDays= nullptr,
-//                   const StringMap *args= nullptr);
-//    void setStatus(int statusCode);
-//    void flush(bool includeFooters= false);
-//    void finish();
+    _NOT_SUPPORTED(write)
+    _NOT_SUPPORTED(redirect)
+    _NOT_SUPPORTED(setHeader)
+    _NOT_SUPPORTED(sendError)
+    _NOT_SUPPORTED(setCookie)
+    _NOT_SUPPORTED(setStatus)
+    _NOT_SUPPORTED(flush)
+    _NOT_SUPPORTED(finish)
 };
 
 

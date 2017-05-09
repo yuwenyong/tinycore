@@ -154,6 +154,11 @@ public:
     template <typename... Args>
     std::string reverseURL(const std::string &name, Args&&... args);
 
+    template <typename T>
+    std::shared_ptr<T> getSelf() {
+        return std::static_pointer_cast<T>(shared_from_this());
+    }
+
     static const StringSet supportedMethods;
 protected:
     virtual void execute(TransformsType &transforms, StringVector args);
