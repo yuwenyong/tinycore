@@ -175,6 +175,8 @@ void WebSocketHandler::onEndDelimiter(BufferType &data) {
             Log::error("Uncaught exception %s in %s", e.what(), _request->getPath().c_str());
             abort();
         }
+    }
+    if (!_clientTerminated) {
         receiveMessage();
     }
 }
@@ -224,11 +226,11 @@ void WebSocketRequest::handleWebSocketHeaders() const {
 
 std::string WebSocketRequest::calculatePart(const std::string &key) {
     std::string number = String::filter(key, boost::is_digit());
-    std::string spaces = String::filter(key, boost::is_space());
-    if (number.empty() || spaces.empty()) {
+    int spaces = String::count(key, boost::is_space());
+    if (number.empty() || spaces == 0) {
         ThrowException(ValueError, "");
     }
-    unsigned int keyNumber = (unsigned int)(std::stoul(number) / spaces.length());
+    unsigned int keyNumber = (unsigned int)(std::stoul(number) / spaces);
     boost::endian::native_to_big_inplace(keyNumber);
     return std::string((char *)&keyNumber, 4);
 }

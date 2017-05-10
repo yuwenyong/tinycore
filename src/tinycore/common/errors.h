@@ -54,6 +54,7 @@ DECLARE_EXCEPTION(IOError, Environment);
 DECLARE_EXCEPTION(ParsingError, Exception);
 DECLARE_EXCEPTION(DuplicateKey, Exception);
 DECLARE_EXCEPTION(NotFound, Exception);
+DECLARE_EXCEPTION(MemoryError, Exception);
 
 
 class TC_COMMON_API AssertionError: public Exception {

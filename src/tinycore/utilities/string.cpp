@@ -71,6 +71,16 @@ int String::count(const std::string &s, const char *sub) {
     return r;
 }
 
+int String::count(const std::string &s, std::function<bool(char)> pred) {
+    int r = 0;
+    for (char c: s) {
+        if (pred(c)) {
+            ++r;
+        }
+    }
+    return r;
+}
+
 void String::capitalize(std::string &s) {
     size_t i, len = s.length();
     if (len > 0) {

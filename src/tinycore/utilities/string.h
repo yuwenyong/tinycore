@@ -44,6 +44,7 @@ public:
 
     static int count(const std::string &s, char c);
     static int count(const std::string &s, const char *sub);
+    static int count(const std::string &s, std::function<bool (char)> pred);
 
     static void capitalize(std::string &s);
     static std::string capitalizeCopy(const std::string &s);
