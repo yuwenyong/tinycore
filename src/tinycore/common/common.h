@@ -70,6 +70,7 @@
 
 #endif
 
+
 inline unsigned long atoul(char const* str) {
     return strtoul(str, nullptr, 10);
 }
@@ -101,6 +102,8 @@ inline T* pointer(T &param) {
     return &param;
 }
 
+typedef uint8_t Byte;
+typedef std::vector<Byte> ByteArray;
 typedef std::vector<std::string> StringVector;
 typedef std::map<std::string, std::string> StringMap;
 typedef std::set<std::string> StringSet;

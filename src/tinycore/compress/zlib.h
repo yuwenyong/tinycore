@@ -26,174 +26,84 @@ DECLARE_EXCEPTION(ZlibError, Exception);
 
 class Zlib {
 public:
-    static int adler32(const char *data, size_t len, unsigned int value=1) {
-        return ::adler32(value, (const Bytef *)data, len);
+    static int adler32(const Byte *data, size_t len, unsigned int value=1) {
+        return ::adler32(value, (Bytef *)data, len);
+    }
+
+    static int adler32(const ByteArray &data, unsigned int value=1) {
+        return adler32(data.data(), data.size(), value);
+    }
+
+    static int adler32(const char *data, unsigned int value=1) {
+        return adler32((const Byte *)data, strlen(data), value);
     }
 
     static int adler32(const std::string &data, unsigned int value=1) {
-        return adler32(data.data(), data.size(), value);
+        return adler32((const Byte *)data.data(), data.size(), value);
     }
 
-    static int adler32(const std::vector<char> &data, unsigned int value=1) {
-        return adler32(data.data(), data.size(), value);
-    }
-
-    static int crc32(const char *data, size_t len, unsigned int value=0) {
+    static int crc32(const Byte *data, size_t len, unsigned int value=0) {
         return ::crc32(value, (const Bytef *)data, len);
     }
 
+    static int crc32(const ByteArray &data, unsigned int value=0) {
+        return crc32(data.data(), data.size(), value);
+    }
+
+    static int crc32(const char *data, unsigned int value=0) {
+        return crc32((const Byte *)data, strlen(data), value);
+    }
+
     static int crc32(const std::string &data, unsigned int value=0) {
-        return crc32(data.data(), data.size(), value);
+        return crc32((const Byte *)data.data(), data.size(), value);
     }
 
-    static int crc32(const std::vector<char> &data, unsigned int value=0) {
-        return crc32(data.data(), data.size(), value);
-    }
+    static ByteArray compress(const Byte *data, size_t len, int level=zDefaultCompression);
 
-    template <typename T>
-    static void compress(const char *data, size_t len, T &outVal, int level=zDefaultCompression) {
-        z_stream zst;
-        zst.zalloc = (alloc_func)NULL;
-        zst.zfree = (free_func)Z_NULL;
-        zst.next_in = (Bytef *)data;
-        size_t oBufLen = DEFAULTALLOC, occupied = 0;
-        T retVal;
-        int err = deflateInit(&zst, level);
-        if (err != Z_OK) {
-            if (err == Z_MEM_ERROR) {
-                ThrowException(MemoryError, "Out of memory while compressing data");
-            } else if (err == Z_STREAM_ERROR) {
-                ThrowException(ZlibError, "Bad compression level");
-            } else {
-                deflateEnd(&zst);
-                handleError(zst, err, "while compressing data");
-            }
-        }
-        zst.avail_in = len;
-        do {
-            if (retVal.empty()) {
-                occupied = 0;
-            } else {
-                occupied = zst.next_out - (Bytef *)retVal.data();
-                oBufLen <<= 1;
-            }
-            retVal.resize(oBufLen);
-            zst.avail_out = oBufLen - occupied;
-            zst.next_out = (Bytef *)retVal.data() + occupied;
-            err = deflate(&zst, Z_FINISH);
-            if (err == Z_STREAM_ERROR) {
-                deflateEnd(&zst);
-                ThrowException(ZlibError, "while compressing data");
-            }
-        } while (zst.avail_out == 0);
-        ASSERT(zst.avail_in == 0);
-        ASSERT(err == Z_STREAM_END);
-        err = deflateEnd(&zst);
-        if (err != Z_OK) {
-            handleError(zst, err, "while finishing compression");
-        }
-        retVal.resize(zst.next_out - (Bytef *)retVal.data());
-        retVal.swap(outVal);
-    }
-
-    template <typename T>
-    static void compress(const std::string &data, T &outVal, int level=zDefaultCompression) {
-        compress(data.data(), data.size(), outVal, level);
-    }
-
-    template <typename T>
-    static void compress(const std::vector<char> &data, T &outVal, int level=zDefaultCompression) {
-        compress(data.data(), data.size(), outVal, level);
-    }
-
-    static std::string compress(const char *data, size_t len, int level=zDefaultCompression) {
-        std::string retVal;
-        compress(data, len, retVal, level);
-        return retVal;
-    }
-
-    static std::string compress(const std::string &data, int level=zDefaultCompression) {
+    static ByteArray compress(const ByteArray &data, int level=zDefaultCompression) {
         return compress(data.data(), data.size(), level);
     }
 
-    static std::string compress(const std::vector<char> &data, int level=zDefaultCompression) {
-        return compress(data.data(), data.size(), level);
+    static ByteArray compress(const char *data, int level=zDefaultCompression) {
+        return compress((const Byte *)data, strlen(data), level);
     }
 
-    template <typename T>
-    static void decompress(const char *data, size_t len, T &outVal, int wbits=maxWBits) {
-        z_stream zst;
-        zst.zalloc = (alloc_func)NULL;
-        zst.zfree = (free_func)Z_NULL;
-        zst.avail_in = 0;
-        zst.next_in = (Bytef *)data;
-        size_t oBufLen = DEFAULTALLOC, occupied = 0;
-        T retVal;
-        int err = inflateInit2(&zst, wbits);
-        if (err != Z_OK) {
-            if (err == Z_MEM_ERROR) {
-                ThrowException(MemoryError, "Out of memory while decompressing data");
-            } else {
-                inflateEnd(&zst);
-                handleError(zst, err, "while preparing to decompress data");
-            }
-        }
-        zst.avail_in = len;
-        retVal.clear();
-        do {
-            if (retVal.empty()) {
-                occupied = 0;
-            } else {
-                occupied = zst.next_out - (Bytef *)retVal.data();
-                oBufLen <<= 1;
-            }
-            retVal.resize(oBufLen);
-            zst.avail_out = oBufLen - occupied;
-            zst.next_out = (Bytef *)retVal.data() + occupied;
-            err = inflate(&zst, Z_FINISH);
-            if (err != Z_OK && err != Z_BUF_ERROR && err != Z_STREAM_END) {
-                inflateEnd(&zst);
-                if (err == Z_MEM_ERROR) {
-                    ThrowException(MemoryError, "Out of memory while decompressing data");
-                } else {
-                    handleError(zst, err, "while decompressing data");
-                }
-            }
-        } while (zst.avail_out == 0);
-        if (err != Z_STREAM_END) {
-            inflateEnd(&zst);
-            handleError(zst, err, "while decompressing data");
-        }
-        err = inflateEnd(&zst);
-        if (err != Z_OK) {
-            handleError(zst, err, "while finishing data decompression");
-        }
-        retVal.resize(zst.next_out - (Bytef *)retVal.data());
-        retVal.swap(outVal);
+    static ByteArray compress(const std::string &data, int level=zDefaultCompression) {
+        return compress((const Byte *)data.data(), data.size(), level);
     }
 
-    template <typename T>
-    static void decompress(const std::string &data, T &outVal, int wbits=maxWBits) {
-        decompress(data.data(), data.size(), outVal, wbits);
+    static std::string compressToString(const Byte *data, size_t len, int level=zDefaultCompression);
+
+    static std::string compressToString(const ByteArray &data, int level=zDefaultCompression) {
+        return compressToString(data.data(), data.size(), level);
     }
 
-    template <typename T>
-    static void decompress(const std::vector<char> &data, T &outVal, int wbits=maxWBits) {
-        decompress(data.data(), data.size(), outVal, wbits);
+    static std::string compressToString(const char* data, int level=zDefaultCompression) {
+        return compressToString((const Byte *)data, strlen(data), level);
     }
 
-    static std::string decompress(const char *data, size_t len, int wbits=maxWBits) {
-        std::string retVal;
-        decompress(data, len, retVal, wbits);
-        return retVal;
+    static std::string compressToString(const std::string &data, int level=zDefaultCompression) {
+        return compressToString((const Byte *)data.data(), data.length(), level);
     }
 
-    static std::string decompress(const std::string &data, int wbits=maxWBits) {
+    static ByteArray decompress(const Byte *data, size_t len, int wbits=maxWBits);
+
+    static ByteArray decompress(const ByteArray &data, int wbits=maxWBits) {
         return decompress(data.data(), data.size(), wbits);
     }
 
-    static std::string decompress(const std::vector<char> &data, int wbits=maxWBits) {
-        return decompress(data.data(), data.size(), wbits);
+    static ByteArray decompress(const std::string &data, int wbits=maxWBits) {
+        return decompress((const Byte *)data.data(), data.size(), wbits);
+    }
+
+    static std::string decompressToString(const Byte *data, size_t len, int wbits=maxWBits);
+
+    static std::string decompressToString(const ByteArray &data, int wbits=maxWBits) {
+        return decompressToString(data.data(), data.size(), wbits);
+    }
+
+    static std::string decompressToString(const std::string &data, int wbits=maxWBits) {
+        return decompressToString((const Byte *)data.data(), data.size(), wbits);
     }
 
     static void handleError(z_stream zst, int err, const char *msg);
@@ -218,7 +128,7 @@ public:
 class CompressObj {
 public:
     CompressObj(int level=Zlib::zDefaultCompression, int method=Zlib::deflated, int wbits=Zlib::maxWBits,
-                int memLevel=Zlib::defMemLevel, int strategy=0);
+                int memLevel=Zlib::defMemLevel, int strategy=Zlib::zDefaultStrategy);
     CompressObj(const CompressObj &rhs);
     CompressObj(CompressObj &&rhs);
     CompressObj& operator=(const CompressObj &rhs);
@@ -228,107 +138,41 @@ public:
         clear();
     }
 
-    template <typename T>
-    void compress(const char *data, size_t len, T &outVal) {
-        _zst.next_in = (Bytef *)data;
-        size_t oBufLen = DEFAULTALLOC, occupied = 0;
-        int err;
-        T retVal;
-        _zst.avail_in = len;
-        do {
-            if (retVal.empty()) {
-                occupied = 0;
-            } else {
-                occupied = _zst.next_out - (Bytef *)retVal.data();
-                oBufLen <<= 1;
-            }
-            retVal.resize(oBufLen);
-            _zst.avail_out = oBufLen - occupied;
-            _zst.next_out = (Bytef *)retVal.data() + occupied;
-            err = deflate(&_zst, Z_NO_FLUSH);
-            if (err == Z_STREAM_ERROR) {
-                Zlib::handleError(_zst, err, "while compressing data");
-            }
-        } while (_zst.avail_out == 0);
-        ASSERT(_zst.avail_in == 0);
-        retVal.resize(_zst.next_out - (Bytef *)retVal.data());
-        retVal.swap(outVal);
-    }
+    ByteArray compress(const Byte *data, size_t len);
 
-    template <typename T>
-    void compress(const std::string &data, T &outVal) {
-        compress(data.data(), data.size(), outVal);
-    }
-
-    template <typename T>
-    void compress(const std::vector<char> &data, T &outVal) {
-        compress(data.data(), data.size(), outVal);
-    }
-
-    std::string compress(const char *data, size_t len) {
-        std::string retVal;
-        compress(data, len, retVal);
-        return retVal;
-    }
-
-    std::string compress(const std::string &data) {
+    ByteArray compress(const ByteArray &data) {
         return compress(data.data(), data.size());
     }
 
-    std::string compress(const std::vector<char> &data) {
-        return compress(data.data(), data.size());
+    ByteArray compress(const char *data) {
+        return compress((const Byte *)data, strlen(data));
     }
 
-    template <typename T>
-    void flush(T &outVal, int flushMode=Z_FINISH) {
-        size_t oBufLen = DEFAULTALLOC, occupied = 0;
-        int err;
-        T retVal;
-        if (flushMode == Z_NO_FLUSH) {
-            retVal.swap(outVal);
-            return;
-        }
-        _zst.avail_in = 0;
-        do {
-            if (retVal.empty()) {
-                occupied = 0;
-            } else {
-                occupied = _zst.next_out - (Bytef *)retVal.data();
-                oBufLen <<= 1;
-            }
-            retVal.resize(oBufLen);
-            _zst.avail_out = oBufLen - occupied;
-            _zst.next_out = (Bytef *)retVal.data() + occupied;
-            err = deflate(&_zst, flushMode);
-            if (err == Z_STREAM_ERROR) {
-                Zlib::handleError(_zst, err, "while flushing");
-            }
-        } while (_zst.avail_out == 0);
-        ASSERT(_zst.avail_in == 0);
-        if (err == Z_STREAM_END && flushMode == Z_FINISH) {
-            err = deflateEnd(&_zst);
-            if (err != Z_OK) {
-                Zlib::handleError(_zst, err, "from deflateEnd()");
-            } else {
-                _inited = false;
-            }
-        } else if (err != Z_OK && err != Z_BUF_ERROR) {
-            Zlib::handleError(_zst, err, "while flushing");
-        }
-        retVal.resize(_zst.next_out - (Bytef *)retVal.data());
-        retVal.swap(outVal);
+    ByteArray compress(const std::string &data) {
+        return compress((const Byte *)data.data(), data.size());
     }
 
-    std::string flush(int flushMode=Z_FINISH) {
-        std::string retVal;
-        flush(retVal, flushMode);
-        return retVal;
+    std::string compressToString(const Byte *data, size_t len);
+
+    std::string compressToString(const ByteArray &data) {
+        return compressToString(data.data(), data.size());
     }
+
+    std::string compressToString(const char *data) {
+        return compressToString((const Byte *)data, strlen(data));
+    }
+
+    std::string compressToString(const std::string &data) {
+        return compressToString((const Byte *)data.data(), data.size());
+    }
+
+    ByteArray flush(int flushMode=Zlib::zFinish);
+    std::string flushToString(int flushMode=Zlib::zFinish);
 protected:
-    void init();
+    void initialize();
     void clear();
 
-    bool _inited{false};
+    bool _inited;
     int _level;
     int _method;
     int _wbits;
@@ -339,7 +183,57 @@ protected:
 
 
 class DecompressObj {
+public:
+    DecompressObj(int wbits=Zlib::maxWBits);
+    DecompressObj(const DecompressObj &rhs);
+    DecompressObj(DecompressObj &&rhs);
+    DecompressObj& operator=(const DecompressObj &rhs);
+    DecompressObj& operator=(DecompressObj &&rhs);
 
+    ~DecompressObj() {
+        clear();
+    }
+
+    ByteArray decompress(const Byte *data, size_t len, size_t maxLength=0);
+
+    ByteArray decompress(const ByteArray &data, size_t maxLength=0) {
+        return decompress(data.data(), data.size(), maxLength);
+    }
+
+    ByteArray decompress(const std::string &data, size_t maxLength=0) {
+        return decompress((const Byte *)data.data(), data.size(), maxLength);
+    }
+
+    std::string decompressToString(const Byte *data, size_t len, size_t maxLength=0);
+
+    std::string decompressToString(const ByteArray &data, size_t maxLength=0) {
+        return decompressToString(data.data(), data.size(), maxLength);
+    }
+
+    std::string decompressToString(const std::string &data, size_t maxLength=0) {
+        return decompressToString((const Byte *)data.data(), data.size(), maxLength);
+    }
+
+    ByteArray flush();
+    std::string flushToString();
+
+    const ByteArray& getUnusedData() const {
+        return _unusedData;
+    }
+
+    const ByteArray& getUnconsumedTail() const {
+        return _unconsumedTail;
+    }
+protected:
+    void saveUnconsumedInput(const Byte *data, size_t len, int err);
+    void initialize();
+    void clear();
+
+    bool _inited;
+    int _wbits;
+    z_stream _zst;
+    ByteArray _unusedData;
+    ByteArray _unconsumedTail;
 };
 
 
