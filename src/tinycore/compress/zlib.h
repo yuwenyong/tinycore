@@ -26,35 +26,35 @@ DECLARE_EXCEPTION(ZlibError, Exception);
 
 class Zlib {
 public:
-    static int adler32(const Byte *data, size_t len, unsigned int value=1) {
+    static unsigned long adler32(const Byte *data, size_t len, unsigned long value=1) {
         return ::adler32(value, (Bytef *)data, len);
     }
 
-    static int adler32(const ByteArray &data, unsigned int value=1) {
+    static unsigned long adler32(const ByteArray &data, unsigned long value=1) {
         return adler32(data.data(), data.size(), value);
     }
 
-    static int adler32(const char *data, unsigned int value=1) {
+    static unsigned long adler32(const char *data, unsigned long value=1) {
         return adler32((const Byte *)data, strlen(data), value);
     }
 
-    static int adler32(const std::string &data, unsigned int value=1) {
+    static unsigned long adler32(const std::string &data, unsigned long value=1) {
         return adler32((const Byte *)data.data(), data.size(), value);
     }
 
-    static int crc32(const Byte *data, size_t len, unsigned int value=0) {
+    static unsigned long crc32(const Byte *data, size_t len, unsigned long value=0) {
         return ::crc32(value, (const Bytef *)data, len);
     }
 
-    static int crc32(const ByteArray &data, unsigned int value=0) {
+    static unsigned long crc32(const ByteArray &data, unsigned long value=0) {
         return crc32(data.data(), data.size(), value);
     }
 
-    static int crc32(const char *data, unsigned int value=0) {
+    static unsigned long crc32(const char *data, unsigned long value=0) {
         return crc32((const Byte *)data, strlen(data), value);
     }
 
-    static int crc32(const std::string &data, unsigned int value=0) {
+    static unsigned long crc32(const std::string &data, unsigned long value=0) {
         return crc32((const Byte *)data.data(), data.size(), value);
     }
 

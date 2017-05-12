@@ -51,6 +51,7 @@ DECLARE_EXCEPTION(ValueError, Exception);
 DECLARE_EXCEPTION(IllegalArguments, Exception);
 DECLARE_EXCEPTION(Environment, Exception);
 DECLARE_EXCEPTION(IOError, Environment);
+DECLARE_EXCEPTION(EOFError, Exception);
 DECLARE_EXCEPTION(ParsingError, Exception);
 DECLARE_EXCEPTION(DuplicateKey, Exception);
 DECLARE_EXCEPTION(NotFound, Exception);
