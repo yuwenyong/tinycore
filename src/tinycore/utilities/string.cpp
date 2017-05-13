@@ -163,7 +163,9 @@ std::string String::toHexStr(const std::string &s, bool reverse) {
     std::ostringstream ss;
     for (int i = init; i != end; i += op) {
         char buffer[4];
-        sprintf(buffer, "%02X", s[i]);
+        printf("---------\n");
+        printf("%d",(int)(s[i]));
+        sprintf(buffer, "%02X", (int)s[i]);
         ss << buffer;
     }
     return ss.str();

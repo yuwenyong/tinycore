@@ -142,7 +142,7 @@ void WebSocketHandler::onFrameType(BufferType &data) {
     if (stream->dying()) {
         _streamKeeper = stream;
     }
-    char frameType = boost::asio::buffer_cast<const char *>(data)[0];
+    unsigned char frameType = boost::asio::buffer_cast<const unsigned char *>(data)[0];
     if (frameType == 0x00) {
         std::string delimiter('\xff', 1);
         _streamKeeper.reset();

@@ -352,7 +352,22 @@ ByteArray CompressObj::compress(const Byte *data, size_t len) {
     ByteArray retVal;
     _zst.avail_in = len;
     do {
-        ArrangeOutputBuffer(_zst, retVal, oBufLen);
+        {
+            size_t occupied;
+            if (retVal.empty()) {
+                retVal.resize(oBufLen);
+                occupied = 0;
+            } else {
+                occupied = _zst.next_out - (Bytef *)retVal.data();
+                if (occupied == oBufLen) {
+                    oBufLen <<= 1;
+                    retVal.resize(oBufLen);
+                }
+            }
+            _zst.avail_out = oBufLen - occupied;
+            _zst.next_out = (Bytef *)retVal.data() + occupied;
+        }
+        //ArrangeOutputBuffer(_zst, retVal, oBufLen);
         err = deflate(&_zst, Z_NO_FLUSH);
         if (err == Z_STREAM_ERROR) {
             Zlib::handleError(_zst, err, "while compressing data");
@@ -371,7 +386,22 @@ std::string CompressObj::compressToString(const Byte *data, size_t len) {
     std::string retVal;
     _zst.avail_in = len;
     do {
-        ArrangeOutputBuffer(_zst, retVal, oBufLen);
+        {
+            size_t occupied;
+            if (retVal.empty()) {
+                retVal.resize(oBufLen);
+                occupied = 0;
+            } else {
+                occupied = _zst.next_out - (Bytef *)retVal.data();
+                if (occupied == oBufLen) {
+                    oBufLen <<= 1;
+                    retVal.resize(oBufLen);
+                }
+            }
+            _zst.avail_out = oBufLen - occupied;
+            _zst.next_out = (Bytef *)retVal.data() + occupied;
+        }
+//        ArrangeOutputBuffer(_zst, retVal, oBufLen);
         err = deflate(&_zst, Z_NO_FLUSH);
         if (err == Z_STREAM_ERROR) {
             Zlib::handleError(_zst, err, "while compressing data");

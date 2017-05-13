@@ -1,11 +1,28 @@
 cmake_minimum_required(VERSION 3.6)
+
+set(CMAKE_DISABLE_SOURCE_CHANGES ON)
+set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
+
 project(tinycore)
 
 set(CMAKE_CXX_STANDARD 11)
 
+set(CMAKE_SKIP_BUILD_RPATH 0)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH 0)
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH 1)
+
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/macros")
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
+
+include(CheckCXXSourceRuns)
+include(CheckIncludeFiles)
+
+include(CheckPlatform)
+include(AutoCollect)
 
 add_subdirectory(dep)
 add_subdirectory(src)

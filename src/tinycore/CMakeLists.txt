@@ -1,26 +1,12 @@
-file(GLOB sources_common common/*.h common/*.cpp)
-file(GLOB sources_compress compress/*.h compress/*.cpp)
-file(GLOB sources_configuration configuration/*.h configuration/*.cpp)
-file(GLOB sources_crypto crypto/*.h crypto/*.cpp)
-file(GLOB sources_debugging debugging/*.h debugging/*.cpp)
-file(GLOB sources_logging logging/*.h logging/*.cpp)
-file(GLOB sources_networking networking/*.h networking/*.cpp)
-#set(sources_networking networking/ioloop.h networking/ioloop.cpp networking/)
-file(GLOB sources_utilities utilities/*.h utilities/*.cpp)
+
+CollectSourceFiles(${CMAKE_CURRENT_SOURCE_DIR} PRIVATE_SOURCES)
+add_library(tinycore SHARED ${PRIVATE_SOURCES})
+target_include_directories(tinycore PUBLIC "${CMAKE_SOURCE_DIR}/src/")
+target_link_libraries(tinycore PUBLIC openssl boost zlib)
+
+#link_directories("/usr/local/lib")
+#include_directories(${CMAKE_SOURCE_DIR}/src/ /usr/local/include)
 
 
-set(tinycore_srcs
-        ${sources_common}
-        ${sources_compress}
-        ${sources_configuration}
-        ${sources_crypto}
-        ${sources_debugging}
-        ${sources_logging}
-        ${sources_networking}
-        ${sources_utilities})
-
-link_directories("/usr/local/lib64")
-include_directories(${CMAKE_SOURCE_DIR}/src/)
-
-add_library(tinycore SHARED ${tinycore_srcs})
-target_link_libraries(tinycore pthread openssl z boost_system boost_log boost_thread boost_date_time boost_program_options boost_iostreams)
+#target_link_libraries(tinycore pthread openssl z boost)
+#target_link_libraries(tinycore pthread ssl z boost_system boost_log boost_thread boost_date_time boost_program_options boost_iostreams)

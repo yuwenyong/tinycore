@@ -185,7 +185,7 @@ void HTTPConnection::onHeaders(BufferType &data) {
     try {
         const char *content = boost::asio::buffer_cast<const char *>(data);
         size_t length = boost::asio::buffer_size(data);
-        const char *eol = strnstr(content, length, "\r\n");
+        const char *eol = StrNStr(content, length, "\r\n");
         std::string startLine(content, eol);
         StringVector requestHeaders = String::split(startLine);
         if (requestHeaders.size() != 3) {

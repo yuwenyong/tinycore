@@ -81,14 +81,14 @@ inline unsigned long long atoull(char const* str) {
 
 #define STRINGIZE(a) #a
 
-TC_COMMON_API const char * strnstr(const char *s1, size_t len1, const char *s2, size_t len2);
+TC_COMMON_API const char * StrNStr(const char *s1, size_t len1, const char *s2, size_t len2);
 
-inline const char * strnstr(const char *s1, const char *s2, size_t len2) {
-    return strnstr(s1, strlen(s1), s2, len2);
+inline const char * StrNStr(const char *s1, const char *s2, size_t len2) {
+    return StrNStr(s1, strlen(s1), s2, len2);
 }
 
-inline const char * strnstr(const char *s1, size_t len1, const char *s2) {
-    return strnstr(s1, len1, s2, strlen(s2));
+inline const char * StrNStr(const char *s1, size_t len1, const char *s2) {
+    return StrNStr(s1, len1, s2, strlen(s2));
 }
 
 template <typename T>

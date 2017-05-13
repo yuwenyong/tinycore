@@ -13,7 +13,7 @@ template <typename T>
 class PtrVector: public boost::ptr_vector<T> {
 public:
     typedef boost::ptr_vector<T> SuperType;
-    using SuperType::ptr_vector;
+    using boost::ptr_vector<T>::ptr_vector;
 
     PtrVector(): SuperType() {
 

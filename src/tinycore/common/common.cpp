@@ -4,7 +4,7 @@
 
 #include "tinycore/common/common.h"
 
-const char* strnstr(const char *s1,size_t len1, const char *s2, size_t len2) {
+const char* StrNStr(const char *s1,size_t len1, const char *s2, size_t len2) {
     if (len2 > len1)
         return nullptr;
     const size_t len = len1 - len2;

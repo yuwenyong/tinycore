@@ -24,7 +24,7 @@ BaseIOStream::~BaseIOStream() {
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
-    const char *loc = strnstr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), delimiter.c_str());
+    const char *loc = StrNStr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), delimiter.c_str());
     if (loc) {
         size_t readBytes = loc - _readBuffer.getReadPointer() + _readDelimiter.size();
         BufferType buffer(_readBuffer.getReadPointer(), readBytes);
@@ -102,7 +102,7 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             callback(buffer);
         }
     } else if (!_readDelimiter.empty()){
-        const char *loc = strnstr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), _readDelimiter.c_str());
+        const char *loc = StrNStr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), _readDelimiter.c_str());
         if (loc) {
             size_t readBytes = loc - _readBuffer.getReadPointer() + _readDelimiter.size();
             ReadCallbackType callback = std::move(_readCallback);

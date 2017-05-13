@@ -8,6 +8,7 @@
 int main(int argc, char **argv) {
     std::string a("abcdefg");
     std::string b("gfedcda");
+    std::string c("IIIdawd123123nn");
     std::string restore;
 //
 //    GZipCompressor compressor("test.gz");
@@ -33,6 +34,7 @@ int main(int argc, char **argv) {
 //    std::cout << restore << std::endl;
 
     {
+        std::cout << String::toHexStr(c) << std::endl;
         GzipFile f;
         f.initWithOutputFile("testx.gz");
         f.write(a);
