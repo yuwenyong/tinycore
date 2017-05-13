@@ -151,28 +151,26 @@ std::string String::translate(const std::string &s, const std::array<char, 256> 
     return result;
 }
 
-std::string String::toHexStr(const std::string &s, bool reverse) {
+std::string String::toHexStr(const ByteArray &s, bool reverse) {
     int init = 0;
-    int end = (int)s.length();
+    int end = (int)s.size();
     int op = 1;
     if (reverse) {
-        init = (int)s.length() - 1;
+        init = (int)s.size() - 1;
         end = -1;
         op = -1;
     }
     std::ostringstream ss;
     for (int i = init; i != end; i += op) {
         char buffer[4];
-        printf("---------\n");
-        printf("%d",(int)(s[i]));
-        sprintf(buffer, "%02X", (int)s[i]);
+        sprintf(buffer, "%02X", s[i]);
         ss << buffer;
     }
     return ss.str();
 }
 
-std::string String::fromHexStr(const std::string &s, bool reverse) {
-    std::string out;
+ByteArray String::fromHexStr(const std::string &s, bool reverse) {
+    ByteArray out;
     if (s.length() & 1) {
         return out;
     }
@@ -186,7 +184,7 @@ std::string String::fromHexStr(const std::string &s, bool reverse) {
     }
     for (int i = init; i != end; i += 2 * op) {
         char buffer[3] = { s[i], s[i + 1], '\0' };
-        out.push_back((char)strtoul(buffer, NULL, 16));
+        out.push_back((Byte)strtoul(buffer, NULL, 16));
     }
     return out;
 }

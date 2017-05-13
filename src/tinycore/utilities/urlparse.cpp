@@ -293,7 +293,7 @@ std::string URLParse::urlJoin(const std::string &base, const std::string &url, b
     }
     if (path.empty() && params.empty()) {
         path = std::move(bpath);
-        params = std::move(params);
+        params = std::move(bparams);
         if (query.empty()) {
             query = std::move(bquery);
         }

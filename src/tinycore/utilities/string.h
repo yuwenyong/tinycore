@@ -68,8 +68,8 @@ public:
         return lowerStr == "1" || lowerStr == "true" || lowerStr == "yes";
     }
 
-    static std::string toHexStr(const std::string &s, bool reverse= false);
-    static std::string fromHexStr(const std::string &s, bool reverse= false);
+    static std::string toHexStr(const ByteArray &s, bool reverse= false);
+    static ByteArray fromHexStr(const std::string &s, bool reverse= false);
     static std::string filter(const std::string &s, std::function<bool (char)> pred);
 protected:
     template <typename T, typename... Args>

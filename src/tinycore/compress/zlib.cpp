@@ -241,6 +241,22 @@ void Zlib::handleError(z_stream zst, int err, const char *msg) {
     }
 }
 
+const int Zlib::maxWBits;
+const int Zlib::deflated;
+const int Zlib::defMemLevel;
+const int Zlib::zBestSpeed;
+const int Zlib::zBestCompression;
+const int Zlib::zDefaultCompression;
+const int Zlib::zFiltered;
+const int Zlib::zHuffmanOnly;
+const int Zlib::zDefaultStrategy;
+
+const int Zlib::zFinish;
+const int Zlib::zNoFlush;
+const int Zlib::zSyncFlush;
+const int Zlib::zFullFlush;
+
+
 CompressObj::CompressObj(int level, int method, int wbits, int memLevel, int strategy)
         : _inited(false)
         , _level(level)
@@ -352,22 +368,7 @@ ByteArray CompressObj::compress(const Byte *data, size_t len) {
     ByteArray retVal;
     _zst.avail_in = len;
     do {
-        {
-            size_t occupied;
-            if (retVal.empty()) {
-                retVal.resize(oBufLen);
-                occupied = 0;
-            } else {
-                occupied = _zst.next_out - (Bytef *)retVal.data();
-                if (occupied == oBufLen) {
-                    oBufLen <<= 1;
-                    retVal.resize(oBufLen);
-                }
-            }
-            _zst.avail_out = oBufLen - occupied;
-            _zst.next_out = (Bytef *)retVal.data() + occupied;
-        }
-        //ArrangeOutputBuffer(_zst, retVal, oBufLen);
+        ArrangeOutputBuffer(_zst, retVal, oBufLen);
         err = deflate(&_zst, Z_NO_FLUSH);
         if (err == Z_STREAM_ERROR) {
             Zlib::handleError(_zst, err, "while compressing data");
@@ -386,22 +387,7 @@ std::string CompressObj::compressToString(const Byte *data, size_t len) {
     std::string retVal;
     _zst.avail_in = len;
     do {
-        {
-            size_t occupied;
-            if (retVal.empty()) {
-                retVal.resize(oBufLen);
-                occupied = 0;
-            } else {
-                occupied = _zst.next_out - (Bytef *)retVal.data();
-                if (occupied == oBufLen) {
-                    oBufLen <<= 1;
-                    retVal.resize(oBufLen);
-                }
-            }
-            _zst.avail_out = oBufLen - occupied;
-            _zst.next_out = (Bytef *)retVal.data() + occupied;
-        }
-//        ArrangeOutputBuffer(_zst, retVal, oBufLen);
+        ArrangeOutputBuffer(_zst, retVal, oBufLen);
         err = deflate(&_zst, Z_NO_FLUSH);
         if (err == Z_STREAM_ERROR) {
             Zlib::handleError(_zst, err, "while compressing data");

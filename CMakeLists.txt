@@ -23,7 +23,8 @@ include(CheckIncludeFiles)
 
 include(CheckPlatform)
 include(AutoCollect)
-
+set(CMAKE_CXX_FLAGS "-fsanitize=address -O1  -fno-omit-frame-pointer -Wall ${CMAKE_CXX_FLAGS}")
+#add_compile_options(-Wall -fsanitize=address -O1  -fno-omit-frame-pointer)
 add_subdirectory(dep)
 add_subdirectory(src)
 add_subdirectory(test)

@@ -153,7 +153,7 @@ public:
     ssize_t seek(ssize_t offset, std::ios_base::seekdir whence=std::ios_base::beg);
     std::string readLine(ssize_t size=-1);
 
-    static const size_t maxReadChunk = 10 * 1024 * 1024;
+    static constexpr size_t maxReadChunk = 10 * 1024 * 1024;
 protected:
     void checkInited() const {
         if (_mode == GzipFileMode::READ) {

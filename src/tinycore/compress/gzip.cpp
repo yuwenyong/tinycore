@@ -100,7 +100,7 @@ void GzipFile::initWithOutputFile(std::string fileName, std::ios_base::openmode 
     fileObj->open(fileName.c_str(), mode | std::fstream::binary);
     _mode = GzipFileMode::WRITE;
     initWrite(fileName);
-    _compress = make_unique<CompressObj>(compresslevel);
+    _compress = make_unique<CompressObj>(compresslevel, Zlib::deflated, -Zlib::maxWBits, Zlib::defMemLevel, 0);
     _fileObj = std::move(fileObj);
     _offset = 0;
     if (mtime) {
@@ -113,7 +113,7 @@ void GzipFile::initWithOutputStream(std::shared_ptr<std::iostream> fileObj, int 
     checkInited();
     _mode = GzipFileMode::WRITE;
     initWrite("");
-    _compress = make_unique<CompressObj>(compresslevel);
+    _compress = make_unique<CompressObj>(compresslevel, Zlib::deflated, -Zlib::maxWBits, Zlib::defMemLevel, 0);
     _fileObj = std::move(fileObj);
     _offset = 0;
     if (mtime) {
@@ -130,14 +130,12 @@ size_t GzipFile::write(const Byte *data, size_t len) {
     if (!_fileObj) {
         ThrowException(ValueError, "write() on closed GzipFile object");
     }
-    std::cout << "WriteData(" << len << ")" << std::endl;
     if (len > 0) {
         _size += len;
         _crc = Zlib::crc32(data, len, _crc) & 0xffffffff;
-        std::string compressData = _compress->compressToString(data, len);
-        std::cout << "Result(" << compressData.size() << ")" << std::endl;
+        ByteArray compressData = _compress->compress(data, len);
         std::cout << String::toHexStr(compressData) << std::endl;
-        _fileObj->write(compressData.data(), compressData.size());
+        _fileObj->write((char *)compressData.data(), compressData.size());
         _offset += len;
     }
     return len;

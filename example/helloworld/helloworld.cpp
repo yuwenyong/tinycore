@@ -45,7 +45,6 @@ int main() {
     for (const auto &v: json.get_child("my")) {
 //        std::cout << v.first << ":" << v.second.get_value<std::string>() << std::endl;
     }
-
-    ASSERT(1 == 2);
+    int *a = new int[20];
     return 0;
 }
