@@ -17,12 +17,12 @@ HTTPServer::HTTPServer(RequestCallbackType requestCallback,
                        bool noKeepAlive,
                        IOLoop *ioloop,
                        bool xheaders,
-                       SSLOption *sslOption)
+                       SSLOptionPtr sslOption)
         : _requestCallback(std::move(requestCallback))
         , _noKeepAlive(noKeepAlive)
         , _ioloop(ioloop ? ioloop : sIOLoop)
         , _xheaders(xheaders)
-        , _sslOption(sslOption)
+        , _sslOption(std::move(sslOption))
         , _acceptor(_ioloop->getService())
         , _socket(_ioloop->getService()){
 
@@ -64,7 +64,7 @@ void HTTPServer::doAccept() {
             try {
                 BaseIOStreamPtr stream;
                 if (_sslOption) {
-                    stream = std::make_shared<SSLIOStream>(std::move(_socket), *_sslOption, _ioloop);
+                    stream = std::make_shared<SSLIOStream>(std::move(_socket), _sslOption, _ioloop);
                 } else {
                     stream = std::make_shared<IOStream>(std::move(_socket), _ioloop);
                 }

@@ -4,6 +4,7 @@
 
 #include "tinycore/networking/iostream.h"
 #include "tinycore/networking/httpserver.h"
+#include "tinycore/networking/ioloop.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/log.h"
@@ -20,6 +21,15 @@ BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBuffer
 
 BaseIOStream::~BaseIOStream() {
 
+}
+
+
+void BaseIOStream::connect(const std::string &address, unsigned short port, ConnectCallbackType callback) {
+    ResolverType resolver(_ioloop->getService());
+    ResolverType::query query(address, std::to_string(port));
+    _connecting = true;
+    _connectCallback = std::move(callback);
+    asyncConnect(resolver.resolve(query));
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
@@ -68,6 +78,26 @@ void BaseIOStream::write(BufferType &chunk, WriteCallbackType callback) {
     if (!isWriting) {
         asyncWrite();
     }
+}
+
+void BaseIOStream::connectHandler(const ErrorCode &error) {
+    if (error) {
+        if (_connectCallback) {
+            _connectCallback = nullptr;
+        }
+        if (error != boost::asio::error::operation_aborted) {
+            if (error != boost::asio::error::eof) {
+                Log::warn("Read error %d :%s", error.value(), error.message());
+            }
+            close();
+        }
+    } else {
+        if (_connectCallback) {
+            ConnectCallbackType callback = std::move(_connectCallback);
+            callback();
+        }
+    }
+    _connecting = false;
 }
 
 void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) {
@@ -180,6 +210,12 @@ IOStream::~IOStream() {
 #endif
 }
 
+void IOStream::asyncConnect(ResolverIteratorType endpoint) {
+    boost::asio::async_connect(_socket, endpoint,
+                               std::bind(&BaseIOStream::connectHandler, shared_from_this(),
+                                         std::placeholders::_1));
+}
+
 void IOStream::asyncRead() {
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
@@ -202,12 +238,13 @@ void IOStream::asyncClose() {
 }
 
 SSLIOStream::SSLIOStream(SocketType &&socket,
-                         SSLOption &sslOption,
+                         SSLOptionPtr sslOption,
                          IOLoop *ioloop,
                          size_t maxBufferSize,
                          size_t readChunkSize)
         : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize)
-        , _sslSocket(_socket, sslOption.getContext()) {
+        , _sslOption(std::move(sslOption))
+        , _sslSocket(_socket, _sslOption->getContext()) {
 #ifndef NDEBUG
     sWatcher->inc(SYS_SSLIOSTREAM_COUNT);
 #endif
@@ -219,18 +256,14 @@ SSLIOStream::~SSLIOStream() {
 #endif
 }
 
+void SSLIOStream::asyncConnect(ResolverIteratorType endpoint) {
+    boost::asio::async_connect(_sslSocket.lowest_layer(), endpoint,
+                               std::bind(&BaseIOStream::connectHandler, shared_from_this(),
+                                         std::placeholders::_1));
+}
+
 void SSLIOStream::asyncRead() {
-    if (!_handshaked) {
-        ErrorCode error;
-        _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
-        if (error) {
-            Log::warn("SSL error %d :%s", error.value(), error.message());
-            close();
-            throw boost::system::system_error(error);
-        } else {
-            _handshaked = true;
-        }
-    }
+    doHandshake();
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
     _sslSocket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
@@ -239,17 +272,7 @@ void SSLIOStream::asyncRead() {
 }
 
 void SSLIOStream::asyncWrite() {
-    if (!_handshaked) {
-        ErrorCode error;
-        _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
-        if (error) {
-            Log::warn("SSL error %d :%s", error.value(), error.message());
-            close();
-            throw boost::system::system_error(error);
-        } else {
-            _handshaked = true;
-        }
-    }
+    doHandshake();
     MessageBuffer& buffer = _writeQueue.front();
     _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
                                 std::bind(&BaseIOStream::writeHandler, shared_from_this(), std::placeholders::_1,
@@ -266,4 +289,22 @@ void SSLIOStream::asyncClose() {
     }
     _socket.close(error);
     closeHandler(error);
+}
+
+void SSLIOStream::doHandshake() {
+    if (!_handshaked) {
+        ErrorCode error;
+        if (_sslOption->isServerSide()) {
+            _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
+        } else {
+            _sslSocket.handshake(boost::asio::ssl::stream_base::client, error);
+        }
+        if (error) {
+            Log::warn("SSL error %d :%s", error.value(), error.message());
+            close();
+            throw boost::system::system_error(error);
+        } else {
+            _handshaked = true;
+        }
+    }
 }

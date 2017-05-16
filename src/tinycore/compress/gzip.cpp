@@ -230,6 +230,7 @@ void GzipFile::close() {
         uint32_t size = (uint32_t)(_size & 0xffffffff);
         boost::endian::native_to_little(size);
         _fileObj->write((const char *)&size, 4);
+        _fileObj->flush();
         if (!_name.empty()) {
             auto fileObj = std::dynamic_pointer_cast<std::fstream>(_fileObj);
             if (fileObj) {
@@ -305,7 +306,7 @@ std::string GzipFile::readLine(ssize_t size) {
     ssize_t readSize;
     if (size < 0) {
         ssize_t offset = _offset - _extraStart;
-        if (offset < _extraBuf.size()) {
+        if (offset < (ssize_t)_extraBuf.size()) {
             auto beg = std::next(_extraBuf.begin(), offset);
             auto iter = std::find(beg, _extraBuf.end(), '\n');
             if (iter != _extraBuf.end()) {
@@ -330,7 +331,7 @@ std::string GzipFile::readLine(ssize_t size) {
             break;
         }
         i = c.find('\n');
-        if ((i != std::string::npos && size < i) || (i == std::string::npos && c.size() > size)) {
+        if ((i != std::string::npos && size < (ssize_t)i) || (i == std::string::npos && (ssize_t)c.size() > size)) {
             bufs.emplace_back(c.data(), (size_t)size);
             unread(c.size() - size);
             break;

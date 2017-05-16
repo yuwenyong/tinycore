@@ -51,8 +51,8 @@ StringVector String::splitLines(const std::string &s, bool keepends) {
     return result;
 }
 
-int String::count(const std::string &s, char c) {
-    int r = 0;
+size_t String::count(const std::string &s, char c) {
+    size_t r = 0;
     std::string::size_type i = 0;
     while ((i = s.find(c, i)) != std::string::npos) {
         ++i;
@@ -61,8 +61,8 @@ int String::count(const std::string &s, char c) {
     return r;
 }
 
-int String::count(const std::string &s, const char *sub) {
-    int r = 0;
+size_t String::count(const std::string &s, const char *sub) {
+    size_t r = 0;
     std::string::size_type i = 0, m = strlen(sub);
     while ((i = s.find(sub, i)) != std::string::npos) {
         i += m;
@@ -71,8 +71,8 @@ int String::count(const std::string &s, const char *sub) {
     return r;
 }
 
-int String::count(const std::string &s, std::function<bool(char)> pred) {
-    int r = 0;
+size_t String::count(const std::string &s, std::function<bool(char)> pred) {
+    size_t r = 0;
     for (char c: s) {
         if (pred(c)) {
             ++r;

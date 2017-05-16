@@ -87,8 +87,9 @@ ConfigMgr* ConfigMgr::instance() {
 
 template <typename T>
 T ConfigMgr::getValue(const std::string &name) const {
+    T retVal;
     try {
-        return _config.get<T>(ConfigPathType(name, '/'));
+        retVal = _config.get<T>(ConfigPathType(name, '/'));
     } catch (boost::property_tree::ptree_bad_path) {
         std::string error;
         error = "Missing name " + name + " in config file " + _fileName;
@@ -98,6 +99,7 @@ T ConfigMgr::getValue(const std::string &name) const {
         error = "Bad value defined for name " + name + " in config file " + _fileName;
         ThrowException(TypeError, std::move(error));
     }
+    return retVal;
 }
 
 template <typename T>
