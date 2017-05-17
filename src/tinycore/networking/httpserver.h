@@ -14,16 +14,16 @@
 #include "tinycore/utilities/urlparse.h"
 
 
-class HTTPRequest;
+class HTTPServerRequest;
 
-typedef std::shared_ptr<HTTPRequest> HTTPRequestPtr;
-typedef std::weak_ptr<HTTPRequest> HTTPRequestWPtr;
+typedef std::shared_ptr<HTTPServerRequest> HTTPServerRequestPtr;
+typedef std::weak_ptr<HTTPServerRequest> HTTPServerRequestWPtr;
 
 
 class HTTPServer {
 public:
     typedef boost::asio::ip::tcp::acceptor AcceptorType;
-    typedef std::function<void(HTTPRequestPtr)> RequestCallbackType;
+    typedef std::function<void(HTTPServerRequestPtr)> RequestCallbackType;
 
     HTTPServer(const HTTPServer &) = delete;
 
@@ -92,7 +92,7 @@ public:
         return _stream.lock();
     }
 
-    HTTPRequestPtr getRequest() {
+    HTTPServerRequestPtr getRequest() {
         return _request.lock();
     }
 
@@ -118,8 +118,8 @@ protected:
     const RequestCallbackType &_requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
-    HTTPRequestWPtr _request;
-    HTTPRequestPtr _requestKeeper;
+    HTTPServerRequestWPtr _request;
+    HTTPServerRequestPtr _requestKeeper;
     bool _requestFinished{false};
 };
 
@@ -128,7 +128,7 @@ typedef std::shared_ptr<HTTPConnection> HTTPConnectionPtr;
 typedef std::weak_ptr<HTTPConnection> HTTPConnectionWPtr;
 
 
-class HTTPRequest {
+class HTTPServerRequest {
 public:
     typedef std::map<std::string, std::vector<HTTPFile>> RequestFilesType;
     typedef std::chrono::steady_clock ClockType;
@@ -136,22 +136,22 @@ public:
     typedef HTTPConnection::BufferType BufferType;
     typedef URLParse::QueryArguments QueryArgumentsType;
 
-    HTTPRequest(const HTTPRequest &) = delete;
+    HTTPServerRequest(const HTTPServerRequest &) = delete;
 
-    HTTPRequest &operator=(const HTTPRequest &) = delete;
+    HTTPServerRequest &operator=(const HTTPServerRequest &) = delete;
 
-    HTTPRequest(HTTPConnectionPtr connection,
-                std::string method,
-                std::string uri,
-                std::string version = "HTTP/1.0",
-                HTTPHeadersPtr &&headers = nullptr,
-                std::string body = {},
-                std::string remoteIp = {},
-                std::string protocol = {},
-                std::string host = {},
-                RequestFilesType files = {});
+    HTTPServerRequest(HTTPConnectionPtr connection,
+                      std::string method,
+                      std::string uri,
+                      std::string version = "HTTP/1.0",
+                      HTTPHeadersPtr &&headers = nullptr,
+                      std::string body = {},
+                      std::string remoteIp = {},
+                      std::string protocol = {},
+                      std::string host = {},
+                      RequestFilesType files = {});
 
-    ~HTTPRequest();
+    ~HTTPServerRequest();
 
     bool supportsHTTP1_1() const {
         return _version == "HTTP/1.1";

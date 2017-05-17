@@ -10,7 +10,7 @@
 #include "tinycore/logging/log.h"
 
 
-RequestHandler::RequestHandler(Application *application, HTTPRequestPtr request)
+RequestHandler::RequestHandler(Application *application, HTTPServerRequestPtr request)
         : _application(application)
         , _request(std::move(request)) {
     clear();
@@ -429,7 +429,7 @@ void Application::addHandlers(std::string hostPattern, HandlersType &&hostHandle
     }
 }
 
-void Application::operator()(HTTPRequestPtr request) {
+void Application::operator()(HTTPServerRequestPtr request) {
     RequestHandler::TransformsType transforms;
     for (auto &transform: _transforms) {
         transforms.push_back(transform(request));
@@ -489,7 +489,7 @@ void Application::logRequest(RequestHandler *handler) const {
 
 //Application::HandlersType Application::defaultHandlers = {};
 
-Application::HandlersType * Application::getHostHandlers(HTTPRequestPtr request) {
+Application::HandlersType * Application::getHostHandlers(HTTPServerRequestPtr request) {
     std::string host = request->getHost();
     boost::to_lower(host);
     auto pos = host.find(':');
@@ -570,7 +570,7 @@ void FallbackHandler::prepare() {
 }
 
 
-GZipContentEncoding::GZipContentEncoding(HTTPRequestPtr request)
+GZipContentEncoding::GZipContentEncoding(HTTPServerRequestPtr request)
         : _gzipFile(_gzipValue) {
     if (request->supportsHTTP1_1()) {
         _gzipping = true;

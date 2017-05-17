@@ -6,6 +6,7 @@
 #define TINYCORE_APPENDERCUSTOM_H
 
 #include "tinycore/logging/appender.h"
+#include <boost/mpl/string.hpp>
 
 
 template <typename Sink>

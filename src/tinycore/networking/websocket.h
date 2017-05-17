@@ -20,9 +20,9 @@ typedef std::unique_ptr<WebSocketRequest> WebSocketRequestPtr;
 
 class TC_COMMON_API WebSocketHandler: public RequestHandler {
 public:
-    typedef HTTPRequest::BufferType BufferType;
+    typedef HTTPServerRequest::BufferType BufferType;
 
-    WebSocketHandler(Application *application, HTTPRequestPtr request);
+    WebSocketHandler(Application *application, HTTPServerRequestPtr request);
     ~WebSocketHandler();
     void writeMessage(const char *message, size_t length);
 
@@ -84,7 +84,7 @@ public:
 
 class WebSocketRequest {
 public:
-    WebSocketRequest(HTTPRequestPtr request)
+    WebSocketRequest(HTTPServerRequestPtr request)
             : _request(std::move(request)) {
 
     }
@@ -95,7 +95,7 @@ protected:
     std::string calculatePart(const std::string &key);
     std::string generateChallengeResponse(const std::string &part1, const std::string &part2, const std::string &part3);
 
-    HTTPRequestPtr _request;
+    HTTPServerRequestPtr _request;
 };
 
 #endif //TINYCORE_WEBSOCKET_H

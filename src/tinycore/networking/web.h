@@ -38,7 +38,7 @@ public:
 
     friend class Application;
 
-    RequestHandler(Application *application, HTTPRequestPtr request);
+    RequestHandler(Application *application, HTTPServerRequestPtr request);
     virtual ~RequestHandler();
 
     void start(ArgsType &args);
@@ -172,7 +172,7 @@ protected:
     void handleRequestException(std::exception *e);
 
     Application *_application;
-    HTTPRequestPtr _request;
+    HTTPServerRequestPtr _request;
     bool _headersWritten{false};
     bool _finished{false};
     bool _autoFinish{true};
@@ -193,7 +193,7 @@ class RequestHandlerFactory {
 public:
     typedef RequestHandler::ArgsType ArgsType;
 
-    RequestHandlerPtr operator()(Application *application, HTTPRequestPtr request, ArgsType &args) const {
+    RequestHandlerPtr operator()(Application *application, HTTPServerRequestPtr request, ArgsType &args) const {
         auto requestHandler = std::make_shared<T>(application, std::move(request));
         requestHandler->start(args);
         return requestHandler;
@@ -250,7 +250,7 @@ public:
     typedef boost::ptr_vector<HostHandlerType> HostHandlersType;
     typedef std::map<std::string, URLSpec *> NamedHandlersType;
     typedef std::map<std::string, boost::any> SettingsType;
-    typedef std::function<OutputTransform* (HTTPRequestPtr)> TransformType;
+    typedef std::function<OutputTransform* (HTTPServerRequestPtr)> TransformType;
     typedef std::vector<TransformType> TransformsType;
     typedef std::function<void (RequestHandler *)> LogFunctionType;
 
@@ -262,7 +262,7 @@ public:
 
     template <typename... Args>
     HTTPServerPtr listen(unsigned short port, std::string address, Args&&... args) {
-        HTTPServerPtr server = make_unique<HTTPServer>([this](HTTPRequestPtr request) {
+        HTTPServerPtr server = make_unique<HTTPServer>([this](HTTPServerRequestPtr request) {
             (*this)(std::move(request));
         }, std::forward<Args>(args)...);
         server->listen(port, std::move(address));
@@ -276,7 +276,7 @@ public:
     template <typename T>
     void addTransform();
 
-    void operator()(HTTPRequestPtr request);
+    void operator()(HTTPServerRequestPtr request);
 
     template <typename... Args>
     std::string reverseURL(const std::string &name, Args&&... args);
@@ -289,7 +289,7 @@ public:
 
 //    static HandlersType defaultHandlers;
 protected:
-    HandlersType* getHostHandlers(HTTPRequestPtr request);
+    HandlersType* getHostHandlers(HTTPServerRequestPtr request);
 
     TransformsType _transforms;
     HostHandlersType _handlers;
@@ -373,7 +373,7 @@ public:
 
 class TC_COMMON_API GZipContentEncoding: public OutputTransform {
 public:
-    GZipContentEncoding(HTTPRequestPtr request);
+    GZipContentEncoding(HTTPServerRequestPtr request);
     void transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) override;
     void transformChunk(std::vector<char> &chunk, bool finishing) override;
 
@@ -389,7 +389,7 @@ protected:
 
 class TC_COMMON_API ChunkedTransferEncoding: public OutputTransform {
 public:
-    ChunkedTransferEncoding(HTTPRequestPtr request) {
+    ChunkedTransferEncoding(HTTPServerRequestPtr request) {
         _chunking = request->supportsHTTP1_1();
     }
 
@@ -404,7 +404,7 @@ protected:
 template <typename T>
 class OutputTransformFactory {
 public:
-    OutputTransform* operator()(HTTPRequestPtr request) {
+    OutputTransform* operator()(HTTPServerRequestPtr request) {
         return _factory(request);
     }
 
@@ -417,7 +417,7 @@ class TC_COMMON_API URLSpec: public NonCopyable {
 public:
     typedef boost::xpressive::sregex RegexType;
     typedef RequestHandler::ArgsType ArgsType;
-    typedef std::function<RequestHandlerPtr (Application*, HTTPRequestPtr, ArgsType&)> HandlerClassType;
+    typedef std::function<RequestHandlerPtr (Application*, HTTPServerRequestPtr, ArgsType&)> HandlerClassType;
 
     URLSpec(std::string pattern, HandlerClassType handlerClass, std::string name);
     URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args={}, std::string name={});

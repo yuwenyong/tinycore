@@ -198,8 +198,8 @@ void HTTPConnection::onHeaders(BufferType &data) {
             throw _BadRequestException("Malformed HTTP version in HTTP Request-Line");
         }
         HTTPHeadersPtr headers = HTTPHeaders::parse(std::string(eol, content + length));
-        _requestKeeper = std::make_shared<HTTPRequest>(shared_from_this(), std::move(method), std::move(uri),
-                                                       std::move(version), std::move(headers), "", _address);
+        _requestKeeper = std::make_shared<HTTPServerRequest>(shared_from_this(), std::move(method), std::move(uri),
+                                                             std::move(version), std::move(headers), "", _address);
         _request = _requestKeeper;
         auto requestHeader = _requestKeeper->getHTTPHeader();
         std::string contentLengthValue = requestHeader->get("Content-Length");
@@ -354,16 +354,16 @@ void HTTPConnection::parseMimeBody(std::string boundary, std::string data) {
 }
 
 
-HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
-                         std::string method,
-                         std::string uri,
-                         std::string version,
-                         HTTPHeadersPtr &&headers,
-                         std::string body,
-                         std::string remoteIp,
-                         std::string protocol,
-                         std::string host,
-                         RequestFilesType files)
+HTTPServerRequest::HTTPServerRequest(HTTPConnectionPtr connection,
+                                     std::string method,
+                                     std::string uri,
+                                     std::string version,
+                                     HTTPHeadersPtr &&headers,
+                                     std::string body,
+                                     std::string remoteIp,
+                                     std::string protocol,
+                                     std::string host,
+                                     RequestFilesType files)
         : _method(std::move(method))
         , _uri(std::move(uri))
         , _version(std::move(version))
@@ -400,30 +400,30 @@ HTTPRequest::HTTPRequest(HTTPConnectionPtr connection,
     std::tie(scheme, netloc, _path, _query, fragment) = URLParse::urlSplit(_uri);
     _arguments = URLParse::parseQS(_query, false);
 #ifndef NDEBUG
-    sWatcher->inc(SYS_HTTPREQUEST_COUNT);
+    sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);
 #endif
 }
 
-HTTPRequest::~HTTPRequest() {
+HTTPServerRequest::~HTTPServerRequest() {
 #ifndef NDEBUG
-    sWatcher->dec(SYS_HTTPREQUEST_COUNT);
+    sWatcher->dec(SYS_HTTPSERVERREQUEST_COUNT);
 #endif
 }
 
-void HTTPRequest::write(const char *chunk, size_t length) {
+void HTTPServerRequest::write(const char *chunk, size_t length) {
     ASSERT(_connection);
     BufferType buffer(chunk, length);
     _connection->write(buffer);
 }
 
-void HTTPRequest::finish() {
+void HTTPServerRequest::finish() {
     ASSERT(_connection);
     auto connection = std::move(_connection);
     connection->finish();
     _finishTime = std::chrono::steady_clock::now();
 }
 
-float HTTPRequest::requestTime() const {
+float HTTPServerRequest::requestTime() const {
     std::chrono::milliseconds elapse;
     if (_finishTime == TimePointType::min()) {
         elapse = std::chrono::duration_cast<std::chrono::milliseconds>(ClockType::now() - _startTime);
@@ -443,7 +443,7 @@ float HTTPRequest::requestTime() const {
 //    }
 //}
 
-void HTTPRequest::addArgument(std::string name, std::string value) {
+void HTTPServerRequest::addArgument(std::string name, std::string value) {
     auto iter = _arguments.find(name);
     if (iter != _arguments.end()) {
         iter->second.emplace_back(std::move(value));
@@ -452,7 +452,7 @@ void HTTPRequest::addArgument(std::string name, std::string value) {
     }
 }
 
-void HTTPRequest::addArguments(std::string name, StringVector values) {
+void HTTPServerRequest::addArguments(std::string name, StringVector values) {
     auto iter = _arguments.find(name);
     if (iter != _arguments.end()) {
         for (auto &value: values) {
@@ -463,7 +463,7 @@ void HTTPRequest::addArguments(std::string name, StringVector values) {
     }
 }
 
-void HTTPRequest::addFile(std::string name, HTTPFile file) {
+void HTTPServerRequest::addFile(std::string name, HTTPFile file) {
     auto iter = _files.find(name);
     if (iter != _files.end()) {
         iter->second.emplace_back(std::move(file));
@@ -472,7 +472,7 @@ void HTTPRequest::addFile(std::string name, HTTPFile file) {
     }
 }
 
-std::string HTTPRequest::dump() const {
+std::string HTTPServerRequest::dump() const {
     StringVector argsList;
     argsList.emplace_back("protocol=" + _protocol);
     argsList.emplace_back("host=" + _host);

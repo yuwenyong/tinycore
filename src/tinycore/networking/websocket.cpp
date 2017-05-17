@@ -11,7 +11,7 @@
 #include "tinycore/utilities/string.h"
 
 
-WebSocketHandler::WebSocketHandler(Application *application, HTTPRequestPtr request)
+WebSocketHandler::WebSocketHandler(Application *application, HTTPServerRequestPtr request)
         : RequestHandler(application, request)
         , _clientTerminated(false) {
     _streamKeeper = request->getConnection()->releaseStream();

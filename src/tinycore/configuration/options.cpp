@@ -76,11 +76,11 @@ void Options::setupWatcherHook() {
         Log::debug("Destroy HTTPConnection,current count:%d", value);
     });
 
-    sWatcher->addIncCallback(SYS_HTTPREQUEST_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPRequest,current count:%d", value);
+    sWatcher->addIncCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int increment, int value) {
+        Log::debug("Create HTTPServerRequest,current count:%d", value);
     });
-    sWatcher->addDecCallback(SYS_HTTPREQUEST_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPRequest,current count:%d", value);
+    sWatcher->addDecCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int decrement, int value) {
+        Log::debug("Destroy HTTPServerRequest,current count:%d", value);
     });
 #endif
 }

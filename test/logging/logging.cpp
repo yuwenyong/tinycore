@@ -4,7 +4,6 @@
 
 #include "tinycore/logging/log.h"
 #include "tinycore/configuration/configmgr.h"
-#include <boost/mpl/string.hpp>
 
 
 class TestSink: public BaseSink {

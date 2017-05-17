@@ -146,7 +146,7 @@ using Time = boost::posix_time::time_duration;
 #define SYS_IOSTREAM_COUNT "TinyCore.IOStream.Count"
 #define SYS_SSLIOSTREAM_COUNT "TinyCore.SSLIOStream.Count"
 #define SYS_HTTPCONNECTION_COUNT "TinyCore.HTTPConnection.Count"
-#define SYS_HTTPREQUEST_COUNT "TinyCore.HTTPConnection.Count"
+#define SYS_HTTPSERVERREQUEST_COUNT "TinyCore.HTTPServerRequest.Count"
 #define SYS_REQUESTHANDLER_COUNT "TinyCore.RequestHandler.Count"
 #define SYS_WEBSOCKETHANDLER_COUNT "TinyCore.WebSocketHandler.Count"
 
