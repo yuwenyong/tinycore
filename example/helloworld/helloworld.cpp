@@ -9,6 +9,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include "tinycore/debugging/trace.h"
+#include "tinycore/networking/httpclient.h"
 
 
 int main() {
@@ -45,13 +46,9 @@ int main() {
 //    for (const auto &v: json.get_child("my")) {
 ////        std::cout << v.first << ":" << v.second.get_value<std::string>() << std::endl;
 //    }
-    std::stringstream out;
-    char data[] = {'a', 'b', '\0', 'd', 'e'};
-    out.write(data, sizeof(data));
-    std::string result;
-    result = out.str();
-    std::cout << result.size() << ":" << result << std::endl;
-    result = out.str();
-    std::cout << result.size() << ":" << result << std::endl;
+
+    HTTPRequest request1("testpath", authUserName_="HEHE"), request2("testPath2", maxRedirects_=5);
+    request1.disp();
+    request2.disp();
     return 0;
 }

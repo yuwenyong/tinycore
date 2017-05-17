@@ -6,10 +6,12 @@
 #define TINYCORE_HTTPCLIENT_H
 
 #include "tinycore/common/common.h"
+#include <chrono>
 #include <boost/parameter.hpp>
 #include <boost/optional.hpp>
 #include "tinycore/networking/httputil.h"
 #include "tinycore/utilities/string.h"
+
 
 namespace opts {
 BOOST_PARAMETER_NAME(url)
@@ -72,7 +74,7 @@ public:
 
     template <typename ArgumentPack>
     HTTPRequestImpl(ArgumentPack const& args) {
-        _headers = args[opts::_headers];
+        _headers = args[opts::_headers | HTTPHeaders()];
         boost::optional<DateTime> ifModifiedSince = args[opts::_ifModifiedSince | boost::none];
         if (ifModifiedSince) {
             std::string timestamp = String::formatUTCDate(ifModifiedSince.get(), true);
@@ -84,28 +86,37 @@ public:
         _proxyHost = args[opts::_proxyHost | boost::none];
         _proxyPort = args[opts::_proxyPort | boost::none];
         _proxyUserName = args[opts::_proxyUserName | boost::none];
-        _proxyPassword = args[opts::_proxyPassword];
+        _proxyPassword = args[opts::_proxyPassword | ""];
         if (!_headers.contain("Expect")) {
             _headers.setItem("Expect", "");
         }
         _url = args[opts::_url];
-        _method = args[opts::_method];
+        _method = args[opts::_method | "GET"];
         _body = args[opts::_body | boost::none];
         _authUserName = args[opts::_authUserName | boost::none];
         _authPassword = args[opts::_authPassword | boost::none];
-        _connectTimeout = args[opts::_connectTimeout];
-        _requestTimeout = args[opts::_requestTimeout];
-        _followRedirects = args[opts::_followRedirects];
-        _maxRedirects = args[opts::_maxRedirects];
+        _connectTimeout = args[opts::_connectTimeout | 20.0f];
+        _requestTimeout = args[opts::_requestTimeout | 20.0f];
+        _followRedirects = args[opts::_followRedirects | true];
+        _maxRedirects = args[opts::_maxRedirects | 5];
         _userAgent = args[opts::_userAgent | boost::none];
-        _useGzip = args[opts::_useGzip];
+        _useGzip = args[opts::_useGzip | true];
         _networkInterface = args[opts::_networkInterface | boost::none];
-        _streamCallback = args[opts::_streamCallback];
-        _headerCallback = args[opts::_headerCallback];
-        _allowStandardMethods = args[opts::_allowNonstandardMethods];
-        _validateCert = args[opts::_validateCert];
+        _streamCallback = args[opts::_streamCallback | nullptr];
+        _headerCallback = args[opts::_headerCallback | nullptr];
+        _allowNonstandardMethods = args[opts::_allowNonstandardMethods | false];
+        _validateCert = args[opts::_validateCert | true];
         _caCerts = args[opts::_caCerts | boost::none];
         _startTime = ClockType::now();
+    }
+
+    void disp() {
+        printf("URL:%s\n", _url.c_str());
+        if (_authUserName) {
+            printf("authUserNameSet:%s\n", _authUserName.get().c_str());
+        } else {
+            printf("authUserNameUnset\n");
+        }
     }
 
 protected:
@@ -128,7 +139,7 @@ protected:
     boost::optional<unsigned short> _proxyPort;
     boost::optional<std::string> _proxyUserName;
     std::string _proxyPassword;
-    bool _allowStandardMethods;
+    bool _allowNonstandardMethods;
     bool _validateCert;
     boost::optional<std::string> _caCerts;
     TimePointType _startTime;
@@ -142,28 +153,28 @@ public:
                     (url, (std::string))
     )(
             optional
-                    (method, (std::string), "GET")
-                    (headers, (HTTPHeaders), HTTPHeaders())
-                    (body, (ByteArray), ByteArray())
+                    (method, (std::string))
+                    (headers, (HTTPHeaders))
+                    (body, (ByteArray))
                     (authUserName, (std::string))
                     (authPassword, (std::string))
-                    (connectTimeout, (float), 20.0f)
-                    (requestTimeout, (float), 20.0f)
+                    (connectTimeout, (float))
+                    (requestTimeout, (float))
                     (ifModifiedSince, (DateTime))
-                    (followRedirects, (bool), true)
-                    (maxRedirects, (int), 5)
+                    (followRedirects, (bool))
+                    (maxRedirects, (int))
                     (userAgent, (std::string))
-                    (useGzip, (bool), true)
+                    (useGzip, (bool))
                     (networkInterface, (std::string))
-                    (streamCallback, (StreamCallbackType), nullptr)
-                    (headerCallback, (HeaderCallbackType), nullptr)
+                    (streamCallback, (StreamCallbackType))
+                    (headerCallback, (HeaderCallbackType))
                     (proxyHost, (std::string))
                     (proxyPort, (unsigned short))
                     (proxyUserName, (std::string))
-                    (proxyPassword, (std::string), "")
-                    (allowStandardMethods, (bool), false)
-                    (validateCert, (bool), true)
-                    (ca_certs, (std::string))
+                    (proxyPassword, (std::string))
+                    (allowNonstandardMethods, (bool))
+                    (validateCert, (bool))
+                    (caCerts, (std::string))
     ))
 };
 
