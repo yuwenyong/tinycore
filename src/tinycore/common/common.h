@@ -22,6 +22,7 @@
 #include <unordered_set>
 #include <vector>
 #include <numeric>
+#include <chrono>
 
 #include <cmath>
 #include <cstdio>
@@ -143,6 +144,8 @@ typedef boost::system::error_code ErrorCode;
 using DateTime = boost::posix_time::ptime;
 using Date = boost::gregorian::date;
 using Time = boost::posix_time::time_duration;
+using TimestampClock = std::chrono::steady_clock;
+using Timestamp = TimestampClock::time_point;
 
 #define SYS_TIMEOUT_COUNT "TinyCore.Timeout.Count"
 #define SYS_IOSTREAM_COUNT "TinyCore.IOStream.Count"
