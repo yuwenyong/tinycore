@@ -11,19 +11,11 @@
 #include "tinycore/networking/web.h"
 #include "tinycore/crypto/hashlib.h"
 #include "tinycore/networking/websocket.h"
+#include "tinycore/networking/httpclient.h"
 //#include <boost/dll.hpp>
 
 
 using namespace boost::assign;
-
-class HelloWorld: public RequestHandler {
-public:
-    using RequestHandler::RequestHandler;
-
-    void onGet(StringVector args) {
-        write("Hello world");
-    }
-};
 
 
 class Book: public RequestHandler {
@@ -90,6 +82,28 @@ protected:
 };
 
 std::set<ChatUser::SelfType> ChatUser::_users;
+
+
+class HelloWorld: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) {
+        Asynchronous()
+        auto client = HTTPClient::create();
+        client->fetch("http://localhost:3030/", std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(),
+                                                          std::placeholders::_1));
+    }
+
+    void onResp(const HTTPResponse &response) {
+        const ByteArray *body = response.getBody();
+        std::string message((const char *)body->data(), body->size());
+        Log::info("HTTP code:%d", response.getCode());
+        Log::info("Message:%s", message.c_str());
+        write("Hello world");
+        finish();
+    }
+};
 
 
 int main(int argc, char **argv) {

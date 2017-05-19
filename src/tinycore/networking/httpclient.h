@@ -125,8 +125,28 @@ public:
         return _url;
     }
 
+    void setURL(std::string url) {
+        _url = std::move(url);
+    }
+
     const std::string& getMethod() const {
         return _method;
+    }
+
+    HTTPHeaders& headers() {
+        return _headers;
+    }
+
+    const ByteArray* getBody() const {
+        return _body.get_ptr();
+    }
+
+    const std::string& getAuthUserName() const {
+        return _authUserName;
+    }
+
+    const std::string& getAuthPassword() const {
+        return _authPassword;
     }
 
     float getConnectTimeout() const {
@@ -137,8 +157,36 @@ public:
         return _requestTimeout;
     }
 
+    bool isFollowRedirects() const {
+        return _followRedirects;
+    }
+
+    int getMaxRedirects() const {
+        return _maxRedirects;
+    }
+
+    void decreaseRedirects() {
+        --_maxRedirects;
+    }
+
+    const std::string& getUserAgent() const {
+        return _userAgent;
+    }
+
+    bool isUseGzip() const {
+        return _useGzip;
+    }
+
     const std::string& getNetworkInterface() const {
         return _networkInterface;
+    }
+
+    const StreamCallbackType& getStreamCallback() const {
+        return _streamCallback;
+    }
+
+    const HeaderCallbackType& getHeaderCallback() const {
+        return _headerCallback;
     }
 
     const std::string& getProxyHost() const {
@@ -157,11 +205,11 @@ public:
         return _proxyPassword;
     }
 
-    bool getAllowNonstandardMethods() const {
+    bool isAllowNonstandardMethods() const {
         return _allowNonstandardMethods;
     }
 
-    bool getValidateCert() const {
+    bool isValidateCert() const {
         return _validateCert;
     }
 
@@ -259,6 +307,14 @@ public:
         }
     }
 
+    int getCode() const {
+        return _code;
+    }
+
+    const ByteArray* getBody() const {
+        return _body.get_ptr();
+    }
+
     void rethrow() {
         if (_error) {
             ThrowException(HTTPError, _code, _error.get());
@@ -272,6 +328,7 @@ protected:
     std::string _effectiveURL;
     boost::optional<std::string> _error;
 };
+
 
 class HTTPResponse: public HTTPResponseImpl {
 public:
@@ -291,7 +348,7 @@ public:
 
 class HTTPClient: public std::enable_shared_from_this<HTTPClient> {
 public:
-    typedef std::function<void (HTTPResponse)> CallbackType;
+    typedef std::function<void (const HTTPResponse&)> CallbackType;
 
     HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={});
 
@@ -315,8 +372,8 @@ public:
         return _hostnameMapping;
     }
 protected:
-    void onFetchComplete(CallbackType callback, HTTPResponse response) {
-        callback(std::move(response));
+    void onFetchComplete(CallbackType callback, const HTTPResponse &response) {
+        callback(response);
     }
 
     IOLoop * _ioloop;
@@ -329,6 +386,7 @@ typedef std::shared_ptr<HTTPClient> HTTPClientPtr;
 class _HTTPConnection: public std::enable_shared_from_this<_HTTPConnection> {
 public:
     typedef HTTPClient::CallbackType CallbackType;
+    typedef BaseIOStream::BufferType BufferType;
 
     _HTTPConnection(IOLoop *ioloop, HTTPClientPtr client, HTTPRequestPtr originalRequest, HTTPRequestPtr request,
                     CallbackType callback);
@@ -348,6 +406,10 @@ protected:
     void onTimeout();
     void onConnect();
     void onClose();
+    void onHeaders(BufferType &data);
+    void onBody(BufferType &data);
+    void onChunkLength(BufferType &data);
+    void onChunkData(BufferType &data);
 
     Timestamp _startTime;
     IOLoop *_ioloop;
@@ -365,7 +427,7 @@ protected:
     BaseIOStreamPtr _streamKeeper;
     std::string _parsedScheme;
     std::string _parsedNetloc;
-    std::string _parsedURL;
+    std::string _parsedPath;
     std::string _parsedQuery;
     std::string _parsedFragment;
 };

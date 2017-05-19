@@ -186,7 +186,12 @@ void HTTPConnection::onHeaders(BufferType &data) {
         const char *content = boost::asio::buffer_cast<const char *>(data);
         size_t length = boost::asio::buffer_size(data);
         const char *eol = StrNStr(content, length, "\r\n");
-        std::string startLine(content, eol);
+        std::string startLine;
+        if (eol) {
+            startLine.assign(content, eol);
+        } else {
+            startLine.assign(content, length);
+        }
         StringVector requestHeaders = String::split(startLine);
         if (requestHeaders.size() != 3) {
             throw _BadRequestException("Malformed HTTP request line");

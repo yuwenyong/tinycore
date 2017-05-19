@@ -55,9 +55,9 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
         callback(buffer);
         return;
     }
-    if (_readBuffer.getActiveSize() >= _readBytes) {
-        BufferType buffer(_readBuffer.getReadPointer(), _readBytes);
-        _readBuffer.readCompleted(_readBytes);
+    if (_readBuffer.getActiveSize() >= numBytes) {
+        BufferType buffer(_readBuffer.getReadPointer(), numBytes);
+        _readBuffer.readCompleted(numBytes);
         callback(buffer);
         return;
     }
