@@ -91,8 +91,14 @@ public:
     void onGet(StringVector args) {
         Asynchronous()
         auto client = HTTPClient::create();
-        client->fetch("http://localhost:3030/", std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(),
-                                                          std::placeholders::_1));
+//        StringMap formArgs = {{"name", "not sb"}, };
+//        std::string formString = URLParse::urlEncode(formArgs);
+//        ByteArray body(formString.data(), formString.data() + formString.size());
+//        HTTPHeaders headers;
+//        auto request = HTTPRequest::create("http://localhost:3030/", followRedirects_=false, method_="POST",
+//                                           body_=body, connectTimeout_=30.0f, headers_=headers);
+        client->fetch("http://www.csdn.net/",
+                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
     }
 
     void onResp(const HTTPResponse &response) {

@@ -27,6 +27,13 @@ BaseIOStream::~BaseIOStream() {
 void BaseIOStream::connect(const std::string &address, unsigned short port, ConnectCallbackType callback) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
+    ResolverType::iterator iter, end;
+    printf ("Before DNS\n");
+    for (iter = resolver.resolve(query);iter != end; ++iter) {
+        auto address = iter->endpoint().address().to_string();
+        printf("%s\n", address.c_str());
+    }
+    printf("End\n");
     _connecting = true;
     _connectCallback = std::move(callback);
     asyncConnect(resolver.resolve(query));
@@ -101,6 +108,7 @@ void BaseIOStream::connectHandler(const ErrorCode &error) {
 }
 
 void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) {
+    printf("Read %d data\n", (int)transferredBytes);
     if (error) {
         if (_readCallback) {
             _readCallback = nullptr;
@@ -115,7 +123,10 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             }
         }
     }
+    std::string recvData(_readBuffer.getWritePointer(), transferredBytes);
+    printf("Recv data===>%s\n", recvData.c_str());
     _readBuffer.writeCompleted(transferredBytes);
+    printf("Active %d data\n", (int)_readBuffer.getActiveSize());
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
         _readCallback = nullptr;
         Log::error("Reached maximum read buffer size");

@@ -210,7 +210,6 @@ void _HTTPConnection::onClose() {
 }
 
 void _HTTPConnection::onHeaders(BufferType &data) {
-    printf("On headers\n");
     auto stream = getStream();
     if (stream->dying()) {
         _streamKeeper = stream;
@@ -263,7 +262,6 @@ void _HTTPConnection::onHeaders(BufferType &data) {
 }
 
 void _HTTPConnection::onBody(BufferType &data) {
-    printf("On body\n");
     auto stream = getStream();
     if (stream->dying()) {
         _streamKeeper = stream;
@@ -303,9 +301,13 @@ void _HTTPConnection::onBody(BufferType &data) {
 }
 
 void _HTTPConnection::onChunkLength(BufferType &data) {
-    printf("On chunk length\n");
-    const char *content = boost::asio::buffer_cast<const char *>(data);
-    size_t length = strtoul(content, nullptr, 16);
+    const char *dataPtr = boost::asio::buffer_cast<const char *>(data);
+    size_t dataSize = boost::asio::buffer_size(data);
+    std::string content(dataPtr, dataPtr + dataSize);
+    boost::trim(content);
+    printf ("Expect:%s\n", content.c_str());
+    size_t length = std::stoul(content, nullptr, 16);
+    printf("Expect chunk size:%d\n", (int)length);
     if (length == 0) {
         _decompressor.reset();
         BufferType body(_chunks->data(), _chunks->size());
@@ -318,9 +320,13 @@ void _HTTPConnection::onChunkLength(BufferType &data) {
 }
 
 void _HTTPConnection::onChunkData(BufferType &data) {
-    printf("On chunk data\n");
     const char *content = boost::asio::buffer_cast<const char *>(data);
     size_t length = boost::asio::buffer_size(data);
+    printf ("RealSize:%d\n", (int)length);
+    ByteArray binary(content, content + length);
+    std::string hex = String::toHexStr(binary);
+    printf ("Data:%s\n", hex.c_str());
+    const char *dataPtr = content + length - 2;
     ASSERT(strncmp(content + length - 2, "\r\n", 2) == 0);
     auto stream = getStream();
     if (stream->dying()) {
