@@ -80,8 +80,9 @@ public:
 
     void normalize() {
         if (_rpos) {
-            if (_rpos != _wpos)
+            if (_rpos != _wpos) {
                 memmove(getBasePointer(), getReadPointer(), getActiveSize());
+            }
             _wpos -= _rpos;
             _rpos = 0;
         }

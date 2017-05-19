@@ -28,12 +28,6 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
     ResolverType::iterator iter, end;
-    printf ("Before DNS\n");
-    for (iter = resolver.resolve(query);iter != end; ++iter) {
-        auto address = iter->endpoint().address().to_string();
-        printf("%s\n", address.c_str());
-    }
-    printf("End\n");
     _connecting = true;
     _connectCallback = std::move(callback);
     asyncConnect(resolver.resolve(query));
@@ -43,7 +37,7 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     const char *loc = StrNStr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), delimiter.c_str());
     if (loc) {
-        size_t readBytes = loc - _readBuffer.getReadPointer() + _readDelimiter.size();
+        size_t readBytes = loc - _readBuffer.getReadPointer() + delimiter.size();
         BufferType buffer(_readBuffer.getReadPointer(), readBytes);
         _readBuffer.readCompleted(readBytes);
         callback(buffer);
@@ -108,7 +102,6 @@ void BaseIOStream::connectHandler(const ErrorCode &error) {
 }
 
 void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) {
-    printf("Read %d data\n", (int)transferredBytes);
     if (error) {
         if (_readCallback) {
             _readCallback = nullptr;
@@ -123,10 +116,7 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             }
         }
     }
-    std::string recvData(_readBuffer.getWritePointer(), transferredBytes);
-    printf("Recv data===>%s\n", recvData.c_str());
     _readBuffer.writeCompleted(transferredBytes);
-    printf("Active %d data\n", (int)_readBuffer.getActiveSize());
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
         _readCallback = nullptr;
         Log::error("Reached maximum read buffer size");
@@ -141,6 +131,7 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             BufferType buffer(_readBuffer.getReadPointer(), readBytes);
             _readBuffer.readCompleted(readBytes);
             callback(buffer);
+            return;
         }
     } else if (!_readDelimiter.empty()){
         const char *loc = StrNStr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), _readDelimiter.c_str());
@@ -151,6 +142,7 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
             BufferType buffer(_readBuffer.getReadPointer(), readBytes);
             _readBuffer.readCompleted(readBytes);
             callback(buffer);
+            return;
         }
     }
     if (closed()) {
@@ -182,6 +174,7 @@ void BaseIOStream::writeHandler(const ErrorCode &error, size_t transferredBytes)
     if (_writeQueue.empty() && _writeCallback) {
         WriteCallbackType callback = std::move(_writeCallback);
         callback();
+        return;
     }
     if (closed()) {
         if (_writeCallback) {
