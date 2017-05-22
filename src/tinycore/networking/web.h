@@ -298,6 +298,8 @@ protected:
     SettingsType _settings;
 };
 
+typedef std::unique_ptr<Application> ApplicationPtr;
+
 
 #define HTTPServerCB(app) std::bind(&Application::operator(), pointer(app), std::placeholders::_1)
 

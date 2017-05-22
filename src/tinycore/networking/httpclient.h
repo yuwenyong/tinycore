@@ -352,6 +352,10 @@ public:
 
     HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={});
 
+    void close() {
+
+    }
+
     template <typename ...Args>
     void fetch(const std::string &url, CallbackType callback, Args&& ...args) {
         fetch(HTTPRequest::create(url, std::forward<Args>(args)...), std::move(callback));

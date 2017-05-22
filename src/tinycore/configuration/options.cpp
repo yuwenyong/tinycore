@@ -31,6 +31,10 @@ void Options::parseCommandLine(int argc, const char * const argv[]) {
     if (contain("config")) {
         sConfigMgr->loadInitial(get<std::string>("config"));
     }
+    onEnter();
+}
+
+void Options::onEnter() {
     setupWatcherHook();
     Log::initialize();
 }

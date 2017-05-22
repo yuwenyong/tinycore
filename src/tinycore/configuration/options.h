@@ -47,6 +47,7 @@ public:
         return value.as<T>();
     }
 
+    void onEnter();
     void onExit();
 
     static Options * instance();
