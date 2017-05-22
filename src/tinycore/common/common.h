@@ -50,8 +50,7 @@
 #  include <netdb.h>
 #endif
 
-#include <boost/noncopyable.hpp>
-#include <boost/system/error_code.hpp>
+
 #include <boost/date_time.hpp>
 
 
@@ -139,8 +138,6 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 
 #define BOOST_PARAMETER_MAX_ARITY 25
 
-typedef boost::noncopyable NonCopyable;
-typedef boost::system::error_code ErrorCode;
 using DateTime = boost::posix_time::ptime;
 using Date = boost::gregorian::date;
 using Time = boost::posix_time::time_duration;

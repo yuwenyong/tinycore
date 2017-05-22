@@ -15,7 +15,7 @@
 #include "tinycore/networking/web.h"
 #include "tinycore/compress/zlib.h"
 #include "tinycore/utilities/string.h"
-#include "tinycore/utilities/httplib.h"
+#include "tinycore/httputils/httplib.h"
 
 
 namespace opts {

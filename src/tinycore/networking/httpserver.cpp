@@ -7,7 +7,7 @@
 #include "tinycore/networking/ioloop.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/utilities/urlparse.h"
+#include "tinycore/httputils/urlparse.h"
 #include "tinycore/utilities/string.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/logging/log.h"
@@ -53,7 +53,7 @@ void HTTPServer::stop() {
 }
 
 void HTTPServer::doAccept() {
-    _acceptor.async_accept(_socket, [this](const ErrorCode &ec) {
+    _acceptor.async_accept(_socket, [this](const boost::system::error_code &ec) {
         if (ec) {
             if (ec != boost::asio::error::operation_aborted) {
                 throw boost::system::system_error(ec);

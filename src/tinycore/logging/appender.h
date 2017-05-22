@@ -12,6 +12,7 @@
 #include <boost/log/core.hpp>
 #include <boost/functional/factory.hpp>
 #include <boost/phoenix.hpp>
+#include <boost/noncopyable.hpp>
 #include "tinycore/logging/logger.h"
 
 
@@ -36,7 +37,7 @@ enum AppenderFlags {
 
 class Logger;
 
-class TC_COMMON_API Appender: public NonCopyable {
+class TC_COMMON_API Appender: public boost::noncopyable {
 public:
     typedef sinks::basic_formatting_sink_frontend<char> SinkType;
     typedef boost::shared_ptr<SinkType> SinkTypePtr;

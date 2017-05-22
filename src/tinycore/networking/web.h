@@ -13,12 +13,13 @@
 #include <boost/optional.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/noncopyable.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
 #include "tinycore/networking/httpserver.h"
-#include "tinycore/utilities/cookie.h"
+#include "tinycore/httputils/cookie.h"
 #include "tinycore/utilities/container.h"
-#include "tinycore/utilities/httplib.h"
+#include "tinycore/httputils/httplib.h"
 
 
 class Application;
@@ -415,7 +416,7 @@ protected:
 };
 
 
-class TC_COMMON_API URLSpec: public NonCopyable {
+class TC_COMMON_API URLSpec: public boost::noncopyable {
 public:
     typedef boost::xpressive::sregex RegexType;
     typedef RequestHandler::ArgsType ArgsType;

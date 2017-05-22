@@ -36,7 +36,7 @@ void _SignalSet::start() {
 }
 
 
-void _SignalSet::onSignal(const ErrorCode &error, int signalNumber) {
+void _SignalSet::onSignal(const boost::system::error_code &error, int signalNumber) {
     _running = false;
     if (!error) {
         auto iter = _callbacks.find(signalNumber);
@@ -76,7 +76,7 @@ int IOLoop::start() {
 
 Timeout IOLoop::addTimeout(float deadline, TimeoutCallbackType callback) {
     auto timeoutPtr = std::make_shared<_Timeout>(this);
-    timeoutPtr->start(deadline, [callback, timeoutPtr](const ErrorCode &error) {
+    timeoutPtr->start(deadline, [callback, timeoutPtr](const boost::system::error_code &error) {
         if (!error) {
             callback();
         } else {

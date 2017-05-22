@@ -11,7 +11,7 @@
 #include <boost/asio/ssl.hpp>
 #include "tinycore/networking/iostream.h"
 #include "tinycore/networking/httputil.h"
-#include "tinycore/utilities/urlparse.h"
+#include "tinycore/httputils/urlparse.h"
 
 
 class HTTPServerRequest;

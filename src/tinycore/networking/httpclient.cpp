@@ -6,7 +6,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
 #include "tinycore/logging/log.h"
-#include "tinycore/utilities/urlparse.h"
+#include "tinycore/httputils/urlparse.h"
 #include "tinycore/crypto/base64.h"
 #include "tinycore/debugging/trace.h"
 

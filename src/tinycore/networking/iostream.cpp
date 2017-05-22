@@ -81,7 +81,7 @@ void BaseIOStream::write(BufferType &chunk, WriteCallbackType callback) {
     }
 }
 
-void BaseIOStream::connectHandler(const ErrorCode &error) {
+void BaseIOStream::connectHandler(const boost::system::error_code &error) {
     if (error) {
         if (_connectCallback) {
             _connectCallback = nullptr;
@@ -101,7 +101,7 @@ void BaseIOStream::connectHandler(const ErrorCode &error) {
     _connecting = false;
 }
 
-void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) {
+void BaseIOStream::readHandler(const boost::system::error_code &error, size_t transferredBytes) {
     if (error) {
         if (_readCallback) {
             _readCallback = nullptr;
@@ -156,7 +156,7 @@ void BaseIOStream::readHandler(const ErrorCode &error, size_t transferredBytes) 
     }
 }
 
-void BaseIOStream::writeHandler(const ErrorCode &error, size_t transferredBytes) {
+void BaseIOStream::writeHandler(const boost::system::error_code &error, size_t transferredBytes) {
     if (error) {
         if (_writeCallback) {
             _writeCallback = nullptr;
@@ -187,7 +187,7 @@ void BaseIOStream::writeHandler(const ErrorCode &error, size_t transferredBytes)
     }
 }
 
-void BaseIOStream::closeHandler(const ErrorCode &error) {
+void BaseIOStream::closeHandler(const boost::system::error_code &error) {
     if (_closeCallback) {
         CloseCallbackType callback = std::move(_closeCallback);
         callback();
@@ -236,7 +236,7 @@ void IOStream::asyncWrite() {
 }
 
 void IOStream::asyncClose() {
-    ErrorCode error;
+    boost::system::error_code error;
     _socket.close(error);
     closeHandler(error);
 }
@@ -284,7 +284,7 @@ void SSLIOStream::asyncWrite() {
 }
 
 void SSLIOStream::asyncClose() {
-    ErrorCode error;
+    boost::system::error_code error;
     if (_handshaked) {
         _sslSocket.shutdown(error);
         if (error) {
@@ -297,7 +297,7 @@ void SSLIOStream::asyncClose() {
 
 void SSLIOStream::doHandshake() {
     if (!_handshaked) {
-        ErrorCode error;
+        boost::system::error_code error;
         if (_sslOption->isServerSide()) {
             _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
         } else {

@@ -6,6 +6,7 @@
 #define TINYCORE_LOGGER_H
 
 #include "tinycore/common/common.h"
+#include <boost/noncopyable.hpp>
 #include <boost/log/sources/severity_channel_logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/keywords/channel.hpp>
@@ -44,7 +45,7 @@ std::basic_ostream< CharT, TraitsT >& operator<< (std::basic_ostream< CharT, Tra
 }
 
 
-class Logger: public NonCopyable {
+class Logger: public boost::noncopyable {
 public:
     typedef src::severity_channel_logger_mt<LogLevel, std::string> LoggerType;
     typedef logging::record LogRecord;

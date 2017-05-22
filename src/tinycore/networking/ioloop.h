@@ -27,7 +27,7 @@ public:
     void signal(int signalNumber, CallbackType callback=nullptr);
     void start();
 protected:
-    void onSignal(const ErrorCode &error, int signalNumber);
+    void onSignal(const boost::system::error_code &error, int signalNumber);
 
     IOLoop *_ioloop;
     boost::asio::signal_set _signalSet;
@@ -88,7 +88,7 @@ class TC_COMMON_API _Timeout {
 public:
     friend class IOLoop;
     typedef boost::asio::steady_timer TimerType;
-    typedef std::function<void (const ErrorCode&)> CallbackType;
+    typedef std::function<void (const boost::system::error_code&)> CallbackType;
 
     _Timeout(IOLoop* ioloop);
     ~_Timeout();

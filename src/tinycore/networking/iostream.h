@@ -289,10 +289,10 @@ public:
         return !(_readCallback || _writeCallback || _connectCallback);
     }
 
-    void connectHandler(const ErrorCode &error);
-    void readHandler(const ErrorCode &error, size_t transferredBytes);
-    void writeHandler(const ErrorCode &error, size_t transferredBytes);
-    void closeHandler(const ErrorCode &error);
+    void connectHandler(const boost::system::error_code &error);
+    void readHandler(const boost::system::error_code &error, size_t transferredBytes);
+    void writeHandler(const boost::system::error_code &error, size_t transferredBytes);
+    void closeHandler(const boost::system::error_code &error);
 protected:
     virtual void asyncConnect(ResolverIteratorType endpoint) = 0;
     virtual void asyncRead() = 0;
