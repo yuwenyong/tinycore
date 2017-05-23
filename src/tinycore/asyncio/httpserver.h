@@ -9,8 +9,8 @@
 #include <chrono>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
-#include "tinycore/networking/iostream.h"
-#include "tinycore/networking/httputil.h"
+#include "tinycore/asyncio/iostream.h"
+#include "tinycore/asyncio/httputil.h"
 #include "tinycore/httputils/urlparse.h"
 
 

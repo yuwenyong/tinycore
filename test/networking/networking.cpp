@@ -4,14 +4,14 @@
 
 #include "tinycore/logging/log.h"
 #include "tinycore/configuration/options.h"
-#include "tinycore/networking/ioloop.h"
+#include "tinycore/asyncio/ioloop.h"
 #include <regex>
 #include <boost/assign.hpp>
-#include "tinycore/networking/httpserver.h"
-#include "tinycore/networking/web.h"
+#include "tinycore/asyncio/httpserver.h"
+#include "tinycore/asyncio/web.h"
 #include "tinycore/crypto/hashlib.h"
-#include "tinycore/networking/websocket.h"
-#include "tinycore/networking/httpclient.h"
+#include "tinycore/asyncio/websocket.h"
+#include "tinycore/asyncio/httpclient.h"
 //#include <boost/dll.hpp>
 
 
@@ -89,16 +89,18 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) {
-        Asynchronous()
-        auto client = HTTPClient::create();
+//        Asynchronous()
+//        auto client = HTTPClient::create();
 //        StringMap formArgs = {{"name", "not sb"}, };
 //        std::string formString = URLParse::urlEncode(formArgs);
 //        ByteArray body(formString.data(), formString.data() + formString.size());
 //        HTTPHeaders headers;
 //        auto request = HTTPRequest::create("http://localhost:3030/", followRedirects_=false, method_="POST",
 //                                           body_=body, connectTimeout_=30.0f, headers_=headers);
-        client->fetch("http://www.csdn.net/",
-                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
+//        client->fetch("http://www.csdn.net/",
+//                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
+        write("Hello world");
+        FATAL(false, "Exit");
     }
 
     void onResp(const HTTPResponse &response) {

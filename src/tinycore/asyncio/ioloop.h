@@ -39,6 +39,7 @@ protected:
 class TC_COMMON_API IOLoop {
 public:
     typedef boost::asio::io_service ServiceType;
+    typedef ServiceType::work WorkType;
     typedef std::function<void()> CallbackType;
     typedef std::function<void()> TimeoutCallbackType;
     typedef _SignalSet::CallbackType SignalCallbackType;
@@ -74,8 +75,6 @@ public:
         return _ioService;
     }
 protected:
-    void setupInterrupter();
-
     ServiceType _ioService;
     _SignalSet _signalSet;
     volatile bool _stopped{false};

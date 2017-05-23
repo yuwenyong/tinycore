@@ -7,8 +7,8 @@
 
 #include "tinycore/common/common.h"
 #include "tinycore/common/errors.h"
-#include "tinycore/networking/web.h"
-#include "tinycore/networking/ioloop.h"
+#include "tinycore/asyncio/web.h"
+#include "tinycore/asyncio/ioloop.h"
 
 
 #define _NOT_SUPPORTED(func) void func() { ThrowException(Exception, #func " not supported for Web Sockets"); }

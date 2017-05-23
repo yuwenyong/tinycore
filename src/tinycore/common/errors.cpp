@@ -5,6 +5,24 @@
 #include "tinycore/common/errors.h"
 
 
+const char* SystemExit::what() const {
+    if (_what.empty()) {
+        _what += _file;
+        _what += ':';
+        _what += std::to_string(_line);
+        _what += " in ";
+        _what += _func;
+        _what += ' ';
+        _what += " SystemExit";
+        if (!_message.empty()) {
+            _what += "\n\t";
+            _what += _message;
+        }
+    }
+    return _what.c_str();
+}
+
+
 const char* BaseException::what() const noexcept {
     if (_what.empty()) {
         _what += _file;

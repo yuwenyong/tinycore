@@ -9,10 +9,10 @@
 #include <chrono>
 #include <boost/parameter.hpp>
 #include <boost/optional.hpp>
-#include "tinycore/networking/ioloop.h"
-#include "tinycore/networking/httputil.h"
-#include "tinycore/networking/iostream.h"
-#include "tinycore/networking/web.h"
+#include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/httputil.h"
+#include "tinycore/asyncio/iostream.h"
+#include "tinycore/asyncio/web.h"
 #include "tinycore/compress/zlib.h"
 #include "tinycore/utilities/string.h"
 #include "tinycore/httputils/httplib.h"

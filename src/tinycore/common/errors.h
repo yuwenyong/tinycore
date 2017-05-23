@@ -10,6 +10,26 @@
 #include "tinycore/utilities/string.h"
 
 
+class TC_COMMON_API SystemExit {
+public:
+    SystemExit(const char *file, int line, const char *func, const std::string &message="")
+            : _file(file)
+            , _line(line)
+            , _func(func)
+            , _message(message) {
+
+    }
+
+    const char *what() const;
+protected:
+    const char *_file;
+    int _line;
+    const char *_func;
+    std::string _message;
+    mutable std::string _what;
+};
+
+
 class TC_COMMON_API BaseException: public std::runtime_error {
 public:
     BaseException(const char *file, int line, const char *func, const std::string &message)
@@ -42,7 +62,7 @@ public: \
     } \
 }
 
-DECLARE_EXCEPTION(SystemExit, BaseException);
+
 DECLARE_EXCEPTION(Exception, BaseException);
 DECLARE_EXCEPTION(KeyError, Exception);
 DECLARE_EXCEPTION(IndexError, Exception);

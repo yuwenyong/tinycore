@@ -4,7 +4,7 @@
 
 #define BOOST_TEST_MODULE web_test
 #include <boost/test/included/unit_test.hpp>
-#include "tinycore/networking/testing.h"
+#include "tinycore/asyncio/testing.h"
 
 
 class HelloWorld: public RequestHandler {

@@ -2,7 +2,7 @@
 // Created by yuwenyong on 17-3-27.
 //
 
-#include "tinycore/networking/ioloop.h"
+#include "tinycore/asyncio/ioloop.h"
 #include "tinycore/logging/log.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
@@ -57,7 +57,7 @@ void _SignalSet::onSignal(const boost::system::error_code &error, int signalNumb
 IOLoop::IOLoop()
         : _ioService()
         , _signalSet(this) {
-    setupInterrupter();
+//    setupInterrupter();
 }
 
 IOLoop::~IOLoop() {
@@ -68,8 +68,18 @@ int IOLoop::start() {
     if (_stopped) {
         return 0;
     }
+    WorkType work(_ioService);
     _signalSet.start();
-    _ioService.run();
+    while (!_ioService.stopped()) {
+        try {
+            _ioService.run();
+        } catch (SystemExit &e) {
+            Log::error(e.what());
+            break;
+        } catch (std::exception &e) {
+            Log::error("Unexpected Exception:%s", e.what());
+        }
+    }
     _stopped = false;
     return 0;
 }
@@ -95,26 +105,6 @@ void IOLoop::removeTimeout(Timeout timeout) {
     if (timeoutPtr) {
         timeoutPtr->cancel();
     }
-}
-
-void IOLoop::setupInterrupter() {
-    signal(SIGINT, [this](){
-        Log::info("Capture SIGINT");
-        this->stop();
-        return -1;
-    });
-    signal(SIGTERM, [this](){
-        Log::info("Capture SIGTERM");
-        this->stop();
-        return -1;
-    });
-#if defined(SIGQUIT)
-    signal(SIGQUIT, [this](){
-        Log::info("Capture SIGQUIT");
-        this->stop();
-        return -1;
-    });
-#endif
 }
 
 

@@ -53,6 +53,7 @@ public:
     static Options * instance();
 protected:
     void setupWatcherHook();
+    void setupInterrupter();
 
     po::options_description _opts;
     po::variables_map _vm;

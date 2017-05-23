@@ -16,7 +16,7 @@
 #include <boost/noncopyable.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
-#include "tinycore/networking/httpserver.h"
+#include "tinycore/asyncio/httpserver.h"
 #include "tinycore/httputils/cookie.h"
 #include "tinycore/utilities/container.h"
 #include "tinycore/httputils/httplib.h"

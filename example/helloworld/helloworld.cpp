@@ -9,7 +9,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include "tinycore/debugging/trace.h"
-#include "tinycore/networking/httpclient.h"
+#include "tinycore/asyncio/httpclient.h"
 
 
 int main() {

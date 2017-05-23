@@ -4,6 +4,7 @@
 
 #include "tinycore/configuration/options.h"
 #include <iostream>
+#include "tinycore/asyncio/ioloop.h"
 #include "tinycore/configuration/configmgr.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/log.h"
@@ -35,8 +36,9 @@ void Options::parseCommandLine(int argc, const char * const argv[]) {
 }
 
 void Options::onEnter() {
-    setupWatcherHook();
     Log::initialize();
+    setupWatcherHook();
+    setupInterrupter();
 }
 
 void Options::onExit() {
@@ -87,4 +89,26 @@ void Options::setupWatcherHook() {
         Log::debug("Destroy HTTPServerRequest,current count:%d", value);
     });
 #endif
+}
+
+void Options::setupInterrupter() {
+    if (!sConfigMgr->getBool("disableInterrupter", false)) {
+        sIOLoop->signal(SIGINT, [this](){
+            Log::info("Capture SIGINT");
+            sIOLoop->stop();
+            return -1;
+        });
+        sIOLoop->signal(SIGTERM, [this](){
+            Log::info("Capture SIGTERM");
+            sIOLoop->stop();
+            return -1;
+        });
+#if defined(SIGQUIT)
+        sIOLoop->signal(SIGQUIT, [this](){
+            Log::info("Capture SIGQUIT");
+            sIOLoop->stop();
+            return -1;
+        });
+#endif
+    }
 }

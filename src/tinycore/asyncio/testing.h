@@ -8,9 +8,9 @@
 #include "tinycore/common/common.h"
 #include <boost/optional.hpp>
 #include "tinycore/configuration/options.h"
-#include "tinycore/networking/ioloop.h"
-#include "tinycore/networking/web.h"
-#include "tinycore/networking/httpclient.h"
+#include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/web.h"
+#include "tinycore/asyncio/httpclient.h"
 
 
 struct GlobalFixture {
