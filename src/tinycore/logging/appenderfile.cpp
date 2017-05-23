@@ -4,8 +4,8 @@
 
 #include "tinycore/logging/appenderfile.h"
 #include <boost/filesystem.hpp>
-#include "tinycore/logging/log.h"
 #include "tinycore/common/errors.h"
+#include "tinycore/logging/log.h"
 
 
 AppenderFile::AppenderFile(std::string name, LogLevel level, AppenderFlags flags, const StringVector &extraArgs)

@@ -5,8 +5,8 @@
 #include "tinycore/configuration/options.h"
 #include <iostream>
 #include "tinycore/configuration/configmgr.h"
-#include "tinycore/logging/log.h"
 #include "tinycore/debugging/watcher.h"
+#include "tinycore/logging/log.h"
 #include "tinycore/utilities/objectmanager.h"
 
 
@@ -40,7 +40,7 @@ void Options::onEnter() {
 }
 
 void Options::onExit() {
-    sObjectMgr->finish();
+    sObjectMgr->cleanup();
     sWatcher->dumpAll();
     Log::close();
 }

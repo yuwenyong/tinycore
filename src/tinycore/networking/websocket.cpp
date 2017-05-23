@@ -238,8 +238,8 @@ std::string WebSocketRequest::calculatePart(const std::string &key) {
 std::string WebSocketRequest::generateChallengeResponse(const std::string &part1, const std::string &part2,
                                                         const std::string &part3) {
     MD5Object m;
-    m.update(part1.data(), part1.length());
-    m.update(part2.data(), part2.length());
-    m.update(part3.data(), part3.length());
+    m.update(part1);
+    m.update(part2);
+    m.update(part3);
     return m.hex();
 }

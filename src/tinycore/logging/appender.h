@@ -6,13 +6,13 @@
 #define TINYCORE_APPENDER_H
 
 #include "tinycore/common/common.h"
-#include <boost/log/expressions.hpp>
-#include <boost/log/sinks.hpp>
+#include <boost/functional/factory.hpp>
 #include <boost/log/attributes.hpp>
 #include <boost/log/core.hpp>
-#include <boost/functional/factory.hpp>
-#include <boost/phoenix.hpp>
+#include <boost/log/expressions.hpp>
+#include <boost/log/sinks.hpp>
 #include <boost/noncopyable.hpp>
+#include <boost/phoenix.hpp>
 #include "tinycore/logging/logger.h"
 
 

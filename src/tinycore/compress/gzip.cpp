@@ -3,11 +3,11 @@
 //
 
 #include "tinycore/compress/gzip.h"
-#include <boost/iostreams/device/file.hpp>
-#include <boost/range/iterator_range.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/endian/conversion.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/iostreams/device/file.hpp>
+#include <boost/range/iterator_range.hpp>
 
 
 GZipCompressor::GZipCompressor(const std::string &fileName, int compressLevel)

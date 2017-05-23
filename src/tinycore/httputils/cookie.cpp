@@ -38,7 +38,7 @@ std::string CookieUtil::unquote(const std::string &s) {
     StringVector res;
     ssize_t i = 0, j, k, n = str.length();
     boost::cmatch omatch, qmatch;
-    while (i < n) {
+    while (0 <= i && i < n) {
         boost::regex_search(str.c_str() + i, str.c_str() + n, omatch, octalPatt);
         boost::regex_search(str.c_str() + i, str.c_str() + n, qmatch, quotePatt);
         if (omatch.empty() && qmatch.empty()) {
@@ -54,15 +54,14 @@ std::string CookieUtil::unquote(const std::string &s) {
         }
         if (!qmatch.empty() && (omatch.empty() || k < j)) {
             res.emplace_back(str.substr(i, k - i));
-            res.emplace_back(str[k + 1], 1);
+            res.emplace_back(1, str[k + 1]);
             i = k + 2;
         } else {
             res.emplace_back(str.substr(i, j - i));
-            res.emplace_back((char) (std::stoi(str.substr(j + 1, 3), nullptr, 8)), 1);
+            res.emplace_back(1, (char)(std::stoi(str.substr(j + 1, 3), nullptr, 8)));
             i = j + 4;
         }
     }
-
     return boost::join(res, "");
 }
 
@@ -208,31 +207,28 @@ Morsel::Morsel() {
     }
 }
 
-void Morsel::setItem(std::string key, std::string value) {
-    boost::to_lower(key);
-    if (reserved.find(key) == reserved.end()) {
-        std::string error;
-        error = "Invalid Attribute " + key;
+std::string& Morsel::operator[](const std::string &key) {
+    std::string tempKey = boost::to_lower_copy(key);
+    if (reserved.find(tempKey) == reserved.end()) {
+        std::string error = "Invalid Attribute " + tempKey;
         ThrowException(CookieError, std::move(error));
     }
-    _items[std::move(key)] = std::move(value);
+    return _items[std::move(tempKey)];
 }
 
-void Morsel::set(std::string key, std::string val, std::string codedVal, const std::vector<char> &legalChars,
-                 const std::array<char, 256> &idmap) {
+void Morsel::set(const std::string &key, const std::string &val, const std::string &codedVal,
+                 const std::vector<char> &legalChars, const std::array<char, 256> &idmap) {
     if (reserved.find(boost::to_lower_copy(key)) != reserved.end()) {
-        std::string error;
-        error = "Attempt to set a reserved key: " + key;
+        std::string error = "Attempt to set a reserved key: " + key;
         ThrowException(CookieError, std::move(error));
     }
     if (!String::translate(key, idmap, legalChars).empty()) {
-        std::string error;
-        error = "Illegal key value: " + key;
+        std::string error = "Illegal key value: " + key;
         ThrowException(CookieError, std::move(error));
     }
-    _key = std::move(key);
-    _value = std::move(val);
-    _codedValue = std::move(codedVal);
+    _key = key;
+    _value = val;
+    _codedValue = codedVal;
 }
 
 std::string Morsel::outputString(const StringMap *attrs) const {
@@ -291,7 +287,7 @@ void BaseCookie::parseString(const std::string &str, const boost::regex &patt) {
     boost::cmatch match;
     std::string k, v;
     std::string rval, cval;
-    while (i < n) {
+    while (0 <= i && i < n) {
         boost::regex_search(str.c_str() + i, str.c_str() + n, match, patt);
         if (match.empty()) {
             break;
@@ -301,15 +297,15 @@ void BaseCookie::parseString(const std::string &str, const boost::regex &patt) {
         i = match.position((boost::cmatch::size_type)0) + match.length((int)0);
         if (k[0] == '$') {
             if (m) {
-                m->setItem(k.substr(1), std::move(v));
+                (*m)[k.substr(1)] = std::move(v);
             }
         } else if (Morsel::reserved.find(boost::to_lower_copy(k)) != Morsel::reserved.end()) {
             if (m) {
-                m->setItem(std::move(k), CookieUtil::unquote(v));
+                (*m)[std::move(k)] = CookieUtil::unquote(v);
             }
         } else {
             std::tie(rval, cval) = valueDecode(v);
-            set(k, std::move(rval), std::move(cval));
+            set(k, rval, cval);
             m = &_items.at(k);
         }
     }

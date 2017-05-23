@@ -26,7 +26,7 @@ public:
         return make_unique<Application>(std::move(handlers));
     }
 
-    void testHelloWord() {
+    void testHelloWorld() {
         fetch("/", [](const HTTPResponse &response) {
             BOOST_CHECK_EQUAL(response.getCode(), 200);
             const ByteArray *buffer = response.getBody();
@@ -37,6 +37,9 @@ public:
     }
 };
 
+BOOST_GLOBAL_FIXTURE(GlobalFixture);
 
-BOOST_GLOBAL_FIXTURE(CoreFixture);
-REGISTER_TEST_CASE(TestHelloWorld, HelloWorldTestCase, testHelloWord)
+BOOST_FIXTURE_TEST_CASE(TestHelloWorld, TestCaseFixture<HelloWorldTestCase>) {
+    target.testHelloWorld();
+}
+

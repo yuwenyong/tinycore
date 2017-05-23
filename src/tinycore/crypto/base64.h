@@ -11,7 +11,9 @@
 class Base64 {
 public:
     static std::string b64encode(const std::string &s, const char *altChars= nullptr);
-    static std::string b64decode(std::string s, const char *altChars= nullptr);
+    static ByteArray b64encode(const ByteArray &s, const char *altChars= nullptr);
+    static std::string b64decode(const std::string &s, const char *altChars= nullptr);
+    static ByteArray b64decode(const ByteArray &s, const char *altChars= nullptr);
 };
 
 #endif //TINYCORE_BASE64_H

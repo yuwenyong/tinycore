@@ -7,9 +7,9 @@
 
 #include "tinycore/common/common.h"
 #include <mutex>
+#include <boost/checked_delete.hpp>
 #include <boost/foreach.hpp>
 #include <boost/functional/factory.hpp>
-#include <boost/checked_delete.hpp>
 
 
 class CleanupObject {
@@ -32,7 +32,7 @@ public:
     template <typename T>
     T* registerObject() {
         std::lock_guard<std::mutex> lock(_objectsLock);
-        if (finished()) {
+        if (cleaned()) {
             return nullptr;
         }
         T *object = boost::factory<T *>()();
@@ -40,23 +40,23 @@ public:
         return object;
     }
 
-    void finish() {
+    void cleanup() {
         std::lock_guard<std::mutex> lock(_objectsLock);
-        if (finished()) {
+        if (cleaned()) {
             return;
         }
         BOOST_REVERSE_FOREACH(CleanupObject *object, _cleanupObjects) { object->cleanup(); }
         _cleanupObjects.clear();
-        _finished = true;
+        _cleaned = true;
     }
 
-    bool finished() const {
-        return _finished;
+    bool cleaned() const {
+        return _cleaned;
     }
 
     static ObjectManager* instance();
 protected:
-    bool _finished{false};
+    bool _cleaned{false};
     CleanupObjectContainer _cleanupObjects;
     std::mutex _objectsLock;
 };

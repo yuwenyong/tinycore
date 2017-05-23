@@ -34,7 +34,7 @@ class TC_COMMON_API Morsel {
 public:
     Morsel();
 
-    void setItem(std::string key, std::string value);
+    std::string& operator[](const std::string &key);
 
     bool isReservedKey(const std::string &key) const {
         return reserved.find(boost::to_lower_copy(key)) != reserved.end();
@@ -44,12 +44,12 @@ public:
         return _value;
     }
 
-    void set(std::string key, std::string val, std::string codedVal,
+    void set(const std::string &key, const std::string &val, const std::string &codedVal,
              const std::vector<char> &legalChars= CookieUtil::legalChars,
              const std::array<char, 256> &idmap= CookieUtil::idmap);
 
     std::string output(const StringMap *attrs= nullptr, const std::string &header= "Set-Cookie:") const {
-        return header + " " + outputString(nullptr);
+        return header + " " + outputString(attrs);
     }
 
     std::string outputString(const StringMap *attrs= nullptr) const;
@@ -71,6 +71,27 @@ public:
     typedef std::map<std::string, Morsel> MorselContainerType;
     typedef std::function<void (const std::string&, const Morsel&)> CallbackType;
 
+    class CookieSetter {
+    public:
+        CookieSetter(BaseCookie *cookie, const std::string *key, Morsel *morsel)
+                : _cookie(cookie)
+                , _key(key)
+                , _morsel(morsel) {
+
+        }
+
+        CookieSetter& operator=(const std::string &value) {
+            std::string rval, cval;
+            std::tie(rval, cval) = _cookie->valueEncode(value);
+            _morsel->set(*_key, rval, cval);
+            return *this;
+        }
+    protected:
+        BaseCookie *_cookie;
+        const std::string *_key;
+        Morsel *_morsel;
+    };
+
     BaseCookie() = default;
 
     explicit BaseCookie(const std::string &input) {
@@ -81,21 +102,24 @@ public:
         load(input);
     }
 
-    const Morsel& getItem(const std::string &key) const {
+    const Morsel& at(const std::string &key) const {
         return _items.at(key);
     }
 
-    Morsel& getItem(const std::string &key) {
+    Morsel& at(const std::string &key) {
         return _items.at(key);
     }
 
-    void setItem(const std::string &key, const std::string &value) {
-        std::string rval, cval;
-        std::tie(rval, cval) = valueEncode(value);
-        set(key, std::move(rval), std::move(cval));
+    CookieSetter operator[](const std::string &key) {
+        auto iter = _items.find(key);
+        if (iter == _items.end()) {
+            auto result = _items.emplace(key, Morsel());
+            iter = result.first;
+        }
+        return CookieSetter(this, &(iter->first), &(iter->second));
     }
 
-    bool contain(const std::string &key) const {
+    bool has(const std::string &key) const {
         return _items.find(key) != _items.end();
     }
 
@@ -105,8 +129,8 @@ public:
         }
     }
 
-    virtual DecodeResultType valueDecode(const std::string &val);
-    virtual EncodeResultType valueEncode(const std::string &val);
+    DecodeResultType valueDecode(const std::string &val);
+    EncodeResultType valueEncode(const std::string &val);
 
     std::string output(const StringMap *attrs= nullptr, const std::string &header= "Set-Cookie:",
                        const std::string &sep= "\015\012") const;
@@ -117,17 +141,17 @@ public:
 
     void load(const StringMap &rawdata) {
         for (auto &kv: rawdata) {
-            setItem(kv.first, kv.second);
+            (*this)[kv.first] = kv.second;
         }
     }
 protected:
-    void set(const std::string &key, std::string realValue, std::string codedValue) {
+    void set(const std::string &key, const std::string &realValue, const std::string &codedValue) {
         auto iter = _items.find(key);
         if (iter == _items.end()) {
             auto result = _items.emplace(key, Morsel());
             iter = result.first;
         }
-        iter->second.set(key, std::move(realValue), std::move(codedValue));
+        iter->second.set(key, realValue, codedValue);
     }
 
     void parseString(const std::string &str, const boost::regex &patt =CookieUtil::cookiePattern);

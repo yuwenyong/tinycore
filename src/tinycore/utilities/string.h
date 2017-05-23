@@ -6,8 +6,8 @@
 #define TINYCORE_STRING_H
 
 #include "tinycore/common/common.h"
-#include <boost/format.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/format.hpp>
 
 
 class TC_COMMON_API String {
@@ -21,9 +21,9 @@ public:
 
     template <typename... Args>
     static std::string format(const char *fmt, Args&&... args) {
-        FormatType fmter(fmt);
-        format(fmter, std::forward<Args>(args)...);
-        return fmter.str();
+        FormatType formatter(fmt);
+        format(formatter, std::forward<Args>(args)...);
+        return formatter.str();
     }
 
     static StringVector split(const std::string &s, bool keepEmpty=true) {
@@ -75,14 +75,14 @@ public:
     static std::string filter(const std::string &s, std::function<bool (char)> pred);
 protected:
     template <typename T, typename... Args>
-    static void format(FormatType &fmter, T &&value, Args&&... args) {
-        fmter % value;
-        format(fmter, std::forward<Args>(args)...);
+    static void format(FormatType &formatter, T &&value, Args&&... args) {
+        formatter % value;
+        format(formatter, std::forward<Args>(args)...);
     }
 
     template <typename T>
-    static void format(FormatType &fmter, T &&value) {
-        fmter % value;
+    static void format(FormatType &formatter, T &&value) {
+        formatter % value;
     }
 };
 

@@ -6,12 +6,12 @@
 #define TINYCORE_GZIP_H
 
 #include "tinycore/common/common.h"
+#include <fstream>
 #include <iostream>
 #include <sstream>
-#include <fstream>
-#include <boost/iostreams/filter/gzip.hpp>
 #include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 #include <boost/optional.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/zlib.h"
@@ -93,15 +93,13 @@ enum class GzipFileMode {
     WRITE
 };
 
-typedef std::shared_ptr<std::iostream> BasicStreamPtr;
-typedef std::shared_ptr<std::stringstream> StringStreamPtr;
-typedef std::shared_ptr<std::fstream> FileStreamPtr;
 
 #define FTEXT 1
 #define FHCRC 2
 #define FEXTRA 4
 #define FNAME 8
 #define FCOMMENT 16
+
 
 class GzipFile {
 public:

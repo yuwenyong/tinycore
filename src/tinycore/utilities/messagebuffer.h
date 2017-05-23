@@ -46,15 +46,15 @@ public:
         _storage.resize(bytes);
     }
 
-    char* getBasePointer() {
+    Byte* getBasePointer() {
         return _storage.data();
     }
 
-    char* getReadPointer() {
+    Byte* getReadPointer() {
         return getBasePointer() + _rpos;
     }
 
-    char* getWritePointer() {
+    Byte* getWritePointer() {
         return getBasePointer() + _wpos;
     }
 
@@ -94,14 +94,14 @@ public:
         }
     }
 
-    void write(void const* data, size_t size) {
+    void write(const Byte* data, size_t size) {
         if (size) {
             memcpy(getWritePointer(), data, size);
             writeCompleted(size);
         }
     }
 
-    std::vector<char >&& move() {
+    ByteArray&& move() {
         _wpos = 0;
         _rpos = 0;
         return std::move(_storage);
@@ -128,7 +128,7 @@ public:
 protected:
     size_t _wpos;
     size_t _rpos;
-    std::vector<char> _storage;
+    ByteArray _storage;
 };
 
 #endif //TINYCORE_MESSAGEBUFFER_H

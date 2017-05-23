@@ -7,10 +7,11 @@
 
 #include "tinycore/common/common.h"
 #include <mutex>
-#include <boost/signals2.hpp>
 #include <boost/ptr_container/ptr_map.hpp>
+#include <boost/signals2.hpp>
 #include "tinycore/logging/log.h"
 #include "tinycore/utilities/string.h"
+
 
 class Watcher {
 public:

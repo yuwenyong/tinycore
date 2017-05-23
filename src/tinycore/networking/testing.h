@@ -13,18 +13,18 @@
 #include "tinycore/networking/httpclient.h"
 
 
-struct CoreFixture {
-    CoreFixture() {
+struct GlobalFixture {
+    GlobalFixture() {
         sOptions->onEnter();
     }
 
-    ~CoreFixture() {
+    ~GlobalFixture() {
         sOptions->onExit();
     }
 };
 
 
-class AsyncTestCase {
+class TC_COMMON_API AsyncTestCase {
 public:
     virtual ~AsyncTestCase();
     void stop();
@@ -37,7 +37,7 @@ protected:
 };
 
 
-class AsyncHTTPTestCase: public AsyncTestCase {
+class TC_COMMON_API AsyncHTTPTestCase: public AsyncTestCase {
 public:
     typedef HTTPClient::CallbackType HTTPClientCallback;
 
@@ -87,11 +87,12 @@ protected:
 };
 
 
-#define REGISTER_TEST_CASE(name, cls, method) \
-BOOST_AUTO_TEST_CASE(name) { \
-    cls _test; \
-    _test.method(); \
-}
+template <typename T>
+struct TestCaseFixture {
+    TestCaseFixture() {}
+    ~TestCaseFixture() {}
+    T target;
+};
 
 
 #endif //TINYCORE_TESTING_H

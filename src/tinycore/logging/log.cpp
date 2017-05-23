@@ -3,13 +3,13 @@
 //
 
 #include "tinycore/logging/log.h"
-#include <boost/log/utility/setup.hpp>
 #include <boost/functional/factory.hpp>
+#include <boost/log/utility/setup.hpp>
+#include "tinycore/common/errors.h"
+#include "tinycore/configuration/configmgr.h"
 #include "tinycore/logging/appenderconsole.h"
 #include "tinycore/logging/appenderfile.h"
-#include "tinycore/configuration/configmgr.h"
 #include "tinycore/utilities/string.h"
-#include "tinycore/common/errors.h"
 
 
 Log::AppenderCreatorMap Log::_appenderFactory;

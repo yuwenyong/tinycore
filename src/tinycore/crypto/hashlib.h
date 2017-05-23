@@ -6,8 +6,8 @@
 #define TINYCORE_HASHLIB_H
 
 #include "tinycore/common/common.h"
-#include <openssl/evp.h>
 #include <openssl/err.h>
+#include <openssl/evp.h>
 #include <boost/mpl/string.hpp>
 
 
@@ -45,12 +45,20 @@ public:
         EVP_MD_CTX_copy(_ctx, initializer().native());
     }
 
-    EVPObject(const void *d, size_t cnt): EVPObject() {
+    EVPObject(const Byte *d, size_t cnt): EVPObject() {
         update(d, cnt);
+    }
+
+    EVPObject(const ByteArray &data): EVPObject() {
+        update(data);
     }
 
     EVPObject(const char *s): EVPObject() {
         update(s);
+    }
+
+    EVPObject(const std::string &data): EVPObject() {
+        update(data);
     }
 
     EVPObject(const EVPObject &rhs) {
@@ -81,12 +89,20 @@ public:
         reset();
     }
 
-    void update(const char *s) {
-        EVP_DigestUpdate(_ctx, s, strlen(s));
+    void update(const Byte *d, size_t cnt) {
+        EVP_DigestUpdate(_ctx, d, cnt);
     }
 
-    void update(const void *d, size_t cnt) {
-        EVP_DigestUpdate(_ctx, d, cnt);
+    void update(const ByteArray &data) {
+        update(data.data(), data.size());
+    }
+
+    void update(const char *s) {
+        update((const Byte*)s, strlen(s));;
+    }
+
+    void update(const std::string &data) {
+        update((const Byte*)data.data(), data.size());
     }
 
     int digestSize() const {
@@ -117,11 +133,11 @@ public:
         EVP_DigestFinal(temp._ctx, digest, NULL);
         char c;
         for(unsigned int i = 0; i < digestSize; i++) {
-            c = (digest[i] >> 4) & 0xf;
-            c = (c > 9) ? c +'a'-10 : c + '0';
+            c = (char)((digest[i] >> 4) & 0xf);
+            c = (char)((c > 9) ? c +'a'-10 : c + '0');
             result.push_back(c);
-            c = (digest[i] & 0xf);
-            c = (c > 9) ? c +'a'-10 : c + '0';
+            c = (char)(digest[i] & 0xf);
+            c = (char)((c > 9) ? c +'a'-10 : c + '0');
             result.push_back(c);
         }
         return result;

@@ -8,12 +8,12 @@
 #include "tinycore/common/common.h"
 #include <functional>
 #include <boost/log/core.hpp>
-#include <boost/ptr_container/ptr_map.hpp>
 #include <boost/mpl/string.hpp>
+#include <boost/ptr_container/ptr_map.hpp>
+#include "tinycore/debugging/trace.h"
 #include "tinycore/logging/appender.h"
 #include "tinycore/logging/appendercustom.h"
 #include "tinycore/logging/logger.h"
-#include "tinycore/debugging/trace.h"
 
 
 namespace logging = boost::log;

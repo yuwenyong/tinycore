@@ -88,8 +88,8 @@ public:
     const BaseCookie& cookies();
 
     std::string getCookie(const std::string &name, const std::string &defaultValue= {}) {
-        if (cookies().contain(name)) {
-            return cookies().getItem(name).getValue();
+        if (cookies().has(name)) {
+            return cookies().at(name).getValue();
         }
         return defaultValue;
     }

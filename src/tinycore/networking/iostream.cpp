@@ -35,9 +35,10 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
-    const char *loc = StrNStr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), delimiter.c_str());
+    const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
+                              delimiter.c_str());
     if (loc) {
-        size_t readBytes = loc - _readBuffer.getReadPointer() + delimiter.size();
+        size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + delimiter.size();
         BufferType buffer(_readBuffer.getReadPointer(), readBytes);
         _readBuffer.readCompleted(readBytes);
         callback(buffer);
@@ -73,7 +74,7 @@ void BaseIOStream::write(BufferType &chunk, WriteCallbackType callback) {
     bool isWriting = writing();
     size_t bufferSize = boost::asio::buffer_size(chunk);
     MessageBuffer packet(bufferSize);
-    packet.write(boost::asio::buffer_cast<const void *>(chunk), bufferSize);
+    packet.write(boost::asio::buffer_cast<const Byte*>(chunk), bufferSize);
     _writeQueue.push(std::move(packet));
     _writeCallback = std::move(callback);
     if (!isWriting) {
@@ -134,9 +135,10 @@ void BaseIOStream::readHandler(const boost::system::error_code &error, size_t tr
             return;
         }
     } else if (!_readDelimiter.empty()){
-        const char *loc = StrNStr(_readBuffer.getReadPointer(), _readBuffer.getActiveSize(), _readDelimiter.c_str());
+        const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
+                                  _readDelimiter.c_str());
         if (loc) {
-            size_t readBytes = loc - _readBuffer.getReadPointer() + _readDelimiter.size();
+            size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter.size();
             ReadCallbackType callback = std::move(_readCallback);
             _readDelimiter.clear();
             BufferType buffer(_readBuffer.getReadPointer(), readBytes);

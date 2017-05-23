@@ -16,8 +16,8 @@ public:
     typedef std::map<std::string, StringVector> QueryArguments;
     typedef std::vector<std::pair<std::string, std::string>> QueryArgumentsList;
 
-    static ParseResult urlParse(std::string url, std::string scheme={}, bool allowFragments=true);
-    static SplitResult urlSplit(std::string url, std::string scheme={}, bool allowFragments=true);
+    static ParseResult urlParse(const std::string &url, const std::string &scheme="", bool allowFragments=true);
+    static SplitResult urlSplit(const std::string &url, const std::string &scheme="", bool allowFragments=true);
     static std::string urlUnparse(const ParseResult &data);
     static std::string urlUnsplit(const SplitResult &data);
     static std::string urlJoin(const std::string &base, const std::string &url, bool allowFragments=true);

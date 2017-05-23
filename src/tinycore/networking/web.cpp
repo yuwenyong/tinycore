@@ -186,10 +186,10 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
     }
     _newCookies->emplace_back();
     BaseCookie &newCookie = _newCookies->back();
-    newCookie.setItem(name, value);
-    Morsel &morsel = newCookie.getItem(name);
+    newCookie[name] = value;
+    Morsel &morsel = newCookie.at(name);
     if (domain) {
-        morsel.setItem("domain", value);
+        morsel["domain"] = value;
     }
     DateTime temp;
     if (expiresDays && !expires) {
@@ -197,14 +197,14 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
         expires = &temp;
     }
     if (expires) {
-        morsel.setItem("expires", String::formatUTCDate(*expires, true));
+        morsel["expires"] = String::formatUTCDate(*expires, true);
     }
     if (path) {
-        morsel.setItem("path", path);
+        morsel["path"] = path;
     }
     if (args) {
         for (auto &kv: *args) {
-            morsel.setItem(kv.first, kv.second);
+            morsel[kv.first] = kv.second;
         }
     }
 }
@@ -254,7 +254,7 @@ void RequestHandler::finish() {
         const std::string &method = _request->getMethod();
         if (_statusCode == 200 && (method == "GET" || method == "HEAD") && _headers.find("Etag") == _headers.end()) {
             SHA1Object hasher;
-            hasher.update(_writeBuffer.data(), _writeBuffer.size());
+            hasher.update((const Byte *)_writeBuffer.data(), _writeBuffer.size());
             std::string etag = "\"" + hasher.hex() + "\"";
             std::string inm = _request->getHTTPHeader()->get("If-None-Match");
             if (inm.find(etag.c_str()) != std::string::npos) {

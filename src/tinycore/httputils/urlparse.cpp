@@ -157,29 +157,28 @@ const std::map<char, std::string> URLParse::_safeMap = {
         {'\x79', "y"},  {'\xfa', "%FA"},  {'\x7d', "%7D"},  {'\xfe', "%FE"}
 };
 
-URLParse::ParseResult URLParse::urlParse(std::string url, std::string scheme, bool allowFragments) {
-    std::string netloc, query, fragment, params;
-    std::tie(scheme, netloc, url, query, fragment) = urlSplit(std::move(url), std::move(scheme), allowFragments);
-    if (_usesParams.find(scheme) != _usesParams.end() && url.find(';') != std::string::npos) {
-        std::tie(url, params) = splitParams(url);
+URLParse::ParseResult URLParse::urlParse(const std::string &url, const std::string &scheme, bool allowFragments) {
+    std::string tempScheme, tempURL, netloc, query, fragment, params;
+    std::tie(tempScheme, netloc, tempURL, query, fragment) = urlSplit(url, scheme, allowFragments);
+    if (_usesParams.find(scheme) != _usesParams.end() && tempURL.find(';') != std::string::npos) {
+        std::tie(tempURL, params) = splitParams(tempURL);
     }
-    return std::make_tuple(std::move(scheme), std::move(netloc), std::move(url), std::move(params), std::move(query),
-                           std::move(fragment));
+    return std::make_tuple(std::move(tempScheme), std::move(netloc), std::move(tempURL), std::move(params),
+                           std::move(query), std::move(fragment));
 }
 
 
-URLParse::SplitResult URLParse::urlSplit(std::string url, std::string scheme, bool allowFragments) {
-    std::string netloc, query, fragment;
+URLParse::SplitResult URLParse::urlSplit(const std::string &url, const std::string &scheme, bool allowFragments) {
+    std::string tempScheme(scheme), tempURL(url), netloc, query, fragment;
     size_t leftBracket, rightBracket, pos;
-    auto i = url.find(':');
+    auto i = tempURL.find(':');
     if (i != std::string::npos) {
-        std::string temp = url.substr(0, i);
+        std::string temp = tempURL.substr(0, i);
         if (boost::ilexicographical_compare(temp, "http")) {
-            boost::to_lower(temp);
-            scheme = std::move(temp);
-            url = url.substr(i + 1);
-            if (boost::starts_with(url, "//")) {
-                std::tie(netloc, url) = splitNetloc(url, 2);
+            tempScheme = boost::to_lower_copy(temp);
+            tempURL = tempURL.substr(i + 1);
+            if (boost::starts_with(tempURL, "//")) {
+                std::tie(netloc, tempURL) = splitNetloc(tempURL, 2);
                 leftBracket = netloc.find('[');
                 rightBracket = netloc.find(']');
                 if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
@@ -188,32 +187,31 @@ URLParse::SplitResult URLParse::urlSplit(std::string url, std::string scheme, bo
                 }
             }
             if (allowFragments) {
-                pos = url.find('#');
+                pos = tempURL.find('#');
                 if (pos != std::string::npos) {
-                    fragment = url.substr(pos + 1);
-                    url = url.substr(0, pos);
+                    fragment = tempURL.substr(pos + 1);
+                    tempURL = tempURL.substr(0, pos);
                 }
             }
-            pos = url.find('?');
+            pos = tempURL.find('?');
             if (pos != std::string::npos) {
-                query = url.substr(pos + 1);
-                url = url.substr(0, pos);
+                query = tempURL.substr(pos + 1);
+                tempURL = tempURL.substr(0, pos);
             }
-            return std::make_tuple(std::move(scheme), std::move(netloc), std::move(url), std::move(query),
+            return std::make_tuple(std::move(tempScheme), std::move(netloc), std::move(tempURL), std::move(query),
                                    std::move(fragment));
         }
         pos = temp.find_first_not_of(_schemeChars);
         if (pos == std::string::npos) {
-            std::string rest = url.substr(i + 1);
+            std::string rest = tempURL.substr(i + 1);
             if (rest.empty() || rest.find_first_not_of("0123456789") != std::string::npos) {
-                boost::to_lower(temp);
-                scheme = std::move(temp);
-                url = std::move(rest);
+                tempScheme = boost::to_lower_copy(temp);
+                tempURL = std::move(rest);
             }
         }
     }
-    if (boost::starts_with(url, "//")) {
-        std::tie(netloc, url) = splitNetloc(url, 2);
+    if (boost::starts_with(tempURL, "//")) {
+        std::tie(netloc, tempURL) = splitNetloc(tempURL, 2);
         leftBracket = netloc.find('[');
         rightBracket = netloc.find(']');
         if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
@@ -222,18 +220,18 @@ URLParse::SplitResult URLParse::urlSplit(std::string url, std::string scheme, bo
         }
     }
     if (allowFragments) {
-        pos = url.find('#');
+        pos = tempURL.find('#');
         if (pos != std::string::npos) {
-            fragment = url.substr(pos + 1);
-            url = url.substr(0, pos);
+            fragment = tempURL.substr(pos + 1);
+            tempURL = tempURL.substr(0, pos);
         }
     }
-    pos = url.find('?');
+    pos = tempURL.find('?');
     if (pos != std::string::npos) {
-        query = url.substr(pos + 1);
-        url = url.substr(0, pos);
+        query = tempURL.substr(pos + 1);
+        tempURL = tempURL.substr(0, pos);
     }
-    return std::make_tuple(std::move(scheme), std::move(netloc), std::move(url), std::move(query),
+    return std::make_tuple(std::move(tempScheme), std::move(netloc), std::move(tempURL), std::move(query),
                            std::move(fragment));
 }
 
@@ -460,7 +458,8 @@ URLParse::QueryArguments URLParse::parseQS(const std::string &queryString, bool 
 }
 
 
-URLParse::QueryArgumentsList URLParse::parseQSL(const std::string &queryString, bool keepBlankValues, bool strictParsing) {
+URLParse::QueryArgumentsList URLParse::parseQSL(const std::string &queryString, bool keepBlankValues,
+                                                bool strictParsing) {
     QueryArgumentsList r;
     StringVector s1, s2, pairs;
     s1 = String::split(queryString, '&');

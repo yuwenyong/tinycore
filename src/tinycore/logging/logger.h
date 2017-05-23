@@ -6,10 +6,10 @@
 #define TINYCORE_LOGGER_H
 
 #include "tinycore/common/common.h"
-#include <boost/noncopyable.hpp>
 #include <boost/log/sources/severity_channel_logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/keywords/channel.hpp>
+#include <boost/noncopyable.hpp>
 #include "tinycore/utilities/string.h"
 
 namespace logging = boost::log;

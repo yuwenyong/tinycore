@@ -9,6 +9,7 @@
 #include <mutex>
 #include <boost/property_tree/ptree.hpp>
 
+
 class TC_COMMON_API ConfigMgr {
 public:
     typedef boost::property_tree::ptree ConfigType;
