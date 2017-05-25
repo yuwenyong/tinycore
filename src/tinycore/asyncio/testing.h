@@ -7,10 +7,10 @@
 
 #include "tinycore/common/common.h"
 #include <boost/optional.hpp>
-#include "tinycore/configuration/options.h"
+#include "tinycore/asyncio/httpclient.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/web.h"
-#include "tinycore/asyncio/httpclient.h"
+#include "tinycore/configuration/options.h"
 
 
 struct GlobalFixture {
@@ -54,11 +54,11 @@ public:
         onCleanup();
     }
 
-    void fetch(HTTPRequestPtr request, HTTPClientCallback callback);
+    void fetch(std::shared_ptr<HTTPRequest> request, HTTPClientCallback callback);
     virtual bool getHTTPServerNoKeepAlive() const;
     virtual bool getHTTPServerXHeaders() const;
-    virtual SSLOptionPtr getHTTPServerSSLOption() const;
-    virtual ApplicationPtr getApp() const =0;
+    virtual std::shared_ptr<SSLOption> getHTTPServerSSLOption() const;
+    virtual std::unique_ptr<Application> getApp() const =0;
 
     std::string getURL(const std::string &path) const {
         return "http://localhost:" + std::to_string(getHTTPPort()) + path;
@@ -81,9 +81,9 @@ protected:
 
     bool _inited{false};
     mutable boost::optional<unsigned short> _port;
-    HTTPClientPtr _httpClient;
-    ApplicationPtr _app;
-    HTTPServerPtr _httpServer;
+    std::shared_ptr<HTTPClient> _httpClient;
+    std::unique_ptr<Application> _app;
+    std::unique_ptr<HTTPServer> _httpServer;
 };
 
 

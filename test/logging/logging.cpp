@@ -2,8 +2,7 @@
 // Created by yuwenyong on 17-3-7.
 //
 
-#include "tinycore/logging/log.h"
-#include "tinycore/configuration/configmgr.h"
+#include "tinycore/tinycore.h"
 
 
 class TestSink: public BaseSink {

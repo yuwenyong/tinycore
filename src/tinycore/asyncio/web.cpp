@@ -10,7 +10,7 @@
 #include "tinycore/logging/log.h"
 
 
-RequestHandler::RequestHandler(Application *application, HTTPServerRequestPtr request)
+RequestHandler::RequestHandler(Application *application, std::shared_ptr<HTTPServerRequest> request)
         : _application(application)
         , _request(std::move(request)) {
     clear();
@@ -26,12 +26,12 @@ RequestHandler::~RequestHandler() {
 }
 
 void RequestHandler::start(ArgsType &args) {
-    auto stream = _request->getConnection()->getStream();
-    RequestHandlerWPtr handler = shared_from_this();
-    stream->setCloseCallback([handler](){
-        auto handlerKeeper = handler.lock();
-        if (handlerKeeper) {
-            handlerKeeper->onConnectionClose();
+    auto stream = _request->getConnection()->fetchStream();
+    std::weak_ptr<RequestHandler> handlerObserver = shared_from_this();
+    stream->setCloseCallback([handlerObserver](){
+        auto handler = handlerObserver.lock();
+        if (handler) {
+            handler->onConnectionClose();
         }
     });
     initialize(args);
@@ -83,7 +83,7 @@ void RequestHandler::clear() {
             {"Content-Type", "text/html; charset=UTF-8"},
     };
     if (!_request->supportsHTTP1_1()) {
-        if (_request->getHTTPHeader()->get("Connection") == "Keep-Alive") {
+        if (_request->getHTTPHeaders()->get("Connection") == "Keep-Alive") {
             setHeader("Connection", "Keep-Alive");
         }
     }
@@ -104,8 +104,7 @@ void RequestHandler::setHeader(const std::string &name, const std::string &value
 void RequestHandler::setHeader(const std::string &name, const char *value) {
     boost::regex unsafe(R"([\x00-\x1f])");
     if (strlen(value) > 4000 || boost::regex_search(value, unsafe)) {
-        std::string error;
-        error = "Unsafe header value " + std::string(value);
+        std::string error = "Unsafe header value " + std::string(value);
         ThrowException(ValueError, std::move(error));
     }
     _headers[name] = value;
@@ -115,8 +114,7 @@ std::string RequestHandler::getArgument(const std::string &name, bool strip) con
     auto &arguments = _request->getArguments();
     auto iter = arguments.find(name);
     if (iter == arguments.end()) {
-        std::string error;
-        error = "Missing argument " + name;
+        std::string error = "Missing argument " + name;
         ThrowException(HTTPError, 404, std::move(error));
     }
     std::string value = iter->second.back();
@@ -164,9 +162,9 @@ StringVector RequestHandler::getArguments(const std::string &name, bool strip) c
 const BaseCookie& RequestHandler::cookies() {
     if (!_cookies) {
         _cookies.emplace();
-        if (_request->getHTTPHeader()->contain("Cookie")) {
+        if (_request->getHTTPHeaders()->has("Cookie")) {
             try {
-                _cookies->load(_request->getHTTPHeader()->getItem("Cookie"));
+                _cookies->load(_request->getHTTPHeaders()->at("Cookie"));
             } catch (...) {
                 clearAllCookies();
             }
@@ -178,7 +176,7 @@ const BaseCookie& RequestHandler::cookies() {
 void RequestHandler::setCookie(const std::string &name, const std::string &value, const char *domain,
                                const DateTime *expires, const char *path, int *expiresDays, const StringMap *args) {
     boost::regex patt(R"([\x00-\x20])");
-    if (boost::regex_search(name, patt)) {
+    if (boost::regex_search(name + value, patt)) {
         ThrowException(ValueError, String::format("Invalid cookie %s: %s", name.c_str(), value.c_str()));
     }
     if (!_newCookies) {
@@ -221,7 +219,7 @@ void RequestHandler::redirect(const std::string &url, bool permanent) {
 }
 
 void RequestHandler::flush(bool includeFooters) {
-    std::vector<char> chunk = std::move(_writeBuffer);
+    ByteArray chunk = std::move(_writeBuffer);
     std::string headers;
     if (!_headersWritten) {
         _headersWritten = true;
@@ -241,7 +239,7 @@ void RequestHandler::flush(bool includeFooters) {
         return;
     }
     if (!chunk.empty()) {
-        headers.append(chunk.data(), chunk.size());
+        headers.append((const char *)chunk.data(), chunk.size());
     }
     if (!headers.empty()) {
         _request->write(headers);
@@ -254,9 +252,9 @@ void RequestHandler::finish() {
         const std::string &method = _request->getMethod();
         if (_statusCode == 200 && (method == "GET" || method == "HEAD") && _headers.find("Etag") == _headers.end()) {
             SHA1Object hasher;
-            hasher.update((const Byte *)_writeBuffer.data(), _writeBuffer.size());
+            hasher.update(_writeBuffer.data(), _writeBuffer.size());
             std::string etag = "\"" + hasher.hex() + "\"";
-            std::string inm = _request->getHTTPHeader()->get("If-None-Match");
+            std::string inm = _request->getHTTPHeaders()->get("If-None-Match");
             if (inm.find(etag.c_str()) != std::string::npos) {
                 _writeBuffer.clear();
                 setStatus(304);
@@ -268,7 +266,7 @@ void RequestHandler::finish() {
             setHeader("Content-Length", _writeBuffer.size());
         }
     }
-    _request->getConnection()->getStream()->setCloseCallback(nullptr);
+    _request->getConnection()->fetchStream()->setCloseCallback(nullptr);
     flush(true);
     _request->finish();
     log();
@@ -429,12 +427,12 @@ void Application::addHandlers(std::string hostPattern, HandlersType &&hostHandle
     }
 }
 
-void Application::operator()(HTTPServerRequestPtr request) {
+void Application::operator()(std::shared_ptr<HTTPServerRequest> request) {
     RequestHandler::TransformsType transforms;
     for (auto &transform: _transforms) {
         transforms.push_back(transform(request));
     }
-    RequestHandlerPtr handler;
+    std::shared_ptr<RequestHandler> handler;
     StringVector args;
     auto handlers = getHostHandlers(request);
     if (!handlers) {
@@ -448,7 +446,7 @@ void Application::operator()(HTTPServerRequestPtr request) {
         for (auto &spec: *handlers) {
             if (boost::xpressive::regex_match(requestPath, match, spec.getRegex())) {
                 handler = spec.getHandlerClass()(this, std::move(request), spec.getArgs());
-                for (size_t i = 0; i < match.size(); ++i) {
+                for (size_t i = 1; i < match.size(); ++i) {
                     args.push_back(match[i].str());
                 }
                 for (auto &s: args) {
@@ -489,7 +487,7 @@ void Application::logRequest(RequestHandler *handler) const {
 
 //Application::HandlersType Application::defaultHandlers = {};
 
-Application::HandlersType * Application::getHostHandlers(HTTPServerRequestPtr request) {
+Application::HandlersType * Application::getHostHandlers(std::shared_ptr<HTTPServerRequest> request) {
     std::string host = request->getHost();
     boost::to_lower(host);
     auto pos = host.find(':');
@@ -501,7 +499,7 @@ Application::HandlersType * Application::getHostHandlers(HTTPServerRequestPtr re
             return &handler.second;
         }
     }
-    if (!request->getHTTPHeader()->contain("X-Real-Ip")) {
+    if (!request->getHTTPHeaders()->has("X-Real-Ip")) {
         for (auto &handler: _handlers) {
             if (boost::xpressive::regex_match(_defaultHost, handler.first)) {
                 return &handler.second;
@@ -570,18 +568,17 @@ void FallbackHandler::prepare() {
 }
 
 
-GZipContentEncoding::GZipContentEncoding(HTTPServerRequestPtr request)
-        : _gzipFile(_gzipValue) {
+GZipContentEncoding::GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request) {
     if (request->supportsHTTP1_1()) {
         _gzipping = true;
     } else {
-        auto header = request->getHTTPHeader();
-        std::string acceptEncoding = header->get("Accept-Encoding");
+        auto headers = request->getHTTPHeaders();
+        std::string acceptEncoding = headers->get("Accept-Encoding");
         _gzipping = acceptEncoding.find("gzip") != std::string::npos;
     }
 }
 
-void GZipContentEncoding::transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) {
+void GZipContentEncoding::transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) {
     if (_gzipping) {
         auto iter = headers.find("Content-Type");
         std::string contentType = iter != headers.end() ? iter->second : "";
@@ -590,17 +587,24 @@ void GZipContentEncoding::transformFirstChunk(StringMap &headers, std::vector<ch
             ThrowException(IndexError, "list index out of range");
         }
         std::string ctype = contentType.substr(0, pos);
-        _gzipping = CONTENT_TYPES.find(ctype) != CONTENT_TYPES.end()
-                    && (!finishing || chunk.size() >= MIN_LENGTH)
+        _gzipping = contentTypes.find(ctype) != contentTypes.end()
+                    && (!finishing || chunk.size() >= minLength)
                     && (finishing || headers.find("Content-Length") == headers.end())
                     && headers.find("Content-Encoding") == headers.end();
     }
     if (_gzipping) {
         headers["Content-Encoding"] = "gzip";
+        _gzipValue = std::make_shared<std::stringstream>();
+        _gzipFile.initWithOutputStream(_gzipValue);
+        _gzipPos = 0;
+        transformChunk(chunk, finishing);
+        if (headers.find("Content-Length") != headers.end()) {
+            headers["Content-Length"] = std::to_string(chunk.size());
+        }
     }
 }
 
-void GZipContentEncoding::transformChunk(std::vector<char> &chunk, bool finishing) {
+void GZipContentEncoding::transformChunk(ByteArray &chunk, bool finishing) {
     if (_gzipping) {
         _gzipFile.write(chunk);
         if (finishing) {
@@ -608,12 +612,13 @@ void GZipContentEncoding::transformChunk(std::vector<char> &chunk, bool finishin
         } else {
             _gzipFile.flush();
         }
-        chunk.assign(std::next(_gzipValue.begin(), _gzipPos), _gzipValue.end());
-        _gzipPos = _gzipValue.size();
+        std::string gzipValue = _gzipValue->str();
+        chunk.assign((const Byte *)gzipValue.data() + _gzipPos, (const Byte *)gzipValue.data() + gzipValue.size());
+        _gzipPos += chunk.size();
     }
 }
 
-const StringSet GZipContentEncoding::CONTENT_TYPES = {
+const StringSet GZipContentEncoding::contentTypes = {
         "text/plain",
         "text/html",
         "text/css",
@@ -626,8 +631,10 @@ const StringSet GZipContentEncoding::CONTENT_TYPES = {
         "application/xhtml+xml"
 };
 
+const int GZipContentEncoding::minLength;
 
-void ChunkedTransferEncoding::transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) {
+
+void ChunkedTransferEncoding::transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) {
     if (_chunking) {
         if (headers.find("Content-Length") != headers.end() || headers.find("Transfer-Encoding") != headers.end()) {
             _chunking = false;
@@ -638,21 +645,22 @@ void ChunkedTransferEncoding::transformFirstChunk(StringMap &headers, std::vecto
     }
 }
 
-void ChunkedTransferEncoding::transformChunk(std::vector<char> &chunk, bool finishing) {
+void ChunkedTransferEncoding::transformChunk(ByteArray &chunk, bool finishing) {
     if (_chunking) {
         std::string block;
         if (!chunk.empty()) {
             block = String::format("%x\r\n");
-            chunk.insert(chunk.begin(), block.begin(), block.end());
+            chunk.insert(chunk.begin(), (const Byte *)block.data(), (const Byte *)block.data() + block.size());
             block = "\r\n";
-            chunk.insert(chunk.end(), block.begin(), block.end());
+            chunk.insert(chunk.end(), (const Byte *)block.data(), (const Byte *)block.data() + block.size());
         }
         if (finishing) {
             block = "0\r\n\r\n";
-            chunk.insert(chunk.end(), block.begin(), block.end());
+            chunk.insert(chunk.end(), (const Byte *)block.data(), (const Byte *)block.data() + block.size());
         }
     }
 }
+
 
 URLSpec::URLSpec(std::string pattern, HandlerClassType handlerClass, std::string name)
         : URLSpec(std::move(pattern), std::move(handlerClass), {}, std::move(name)) {

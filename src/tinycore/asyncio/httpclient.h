@@ -7,15 +7,15 @@
 
 #include "tinycore/common/common.h"
 #include <chrono>
-#include <boost/parameter.hpp>
 #include <boost/optional.hpp>
-#include "tinycore/asyncio/ioloop.h"
+#include <boost/parameter.hpp>
 #include "tinycore/asyncio/httputil.h"
+#include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/iostream.h"
 #include "tinycore/asyncio/web.h"
 #include "tinycore/compress/zlib.h"
-#include "tinycore/utilities/string.h"
 #include "tinycore/httputils/httplib.h"
+#include "tinycore/utilities/string.h"
 
 
 namespace opts {
@@ -89,17 +89,17 @@ public:
         boost::optional<DateTime> ifModifiedSince = args[opts::_ifModifiedSince | boost::none];
         if (ifModifiedSince) {
             std::string timestamp = String::formatUTCDate(ifModifiedSince.get(), true);
-            _headers.setItem("If-Modified-Since", timestamp);
+            _headers["If-Modified-Since"] = timestamp;
         }
-        if (!_headers.contain("Pragma")) {
-            _headers.setItem("Pragma", "");
+        if (!_headers.has("Pragma")) {
+            _headers["Pragma"] = "";
         }
         _proxyHost = args[opts::_proxyHost | ""];
         _proxyPort = args[opts::_proxyPort | 0];
         _proxyUserName = args[opts::_proxyUserName | ""];
         _proxyPassword = args[opts::_proxyPassword | ""];
-        if (!_headers.contain("Expect")) {
-            _headers.setItem("Expect", "");
+        if (!_headers.has("Expect")) {
+            _headers["Expect"] = "";
         }
         _url = args[opts::_url];
         _method = args[opts::_method | "GET"];
@@ -121,44 +121,80 @@ public:
         _startTime = TimestampClock::now();
     }
 
+    void setURL(std::string url) {
+        _url = std::move(url);
+    }
+
     const std::string& getURL() const {
         return _url;
     }
 
-    void setURL(std::string url) {
-        _url = std::move(url);
+    void setMethod(std::string method) {
+        _method = std::move(method);
     }
 
     const std::string& getMethod() const {
         return _method;
     }
 
+    void setHeaders(HTTPHeaders headers) {
+        _headers = std::move(_headers);
+    }
+
     HTTPHeaders& headers() {
         return _headers;
+    }
+
+    void setBody(ByteArray body) {
+        _body = std::move(body);
     }
 
     const ByteArray* getBody() const {
         return _body.get_ptr();
     }
 
+    void setAuthUserName(std::string authUserName) {
+        _authUserName = std::move(authUserName);
+    }
+
     const std::string& getAuthUserName() const {
         return _authUserName;
+    }
+
+    void setAuthPassword(std::string authPassword) {
+        _authPassword = std::move(authPassword);
     }
 
     const std::string& getAuthPassword() const {
         return _authPassword;
     }
 
+    void setConnectTimeout(float connectTimeout) {
+        _connectTimeout = connectTimeout;
+    }
+
     float getConnectTimeout() const {
         return _connectTimeout;
+    }
+
+    void setRequestTimeout(float requestTimeout) {
+        _requestTimeout = requestTimeout;
     }
 
     float getRequestTimeout() const {
         return _requestTimeout;
     }
 
+    void setFollowRedirects(bool followRedirects) {
+        _followRedirects = followRedirects;
+    }
+
     bool isFollowRedirects() const {
         return _followRedirects;
+    }
+
+    void setMaxRedirects(int maxRedirects) {
+        _maxRedirects = maxRedirects;
     }
 
     int getMaxRedirects() const {
@@ -169,48 +205,96 @@ public:
         --_maxRedirects;
     }
 
+    void setUserAgent(std::string userAgent) {
+        _userAgent = std::move(userAgent);
+    }
+
     const std::string& getUserAgent() const {
         return _userAgent;
+    }
+
+    void setUseGzip(bool useGzip) {
+        _useGzip = useGzip;
     }
 
     bool isUseGzip() const {
         return _useGzip;
     }
 
+    void setNetworkInterface(std::string networkInterface) {
+        _networkInterface = std::move(networkInterface);
+    }
+
     const std::string& getNetworkInterface() const {
         return _networkInterface;
+    }
+
+    void setStreamCallback(StreamCallbackType streamCallback) {
+        _streamCallback = std::move(streamCallback);
     }
 
     const StreamCallbackType& getStreamCallback() const {
         return _streamCallback;
     }
 
+    void setHeaderCallback(HeaderCallbackType headerCallback) {
+        _headerCallback = std::move(headerCallback);
+    }
+
     const HeaderCallbackType& getHeaderCallback() const {
         return _headerCallback;
+    }
+
+    void setProxyHost(std::string proxyHost) {
+        _proxyHost = std::move(proxyHost);
     }
 
     const std::string& getProxyHost() const {
         return _proxyHost;
     }
 
+    void setProxyPort(unsigned short proxyPort) {
+        _proxyPort = proxyPort;
+    }
+
     unsigned short getProxyPort() const {
         return _proxyPort;
+    }
+
+    void setProxyUserName(std::string proxyUserName) {
+        _proxyUserName = std::move(proxyUserName);
     }
 
     const std::string& getProxyUserName() const {
         return _proxyUserName;
     }
 
+    void setProxyPassword(std::string proxyPassword) {
+        _proxyPassword = std::move(proxyPassword);
+    }
+
     const std::string& getProxyPassword() const {
         return _proxyPassword;
+    }
+
+    void setAllowNonstandardMethods(bool allowNonstandardMethods) {
+        _allowNonstandardMethods = allowNonstandardMethods;
     }
 
     bool isAllowNonstandardMethods() const {
         return _allowNonstandardMethods;
     }
 
+    void setValidateCert(bool validateCert) {
+        _validateCert = validateCert;
+    }
+
     bool isValidateCert() const {
         return _validateCert;
+    }
+
+    void setCACerts(std::string caCerts) {
+        _caCerts = std::move(caCerts);
     }
 
     const std::string& getCACerts() const {
@@ -251,7 +335,7 @@ public:
     )(
             optional
                     (method, (std::string))
-                    (headers, (HTTPHeaders))
+                    (headers, (std::shared_ptr<HTTPHeaders>))
                     (body, (ByteArray))
                     (authUserName, (std::string))
                     (authPassword, (std::string))
@@ -283,8 +367,6 @@ public:
         return std::make_shared<HTTPRequest>(std::forward<Args>(args)...);
     }
 };
-
-typedef std::shared_ptr<HTTPRequest> HTTPRequestPtr;
 
 
 class HTTPResponseImpl {
@@ -321,7 +403,7 @@ public:
         }
     }
 protected:
-    HTTPRequestPtr _request;
+    std::shared_ptr<HTTPRequest> _request;
     int _code;
     HTTPHeaders _headers;
     boost::optional<ByteArray> _body;
@@ -334,7 +416,7 @@ class HTTPResponse: public HTTPResponseImpl {
 public:
     BOOST_PARAMETER_CONSTRUCTOR(HTTPResponse, (HTTPResponseImpl), opts::tag, (
             required
-                    (request, (HTTPRequestPtr))
+                    (request, (std::shared_ptr<HTTPRequest>))
                     (code, (int))
     )(
             optional
@@ -361,11 +443,11 @@ public:
         fetch(HTTPRequest::create(url, std::forward<Args>(args)...), std::move(callback));
     }
 
-    void fetch(HTTPRequestPtr request, CallbackType callback) {
+    void fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback) {
         fetch(request, request, std::move(callback));
     }
 
-    void fetch(HTTPRequestPtr originalRequest, HTTPRequestPtr request, CallbackType callback);
+    void fetch(std::shared_ptr<HTTPRequest> originalRequest, std::shared_ptr<HTTPRequest> request, CallbackType callback);
 
     template <typename ...Args>
     static std::shared_ptr<HTTPClient> create(Args&& ...args) {
@@ -384,16 +466,13 @@ protected:
     StringMap _hostnameMapping;
 };
 
-typedef std::shared_ptr<HTTPClient> HTTPClientPtr;
-
 
 class _HTTPConnection: public std::enable_shared_from_this<_HTTPConnection> {
 public:
     typedef HTTPClient::CallbackType CallbackType;
-    typedef BaseIOStream::BufferType BufferType;
 
-    _HTTPConnection(IOLoop *ioloop, HTTPClientPtr client, HTTPRequestPtr originalRequest, HTTPRequestPtr request,
-                    CallbackType callback);
+    _HTTPConnection(IOLoop *ioloop, std::shared_ptr<HTTPClient> client, std::shared_ptr<HTTPRequest> originalRequest,
+                    std::shared_ptr<HTTPRequest> request, CallbackType callback);
     void start();
 
     template <typename ...Args>
@@ -403,40 +482,37 @@ public:
 
     static const StringSet supportedMethods;
 protected:
-    BaseIOStreamPtr getStream() {
-        return _stream.lock();
+    std::shared_ptr<BaseIOStream> fetchStream() {
+        return _streamObserver.lock();
     }
 
     void onTimeout();
     void onConnect();
     void onClose();
-    void onHeaders(BufferType &data);
-    void onBody(BufferType &data);
-    void onChunkLength(BufferType &data);
-    void onChunkData(BufferType &data);
+    void onHeaders(Byte *data, size_t length);
+    void onBody(Byte *data, size_t length);
+    void onChunkLength(Byte *data, size_t length);
+    void onChunkData(Byte *data, size_t length);
 
     Timestamp _startTime;
     IOLoop *_ioloop;
-    HTTPClientPtr _client;
-    HTTPRequestPtr _originalRequest;
-    HTTPRequestPtr _request;
+    std::shared_ptr<HTTPClient> _client;
+    std::shared_ptr<HTTPRequest> _originalRequest;
+    std::shared_ptr<HTTPRequest> _request;
     CallbackType _callback;
     boost::optional<int> _code;
-    HTTPHeadersPtr _headers;
+    std::unique_ptr<HTTPHeaders> _headers;
     boost::optional<ByteArray> _chunks;
     std::unique_ptr<DecompressObj> _decompressor;
     Timeout _timeout;
     Timeout _connectTimeout;
-    BaseIOStreamWPtr _stream;
-    BaseIOStreamPtr _streamKeeper;
+    std::weak_ptr<BaseIOStream> _streamObserver;
+    std::shared_ptr<BaseIOStream> _stream;
     std::string _parsedScheme;
     std::string _parsedNetloc;
     std::string _parsedPath;
     std::string _parsedQuery;
     std::string _parsedFragment;
 };
-
-typedef std::shared_ptr<_HTTPConnection> _HTTPConnectionPtr;
-typedef std::weak_ptr<_HTTPConnection> _HTTPConnectionWPtr;
 
 #endif //TINYCORE_HTTPCLIENT_H

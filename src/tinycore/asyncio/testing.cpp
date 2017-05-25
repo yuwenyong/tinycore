@@ -48,7 +48,7 @@ AsyncHTTPTestCase::~AsyncHTTPTestCase() {
 
 }
 
-void AsyncHTTPTestCase::fetch(HTTPRequestPtr request, HTTPClientCallback callback) {
+void AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request, HTTPClientCallback callback) {
     onInit();
     _httpClient->fetch(std::move(request), [this, callback](const HTTPResponse &response){
         callback(response);
@@ -66,7 +66,7 @@ bool AsyncHTTPTestCase::getHTTPServerXHeaders() const {
     return false;
 }
 
-SSLOptionPtr AsyncHTTPTestCase::getHTTPServerSSLOption() const {
+std::shared_ptr<SSLOption> AsyncHTTPTestCase::getHTTPServerSSLOption() const {
     return nullptr;
 }
 

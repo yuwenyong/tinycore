@@ -3,9 +3,9 @@
 //
 
 #include "tinycore/asyncio/ioloop.h"
-#include "tinycore/logging/log.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
+#include "tinycore/logging/log.h"
 
 
 _SignalSet::_SignalSet(IOLoop *ioloop)
@@ -54,60 +54,6 @@ void _SignalSet::onSignal(const boost::system::error_code &error, int signalNumb
 }
 
 
-IOLoop::IOLoop()
-        : _ioService()
-        , _signalSet(this) {
-//    setupInterrupter();
-}
-
-IOLoop::~IOLoop() {
-
-}
-
-int IOLoop::start() {
-    if (_stopped) {
-        return 0;
-    }
-    WorkType work(_ioService);
-    _signalSet.start();
-    while (!_ioService.stopped()) {
-        try {
-            _ioService.run();
-        } catch (SystemExit &e) {
-            Log::error(e.what());
-            break;
-        } catch (std::exception &e) {
-            Log::error("Unexpected Exception:%s", e.what());
-        }
-    }
-    _stopped = false;
-    return 0;
-}
-
-Timeout IOLoop::addTimeout(float deadline, TimeoutCallbackType callback) {
-    auto timeoutPtr = std::make_shared<_Timeout>(this);
-    timeoutPtr->start(deadline, [callback, timeoutPtr](const boost::system::error_code &error) {
-        if (!error) {
-            callback();
-        } else {
-#ifndef NDEBUG
-            std::string errorMessage = error.message();
-            Log::error("ErrorCode:%d,ErrorMessage:%s", error.value(), errorMessage.c_str());
-#endif
-        }
-    });
-    return Timeout(timeoutPtr);
-}
-
-
-void IOLoop::removeTimeout(Timeout timeout) {
-    auto timeoutPtr = timeout.lock();
-    if (timeoutPtr) {
-        timeoutPtr->cancel();
-    }
-}
-
-
 _Timeout::_Timeout(IOLoop *ioloop)
         : _timer(ioloop->getService()) {
 #ifndef NDEBUG
@@ -131,8 +77,76 @@ void _Timeout::cancel() {
 }
 
 
+
+IOLoop::IOLoop()
+        : _ioService()
+        , _signalSet(this) {
+
+}
+
+IOLoop::~IOLoop() {
+
+}
+
+void IOLoop::start() {
+    if (_stopped) {
+        return;
+    }
+    WorkType work(_ioService);
+    _signalSet.start();
+    while (!_ioService.stopped()) {
+        try {
+            _ioService.run();
+        } catch (SystemExit &e) {
+            Log::error(e.what());
+            break;
+        } catch (std::exception &e) {
+            Log::error("Unexpected Exception:%s", e.what());
+        }
+    }
+    _stopped = false;
+}
+
+Timeout IOLoop::addTimeout(float deadline, TimeoutCallbackType callback) {
+    auto timeoutPtr = std::make_shared<_Timeout>(this);
+    timeoutPtr->start(deadline, [callback, timeoutPtr](const boost::system::error_code &error) {
+        if (!error) {
+            callback();
+        } else {
+#ifndef NDEBUG
+            if (error != boost::asio::error::operation_aborted) {
+                std::string errorMessage = error.message();
+                Log::error("ErrorCode:%d,ErrorMessage:%s", error.value(), errorMessage.c_str());
+            }
+#endif
+        }
+    });
+    return Timeout(timeoutPtr);
+}
+
+
+void IOLoop::removeTimeout(Timeout timeout) {
+    auto timeoutPtr = timeout.lock();
+    if (timeoutPtr) {
+        timeoutPtr->cancel();
+    }
+}
+
+
+PeriodicCallback::PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop)
+        : _callback(std::move(callback))
+        , _callbackTime(callbackTime)
+        , _ioloop(ioloop ? ioloop : sIOLoop)
+        , _running(false) {
+#ifndef NDEBUG
+    sWatcher->inc(SYS_PERIODICCALLBACK_COUNT);
+#endif
+}
+
 PeriodicCallback::~PeriodicCallback() {
-    stop();
+#ifndef NDEBUG
+    sWatcher->dec(SYS_PERIODICCALLBACK_COUNT);
+#endif
 }
 
 void PeriodicCallback::run() {

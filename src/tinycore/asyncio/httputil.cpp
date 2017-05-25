@@ -12,11 +12,11 @@ const boost::regex HTTPHeaders::_normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][
 
 void HTTPHeaders::add(const std::string &name, const std::string &value) {
     std::string normName = normalizeName(name);
-    if (contain(normName)) {
+    if (has(normName)) {
         _items[normName] += ',' + value;
         _asList[normName].emplace_back(value);
     } else {
-        setItem(std::move(normName), value);
+        (*this)[normName] = value;
     }
 }
 
@@ -38,18 +38,12 @@ void HTTPHeaders::parseLine(const std::string &line) {
     std::string name = line.substr(0, pos);
     std::string value = line.substr(pos + 1, std::string::npos);
     boost::trim(value);
-    return add(std::move(name), std::move(value));
+    return add(name, value);
 }
 
-void HTTPHeaders::setItem(const std::string &name, const std::string &value) {
+void HTTPHeaders::erase(const std::string &name) {
     std::string normName = HTTPHeaders::normalizeName(name);
-    _items[normName] = value;
-    _asList[normName] = {value, };
-}
-
-void HTTPHeaders::delItem(const std::string &name) {
-    std::string normName = HTTPHeaders::normalizeName(name);
-    if (!contain(normName)) {
+    if (!has(normName)) {
         ThrowException(KeyError, normName);
     }
     _items.erase(normName);
@@ -66,15 +60,13 @@ std::string HTTPHeaders::get(const std::string &name, const std::string &default
     }
 }
 
-HTTPHeadersPtr HTTPHeaders::parse(const std::string &headers) {
-    HTTPHeadersPtr h = make_unique<HTTPHeaders>();
+void HTTPHeaders::parseLines(const std::string &headers) {
     StringVector lines = String::splitLines(headers);
     for (auto &line: lines) {
         if (!line.empty()) {
-            h->parseLine(line);
+            parseLine(line);
         }
     }
-    return h;
 }
 
 std::string HTTPHeaders::normalizeName(const std::string &name) {

@@ -16,14 +16,10 @@
 
 class HTTPServerRequest;
 
-typedef std::shared_ptr<HTTPServerRequest> HTTPServerRequestPtr;
-typedef std::weak_ptr<HTTPServerRequest> HTTPServerRequestWPtr;
-
-
 class HTTPServer {
 public:
     typedef boost::asio::ip::tcp::acceptor AcceptorType;
-    typedef std::function<void(HTTPServerRequestPtr)> RequestCallbackType;
+    typedef std::function<void(std::shared_ptr<HTTPServerRequest>)> RequestCallbackType;
 
     HTTPServer(const HTTPServer &) = delete;
 
@@ -33,7 +29,7 @@ public:
                bool noKeepAlive = false,
                IOLoop *ioloop = nullptr,
                bool xheaders = false,
-               SSLOptionPtr sslOption = nullptr);
+               std::shared_ptr<SSLOption> sslOption = nullptr);
 
     ~HTTPServer();
 
@@ -42,36 +38,32 @@ public:
     void bind(unsigned short port, std::string address);
 
     void start() {
-        doAccept();
+        asyncAccept();
     }
 
     void stop();
-
 protected:
-    void doAccept();
+    void asyncAccept();
 
     RequestCallbackType _requestCallback;
     bool _noKeepAlive;
     IOLoop *_ioloop;
     bool _xheaders;
-    SSLOptionPtr _sslOption;
+    std::shared_ptr<SSLOption> _sslOption;
     AcceptorType _acceptor;
     BaseIOStream::SocketType _socket;
 };
 
-typedef std::unique_ptr<HTTPServer> HTTPServerPtr;
-
 
 class HTTPConnection : public std::enable_shared_from_this<HTTPConnection> {
 public:
-    typedef BaseIOStream::BufferType BufferType;
     typedef HTTPServer::RequestCallbackType RequestCallbackType;
 
     HTTPConnection(const HTTPConnection &) = delete;
 
     HTTPConnection &operator=(const HTTPConnection &) = delete;
 
-    HTTPConnection(BaseIOStreamPtr stream, std::string address,
+    HTTPConnection(std::shared_ptr<BaseIOStream> stream, std::string address,
                    const RequestCallbackType &requestCallback,
                    bool noKeepAlive = false,
                    bool xheaders = false);
@@ -80,7 +72,7 @@ public:
 
     void start();
 
-    void write(BufferType &chunk);
+    void write(const Byte *chunk, size_t length);
 
     void finish();
 
@@ -88,64 +80,61 @@ public:
         return _xheaders;
     }
 
-    BaseIOStreamPtr getStream() {
-        return _stream.lock();
+    std::shared_ptr<BaseIOStream> fetchStream() {
+        return _streamObserver.lock();
     }
 
-    HTTPServerRequestPtr getRequest() {
-        return _request.lock();
+    std::shared_ptr<BaseIOStream> releaseStream() {
+        ASSERT(_stream);
+        return std::move(_stream);
     }
 
-    BaseIOStreamPtr releaseStream() {
-        ASSERT(_streamKeeper);
-        return std::move(_streamKeeper);
+    std::shared_ptr<HTTPServerRequest> fetchRequest() {
+        return _requestObserver.lock();
     }
 
+    template <typename ...Args>
+    static std::shared_ptr<HTTPConnection> create(Args&& ...args) {
+        return std::make_shared<HTTPConnection>(std::forward<Args>(args)...);
+    }
 protected:
     void onWriteComplete();
 
     void finishRequest();
 
-    void onHeaders(BufferType &data);
+    void onHeaders(Byte *data, size_t length);
 
-    void onRequestBody(BufferType &data);
+    void onRequestBody(Byte *data, size_t length);
 
-    void parseMimeBody(std::string boundary, std::string data);
+    void parseMimeBody(const std::string &boundary, const Byte *data, size_t length);
 
-    BaseIOStreamWPtr _stream;
-    BaseIOStreamPtr _streamKeeper;
+    std::weak_ptr<BaseIOStream> _streamObserver;
+    std::shared_ptr<BaseIOStream> _stream;
     std::string _address;
     const RequestCallbackType &_requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
-    HTTPServerRequestWPtr _request;
-    HTTPServerRequestPtr _requestKeeper;
+    std::weak_ptr<HTTPServerRequest> _requestObserver;
+    std::shared_ptr<HTTPServerRequest> _request;
     bool _requestFinished{false};
 };
-
-
-typedef std::shared_ptr<HTTPConnection> HTTPConnectionPtr;
-typedef std::weak_ptr<HTTPConnection> HTTPConnectionWPtr;
 
 
 class HTTPServerRequest {
 public:
     typedef std::map<std::string, std::vector<HTTPFile>> RequestFilesType;
-    typedef std::chrono::steady_clock ClockType;
-    typedef ClockType::time_point TimePointType;
-    typedef HTTPConnection::BufferType BufferType;
     typedef URLParse::QueryArguments QueryArgumentsType;
 
     HTTPServerRequest(const HTTPServerRequest &) = delete;
 
     HTTPServerRequest &operator=(const HTTPServerRequest &) = delete;
 
-    HTTPServerRequest(HTTPConnectionPtr connection,
+    HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
                       std::string method,
                       std::string uri,
                       std::string version = "HTTP/1.0",
-                      HTTPHeadersPtr &&headers = nullptr,
-                      std::string body = {},
+                      std::unique_ptr<HTTPHeaders> &&headers = nullptr,
+                      ByteArray body = {},
                       std::string remoteIp = {},
                       std::string protocol = {},
                       std::string host = {},
@@ -157,18 +146,18 @@ public:
         return _version == "HTTP/1.1";
     }
 
-    void write(const char *chunk, size_t length);
+    void write(const Byte *chunk, size_t length);
+
+    void write(const ByteArray &chunk) {
+        write(chunk.data(), chunk.size());
+    }
 
     void write(const char *chunk) {
-        write(chunk, strlen(chunk));
+        write((const Byte *)chunk, strlen(chunk));
     }
 
     void write(const std::string &chunk) {
-        write(chunk.c_str(), chunk.length());
-    }
-
-    void write(const std::vector<char> &chunk) {
-        write(chunk.data(), chunk.size());
+        write((const Byte *)chunk.data(), chunk.length());
     }
 
     void finish();
@@ -178,85 +167,92 @@ public:
     }
 
     float requestTime() const;
-//    const SSLOption * getSSLCertificate() const;
 
-    const HTTPHeaders *getHTTPHeader() const {
+    const HTTPHeaders* getHTTPHeaders() const {
         return _headers.get();
     }
 
-    const std::string &getMethod() const {
+    const std::string& getMethod() const {
         return _method;
     }
 
-    const std::string &getURI() const {
+    const std::string& getURI() const {
         return _uri;
     }
 
-    const std::string &getVersion() const {
+    const std::string& getVersion() const {
         return _version;
     }
 
-    void setBody(const char *body, size_t length) {
-        _body.assign(body, length);
+    void setBody(ByteArray body) {
+        _body = std::move(body);
     }
 
-    const std::string &getBody() const {
+    const ByteArray& getBody() const {
         return _body;
     }
 
-    const std::string &getRemoteIp() const {
+    const std::string& getRemoteIp() const {
         return _remoteIp;
     }
 
-    const std::string &getProtocol() const {
+    const std::string& getProtocol() const {
         return _protocol;
     }
 
-    const std::string &getHost() const {
+    const std::string& getHost() const {
         return _host;
     }
 
-    HTTPConnectionPtr getConnection() {
+    const RequestFilesType& getFiles() const {
+        return _files;
+    }
+
+    std::shared_ptr<HTTPConnection> getConnection() {
         return _connection;
     }
 
-    void setConnection(HTTPConnectionPtr connection) {
+    void setConnection(std::shared_ptr<HTTPConnection> connection) {
         _connection = std::move(connection);
     }
 
-    const std::string &getPath() const {
+    const std::string& getPath() const {
         return _path;
     }
 
-    const std::string &getQuery() const {
+    const std::string& getQuery() const {
         return _query;
     }
 
-    const QueryArgumentsType &getArguments() const {
+    const QueryArgumentsType& getArguments() const {
         return _arguments;
     }
 
-    void addArgument(std::string name, std::string value);
+    void addArgument(const std::string &name, std::string value);
 
-    void addArguments(std::string name, StringVector values);
+    void addArguments(const std::string &name, StringVector values);
 
-    void addFile(std::string name, HTTPFile file);
+    void addFile(const std::string &name, HTTPFile file);
 
     std::string dump() const;
 
+    template <typename ...Args>
+    static std::shared_ptr<HTTPServerRequest> create(Args&& ...args) {
+        return std::make_shared<HTTPServerRequest>(std::forward<Args>(args)...);
+    }
 protected:
     std::string _method;
     std::string _uri;
     std::string _version;
-    HTTPHeadersPtr _headers;
-    std::string _body;
+    std::unique_ptr<HTTPHeaders> _headers;
+    ByteArray _body;
     std::string _remoteIp;
     std::string _protocol;
     std::string _host;
     RequestFilesType _files;
-    HTTPConnectionPtr _connection;
-    TimePointType _startTime;
-    TimePointType _finishTime;
+    std::shared_ptr<HTTPConnection> _connection;
+    Timestamp _startTime;
+    Timestamp _finishTime;
     std::string _path;
     std::string _query;
     QueryArgumentsType _arguments;

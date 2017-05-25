@@ -6,20 +6,20 @@
 #define TINYCORE_WEB_H
 
 #include "tinycore/common/common.h"
-#include <boost/functional/factory.hpp>
-#include <boost/xpressive/xpressive.hpp>
-#include <boost/any.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/optional.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
+#include <boost/any.hpp>
+#include <boost/functional/factory.hpp>
 #include <boost/noncopyable.hpp>
+#include <boost/optional.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/xpressive/xpressive.hpp>
+#include "tinycore/asyncio/httpserver.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
-#include "tinycore/asyncio/httpserver.h"
 #include "tinycore/httputils/cookie.h"
-#include "tinycore/utilities/container.h"
 #include "tinycore/httputils/httplib.h"
+#include "tinycore/utilities/container.h"
 
 
 class Application;
@@ -35,11 +35,11 @@ public:
     typedef std::map<std::string, boost::any> SettingsType;
     typedef boost::optional<BaseCookie> CookiesType;
     typedef boost::optional<std::vector<BaseCookie>> NewCookiesType;
-    typedef boost::property_tree::ptree JSONType;
+    typedef boost::property_tree::ptree SimpleJSONType;
 
     friend class Application;
 
-    RequestHandler(Application *application, HTTPServerRequestPtr request);
+    RequestHandler(Application *application, std::shared_ptr<HTTPServerRequest> request);
     virtual ~RequestHandler();
 
     void start(ArgsType &args);
@@ -99,7 +99,7 @@ public:
                    const StringMap *args= nullptr);
 
     void clearCookie(const std::string &name, const char *path= "/", const char *domain= nullptr) {
-        DateTime expires = boost::posix_time::second_clock::universal_time() + boost::gregorian::days(365);
+        DateTime expires = boost::posix_time::second_clock::universal_time() - boost::gregorian::days(365);
         setCookie(name, "", domain, &expires, path);
     }
 
@@ -111,27 +111,24 @@ public:
 
     void redirect(const std::string &url, bool permanent=false);
 
-    void write(const char *chunk, size_t length) {
+    void write(const Byte *chunk, size_t length) {
         ASSERT(!_finished);
         _writeBuffer.insert(_writeBuffer.end(), chunk, chunk + length);
     }
 
     void write(const char *chunk) {
-        ASSERT(!_finished);
-        _writeBuffer.insert(_writeBuffer.end(), chunk, chunk + strlen(chunk));
+        write((const Byte *)chunk, strlen(chunk));
     }
 
     void write(const std::string &chunk) {
-        ASSERT(!_finished);
-        _writeBuffer.insert(_writeBuffer.end(), chunk.begin(), chunk.end());
+        write((const Byte *)chunk.data(), chunk.size());
     }
 
-    void write(const std::vector<char> &chunk) {
-        ASSERT(!_finished);
-        _writeBuffer.insert(_writeBuffer.end(), chunk.begin(), chunk.end());
+    void write(const ByteArray &chunk) {
+        write(chunk.data(), chunk.size());
     }
 
-    void write(const JSONType &chunk) {
+    void write(const SimpleJSONType &chunk) {
         ASSERT(!_finished);
         setHeader("Content-Type", "text/javascript; charset=UTF-8");
         std::ostringstream chunkBuffer;
@@ -173,20 +170,17 @@ protected:
     void handleRequestException(std::exception *e);
 
     Application *_application;
-    HTTPServerRequestPtr _request;
+    std::shared_ptr<HTTPServerRequest> _request;
     bool _headersWritten{false};
     bool _finished{false};
     bool _autoFinish{true};
     TransformsType _transforms;
     StringMap _headers;
-    std::vector<char> _writeBuffer;
+    ByteArray _writeBuffer;
     int _statusCode;
     CookiesType _cookies;
     NewCookiesType _newCookies;
 };
-
-typedef std::shared_ptr<RequestHandler> RequestHandlerPtr;
-typedef std::weak_ptr<RequestHandler> RequestHandlerWPtr;
 
 
 template <typename T>
@@ -194,7 +188,8 @@ class RequestHandlerFactory {
 public:
     typedef RequestHandler::ArgsType ArgsType;
 
-    RequestHandlerPtr operator()(Application *application, HTTPServerRequestPtr request, ArgsType &args) const {
+    std::shared_ptr<RequestHandler> operator()(Application *application, std::shared_ptr<HTTPServerRequest> request,
+                                               ArgsType &args) const {
         auto requestHandler = std::make_shared<T>(application, std::move(request));
         requestHandler->start(args);
         return requestHandler;
@@ -251,7 +246,7 @@ public:
     typedef boost::ptr_vector<HostHandlerType> HostHandlersType;
     typedef std::map<std::string, URLSpec *> NamedHandlersType;
     typedef std::map<std::string, boost::any> SettingsType;
-    typedef std::function<OutputTransform* (HTTPServerRequestPtr)> TransformType;
+    typedef std::function<OutputTransform* (std::shared_ptr<HTTPServerRequest>)> TransformType;
     typedef std::vector<TransformType> TransformsType;
     typedef std::function<void (RequestHandler *)> LogFunctionType;
 
@@ -259,16 +254,17 @@ public:
                 SettingsType settings={});
     virtual ~Application();
 
-    void addHandlers(std::string hostPattern, HandlersType &&hostHandlers);
-
     template <typename... Args>
-    HTTPServerPtr listen(unsigned short port, std::string address, Args&&... args) {
-        HTTPServerPtr server = make_unique<HTTPServer>([this](HTTPServerRequestPtr request) {
-            (*this)(std::move(request));
-        }, std::forward<Args>(args)...);
+    std::unique_ptr<HTTPServer> listen(unsigned short port, std::string address, Args&&... args) {
+        std::unique_ptr<HTTPServer> server = make_unique<HTTPServer>(
+                [this](std::shared_ptr<HTTPServerRequest> request) {
+                    (*this)(std::move(request));
+                }, std::forward<Args>(args)...);
         server->listen(port, std::move(address));
         return server;
     }
+
+    void addHandlers(std::string hostPattern, HandlersType &&hostHandlers);
 
     void addTransform(TransformType transformClass) {
         _transforms.push_back(std::move(transformClass));
@@ -277,7 +273,7 @@ public:
     template <typename T>
     void addTransform();
 
-    void operator()(HTTPServerRequestPtr request);
+    void operator()(std::shared_ptr<HTTPServerRequest> request);
 
     template <typename... Args>
     std::string reverseURL(const std::string &name, Args&&... args);
@@ -290,7 +286,7 @@ public:
 
 //    static HandlersType defaultHandlers;
 protected:
-    HandlersType* getHostHandlers(HTTPServerRequestPtr request);
+    HandlersType* getHostHandlers(std::shared_ptr<HTTPServerRequest> request);
 
     TransformsType _transforms;
     HostHandlersType _handlers;
@@ -298,8 +294,6 @@ protected:
     std::string _defaultHost;
     SettingsType _settings;
 };
-
-typedef std::unique_ptr<Application> ApplicationPtr;
 
 
 #define HTTPServerCB(app) std::bind(&Application::operator(), pointer(app), std::placeholders::_1)
@@ -369,35 +363,35 @@ protected:
 class TC_COMMON_API OutputTransform {
 public:
     virtual ~OutputTransform() {}
-    virtual void transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) =0;
-    virtual void transformChunk(std::vector<char> &chunk, bool finishing) =0;
+    virtual void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) =0;
+    virtual void transformChunk(ByteArray &chunk, bool finishing) =0;
 };
 
 
 class TC_COMMON_API GZipContentEncoding: public OutputTransform {
 public:
-    GZipContentEncoding(HTTPServerRequestPtr request);
-    void transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) override;
-    void transformChunk(std::vector<char> &chunk, bool finishing) override;
+    GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request);
+    void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) override;
+    void transformChunk(ByteArray &chunk, bool finishing) override;
 
-    static const StringSet CONTENT_TYPES;
-    static const int MIN_LENGTH = 5;
+    static const StringSet contentTypes;
+    static const int minLength = 5;
 protected:
     bool _gzipping;
-    std::vector<char> _gzipValue;
-    GZipCompressor _gzipFile;
+    std::shared_ptr<std::stringstream> _gzipValue;
+    GzipFile _gzipFile;
     size_t _gzipPos{0};
 };
 
 
 class TC_COMMON_API ChunkedTransferEncoding: public OutputTransform {
 public:
-    ChunkedTransferEncoding(HTTPServerRequestPtr request) {
+    ChunkedTransferEncoding(std::shared_ptr<HTTPServerRequest> request) {
         _chunking = request->supportsHTTP1_1();
     }
 
-    void transformFirstChunk(StringMap &headers, std::vector<char> &chunk, bool finishing) override;
-    void transformChunk(std::vector<char> &chunk, bool finishing) override;
+    void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) override;
+    void transformChunk(ByteArray &chunk, bool finishing) override;
 
 protected:
     bool _chunking;
@@ -407,7 +401,7 @@ protected:
 template <typename T>
 class OutputTransformFactory {
 public:
-    OutputTransform* operator()(HTTPServerRequestPtr request) {
+    OutputTransform* operator()(std::shared_ptr<HTTPServerRequest> request) {
         return _factory(request);
     }
 
@@ -420,7 +414,8 @@ class TC_COMMON_API URLSpec: public boost::noncopyable {
 public:
     typedef boost::xpressive::sregex RegexType;
     typedef RequestHandler::ArgsType ArgsType;
-    typedef std::function<RequestHandlerPtr (Application*, HTTPServerRequestPtr, ArgsType&)> HandlerClassType;
+    typedef std::function<std::shared_ptr<RequestHandler> (Application*, std::shared_ptr<HTTPServerRequest>,
+                                                           ArgsType&)> HandlerClassType;
 
     URLSpec(std::string pattern, HandlerClassType handlerClass, std::string name);
     URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args={}, std::string name={});

@@ -23,6 +23,7 @@ enum class SSLVerifyMode {
 class SSLOption {
 public:
     typedef boost::asio::ssl::context SSLContextType;
+    typedef std::shared_ptr<SSLOption> PtrType;
 
     SSLOption()
             : _serverSide(boost::indeterminate)
@@ -108,72 +109,72 @@ public:
         return _context;
     }
 
-    static std::shared_ptr<SSLOption> createServerSide(const std::string &certFile) {
+    static std::shared_ptr<SSLOption>  createServerSide(const std::string &certFile) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initServerSide(certFile);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createServerSide(const std::string &certFile, const std::string &keyFile) {
+    static std::shared_ptr<SSLOption>  createServerSide(const std::string &certFile, const std::string &keyFile) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initServerSide(certFile, keyFile);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createServerSideWithPassword(const std::string &certFile,
-                                                                   const std::string &password) {
+    static std::shared_ptr<SSLOption>  createServerSideWithPassword(const std::string &certFile,
+                                                                    const std::string &password) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initServerSideWithPassword(certFile, password);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createServerSideWithPassword(const std::string &certFile,
-                                                                   const std::string &keyFile,
-                                                                   const std::string &password) {
+    static std::shared_ptr<SSLOption>  createServerSideWithPassword(const std::string &certFile,
+                                                                    const std::string &keyFile,
+                                                                    const std::string &password) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initServerSideWithPassword(certFile, keyFile, password);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSide(SSLVerifyMode verifyMode = SSLVerifyMode::CERT_REQUIRED) {
+    static std::shared_ptr<SSLOption>  createClientSide(SSLVerifyMode verifyMode = SSLVerifyMode::CERT_REQUIRED) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSide(verifyMode);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSide(const std::string &verifyFile) {
+    static std::shared_ptr<SSLOption>  createClientSide(const std::string &verifyFile) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSide(verifyFile);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSide(SSLVerifyMode verifyMode, const std::string &verifyFile) {
+    static std::shared_ptr<SSLOption>  createClientSide(SSLVerifyMode verifyMode, const std::string &verifyFile) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSide(verifyMode, verifyFile);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSideWithHost(const std::string &hostName) {
+    static std::shared_ptr<SSLOption>  createClientSideWithHost(const std::string &hostName) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSideWithHost(hostName);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSideWithHost(SSLVerifyMode verifyMode, const std::string &hostName) {
+    static std::shared_ptr<SSLOption>  createClientSideWithHost(SSLVerifyMode verifyMode, const std::string &hostName) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSideWithHost(verifyMode, hostName);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSideWithHost(const std::string &verifyFile,
-                                                               const std::string &hostName) {
+    static std::shared_ptr<SSLOption>  createClientSideWithHost(const std::string &verifyFile,
+                                                                const std::string &hostName) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSideWithHost(verifyFile, hostName);
         return sslOption;
     }
 
-    static std::shared_ptr<SSLOption> createClientSideWithHost(SSLVerifyMode verifyMode, const std::string &verifyFile,
-                                                               const std::string &hostName) {
+    static std::shared_ptr<SSLOption>  createClientSideWithHost(SSLVerifyMode verifyMode, const std::string &verifyFile,
+                                                                const std::string &hostName) {
         auto sslOption = std::make_shared<SSLOption>();
         sslOption->initClientSideWithHost(verifyMode, verifyFile, hostName);
         return sslOption;
@@ -215,10 +216,6 @@ protected:
     SSLContextType _context;
 };
 
-
-typedef std::shared_ptr<SSLOption> SSLOptionPtr;
-
-
 constexpr size_t DEFAULT_READ_CHUNK_SIZE = 4096;
 constexpr size_t DEFAULT_MAX_BUFFER_SIZE = 104857600;
 
@@ -229,10 +226,8 @@ public:
     typedef boost::asio::ip::tcp::socket SocketType;
     typedef boost::asio::ip::tcp::resolver ResolverType;
     typedef boost::asio::ip::tcp::endpoint EndPointType;
-    typedef boost::asio::ip::tcp::resolver::iterator ResolverIteratorType;
 
-    typedef boost::asio::const_buffer BufferType;
-    typedef std::function<void (BufferType&)> ReadCallbackType;
+    typedef std::function<void (Byte*, size_t)> ReadCallbackType;
     typedef std::function<void ()> WriteCallbackType;
     typedef std::function<void ()> CloseCallbackType;
     typedef std::function<void ()> ConnectCallbackType;
@@ -256,7 +251,7 @@ public:
     void connect(const std::string &address, unsigned short port, ConnectCallbackType callback);
     void readUntil(std::string delimiter, ReadCallbackType callback);
     void readBytes(size_t numBytes, ReadCallbackType callback);
-    void write(BufferType &chunk, WriteCallbackType callback=nullptr);
+    void write(const Byte *data, size_t length, WriteCallbackType callback=nullptr);
 
     void setCloseCallback(CloseCallbackType callback) {
         _closeCallback = std::move(callback);
@@ -294,10 +289,13 @@ public:
     void writeHandler(const boost::system::error_code &error, size_t transferredBytes);
     void closeHandler(const boost::system::error_code &error);
 protected:
-    virtual void asyncConnect(ResolverIteratorType endpoint) = 0;
+    virtual void asyncConnect(const std::string &address, unsigned short port) = 0;
     virtual void asyncRead() = 0;
     virtual void asyncWrite() = 0;
     virtual void asyncClose() = 0;
+
+    size_t readToBuffer(const boost::system::error_code &error, size_t transferredBytes);
+    bool readFromBuffer();
 
     void checkClosed() const {
         if (closed()) {
@@ -321,10 +319,6 @@ protected:
 };
 
 
-typedef std::shared_ptr<BaseIOStream> BaseIOStreamPtr;
-typedef std::weak_ptr<BaseIOStream> BaseIOStreamWPtr;
-
-
 class IOStream: public BaseIOStream {
 public:
     IOStream(SocketType &&socket,
@@ -333,8 +327,12 @@ public:
              size_t readChunkSize = DEFAULT_READ_CHUNK_SIZE);
     virtual ~IOStream();
 
+    template <typename ...Args>
+    static std::shared_ptr<IOStream> create(Args&& ...args) {
+        return std::make_shared<IOStream>(std::forward<Args>(args)...);
+    }
 protected:
-    void asyncConnect(ResolverIteratorType endpoint) override;
+    void asyncConnect(const std::string &address, unsigned short port) override;
     void asyncRead() override;
     void asyncWrite() override;
     void asyncClose() override;
@@ -346,14 +344,18 @@ public:
     typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket&> SSLSocketType;
 
     SSLIOStream(SocketType &&socket,
-                SSLOptionPtr sslOption,
+                std::shared_ptr<SSLOption>  sslOption,
                 IOLoop * ioloop,
                 size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE,
                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~SSLIOStream();
 
+    template <typename ...Args>
+    static std::shared_ptr<SSLIOStream> create(Args&& ...args) {
+        return std::make_shared<SSLIOStream>(std::forward<Args>(args)...);
+    }
 protected:
-    void asyncConnect(ResolverIteratorType endpoint) override;
+    void asyncConnect(const std::string &address, unsigned short port) override;
     void asyncRead() override;
     void asyncWrite() override;
     void asyncClose() override;

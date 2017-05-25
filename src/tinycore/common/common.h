@@ -145,6 +145,7 @@ using TimestampClock = std::chrono::steady_clock;
 using Timestamp = TimestampClock::time_point;
 
 #define SYS_TIMEOUT_COUNT "TinyCore.Timeout.Count"
+#define SYS_PERIODICCALLBACK_COUNT "TinyCore.PeriodicCallback.Count"
 #define SYS_IOSTREAM_COUNT "TinyCore.IOStream.Count"
 #define SYS_SSLIOSTREAM_COUNT "TinyCore.SSLIOStream.Count"
 #define SYS_HTTPCONNECTION_COUNT "TinyCore.HTTPConnection.Count"

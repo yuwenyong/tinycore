@@ -2,16 +2,10 @@
 // Created by yuwenyong on 17-3-28.
 //
 
-#include "tinycore/logging/log.h"
-#include "tinycore/configuration/options.h"
-#include "tinycore/asyncio/ioloop.h"
+#include "tinycore/tinycore.h"
 #include <regex>
 #include <boost/assign.hpp>
-#include "tinycore/asyncio/httpserver.h"
-#include "tinycore/asyncio/web.h"
-#include "tinycore/crypto/hashlib.h"
-#include "tinycore/asyncio/websocket.h"
-#include "tinycore/asyncio/httpclient.h"
+
 //#include <boost/dll.hpp>
 
 
@@ -57,8 +51,8 @@ public:
         _users.insert(getSelf<ChatUser>());
     }
 
-    void onMessage(const char *data, size_t length) override {
-        std::string message(data, length);
+    void onMessage(const Byte *data, size_t length) override {
+        std::string message((const char *)data, length);
         message = String::format("User (%s) says:%s", _userName.c_str(), message.c_str());
         auto self = getSelf<ChatUser>();
         for (auto &u: _users) {

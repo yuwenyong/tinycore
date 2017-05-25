@@ -5,10 +5,10 @@
 #include "tinycore/asyncio/httpclient.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
-#include "tinycore/logging/log.h"
-#include "tinycore/httputils/urlparse.h"
 #include "tinycore/crypto/base64.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/httputils/urlparse.h"
+#include "tinycore/logging/log.h"
 
 
 HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping)
@@ -17,7 +17,8 @@ HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping)
 
 }
 
-void HTTPClient::fetch(HTTPRequestPtr originalRequest, HTTPRequestPtr request, CallbackType callback) {
+void HTTPClient::fetch(std::shared_ptr<HTTPRequest> originalRequest, std::shared_ptr<HTTPRequest> request,
+                       CallbackType callback) {
     auto self = shared_from_this();
     auto connection = _HTTPConnection::create(_ioloop, self, std::move(originalRequest), std::move(request),
                                               std::bind(&HTTPClient::onFetchComplete, self, callback,
@@ -27,9 +28,9 @@ void HTTPClient::fetch(HTTPRequestPtr originalRequest, HTTPRequestPtr request, C
 
 
 _HTTPConnection::_HTTPConnection(IOLoop *ioloop,
-                                 HTTPClientPtr client,
-                                 HTTPRequestPtr originalRequest,
-                                 HTTPRequestPtr request,
+                                 std::shared_ptr<HTTPClient> client,
+                                 std::shared_ptr<HTTPRequest> originalRequest,
+                                 std::shared_ptr<HTTPRequest> request,
                                  CallbackType callback)
         : _ioloop(ioloop)
         , _client(std::move(client))
@@ -60,7 +61,7 @@ void _HTTPConnection::start() {
         }
         BaseIOStream::SocketType socket(_ioloop->getService());
         if (_parsedScheme == "https") {
-            SSLOptionPtr sslOption;
+            std::shared_ptr<SSLOption> sslOption;
             const std::string &caCerts = _request->getCACerts();
             if (_request->isValidateCert()) {
                 if (caCerts.empty()) {
@@ -75,24 +76,24 @@ void _HTTPConnection::start() {
                     sslOption = SSLOption::createClientSide(caCerts);
                 }
             }
-            _streamKeeper = std::make_shared<SSLIOStream>(std::move(socket), std::move(sslOption), _ioloop);
+            _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop);
         } else {
-            _streamKeeper = std::make_shared<IOStream>(std::move(socket), _ioloop);
+            _stream = IOStream::create(std::move(socket), _ioloop);
         }
-        _stream = _streamKeeper;
+        _streamObserver = _stream;
         auto self = shared_from_this();
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout > 0.0f) {
             _connectTimeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, self));
         }
-        _HTTPConnectionWPtr connection = shared_from_this();
-        _streamKeeper->setCloseCallback([connection](){
-            auto connectionKeeper = connection.lock();
-            if (connectionKeeper) {
-                connectionKeeper->onClose();
+        std::weak_ptr<_HTTPConnection> connectionObserver = self;
+        _stream->setCloseCallback([connectionObserver](){
+            auto connection = connectionObserver.lock();
+            if (connection) {
+                connection->onClose();
             }
         });
-        auto stream = std::move(_streamKeeper);
+        auto stream = std::move(_stream);
         stream->connect(host, port, std::bind(&_HTTPConnection::onConnect, self));
     } catch (std::exception &e) {
         std::string error = e.what();
@@ -111,16 +112,16 @@ void _HTTPConnection::onTimeout() {
         CallbackType callback(std::move(_callback));
         callback(HTTPResponse(_request, 599, error_="Timeout"));
     }
-    auto stream = getStream();
+    auto stream = fetchStream();
     if (stream) {
         stream->close();
     }
 }
 
 void _HTTPConnection::onConnect() {
-    auto stream = getStream();
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
     _ioloop->removeTimeout(_timeout);
     auto self = shared_from_this();
@@ -148,32 +149,32 @@ void _HTTPConnection::onConnect() {
         ThrowException(NotImplementedError, "ProxyPassword not supported");
     }
     auto &headers = _request->headers();
-    if (!headers.contain("Host")) {
-        headers.setItem("Host", _parsedNetloc);
+    if (!headers.has("Host")) {
+        headers["Host"] = _parsedNetloc;
     }
     const std::string &authUserName = _request->getAuthUserName();
     if (!authUserName.empty()) {
         std::string auth = authUserName + ":" + _request->getAuthPassword();
         auth = "Basic " + Base64::b64decode(std::move(auth));
-        headers.setItem("Authorization", auth);
+        headers["Authorization"] = auth;
     }
     const std::string &userAgent = _request->getUserAgent();
     if (!userAgent.empty()) {
-        headers.setItem("User-Agent", userAgent);
+        headers["User-Agent"] = userAgent;
     }
     bool hasBody = method == "POST" || method == "PUT";
     auto requestBody = _request->getBody();
     if (hasBody) {
         ASSERT(requestBody != nullptr);
-        headers.setItem("Content-Length", std::to_string(requestBody->size()));
+        headers["Content-Length"] = std::to_string(requestBody->size());
     } else {
         ASSERT(requestBody == nullptr);
     }
-    if (method == "POST" && !headers.contain("Content-Type")) {
-        headers.setItem("Content-Type", "application/x-www-form-urlencoded");
+    if (method == "POST" && !headers.has("Content-Type")) {
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
     }
     if (_request->isUseGzip()) {
-        headers.setItem("Accept-Encoding", "gzip");
+        headers["Accept-Encoding"] = "gzip";
     }
     std::string reqPath = _parsedPath.empty() ? "/" : _parsedPath;
     if (!_parsedQuery.empty()) {
@@ -187,20 +188,19 @@ void _HTTPConnection::onConnect() {
     });
     std::string headerData = boost::join(requestLines, "\r\n");
     headerData += "\r\n\r\n";
-    BufferType headerBuffer(headerData.c_str(), headerData.size());
-    stream->write(headerBuffer);
+    stream->write((const Byte *)headerData.data(), headerData.size());
     if (hasBody) {
-        BufferType bodyBuffer(requestBody->data(), requestBody->size());
-        stream->write(bodyBuffer);
+        stream->write(requestBody->data(), requestBody->size());
     }
-    _streamKeeper.reset();
-    stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, self, std::placeholders::_1));
+    _stream.reset();
+    stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, self, std::placeholders::_1,
+                                            std::placeholders::_2));
 }
 
 void _HTTPConnection::onClose() {
-    auto stream = getStream();
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
     if (_callback) {
         CallbackType callback(std::move(_callback));
@@ -208,13 +208,12 @@ void _HTTPConnection::onClose() {
     }
 }
 
-void _HTTPConnection::onHeaders(BufferType &data) {
-    auto stream = getStream();
+void _HTTPConnection::onHeaders(Byte *data, size_t length) {
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
-    const char *content = boost::asio::buffer_cast<const char *>(data);
-    size_t length = boost::asio::buffer_size(data);
+    const char *content = (const char *)data;
     const char *eol = StrNStr(content, length, "\r\n");
     std::string firstLine, headerData;
     if (eol) {
@@ -243,15 +242,15 @@ void _HTTPConnection::onHeaders(BufferType &data) {
     }
     if (_headers->get("Transfer-Encoding") == "chunked") {
         _chunks = ByteArray();
-        _streamKeeper.reset();
+        _stream.reset();
         stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, shared_from_this(),
-                                            std::placeholders::_1));
-    } else if (_headers->contain("Content-Length")) {
-        std::string __length = _headers->getItem("Content-Length");
-        size_t contentLength = std::stoul(_headers->getItem("Content-Length"));
-        _streamKeeper.reset();
+                                            std::placeholders::_1, std::placeholders::_2));
+    } else if (_headers->has("Content-Length")) {
+        std::string __length = _headers->at("Content-Length");
+        size_t contentLength = std::stoul(_headers->at("Content-Length"));
+        _stream.reset();
         stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, shared_from_this(),
-                                                   std::placeholders::_1));
+                                                   std::placeholders::_1, std::placeholders::_2));
     } else {
         std::string error("No Content-length or chunked encoding,don't know how to read ");
         error += _request->getURL();
@@ -259,19 +258,17 @@ void _HTTPConnection::onHeaders(BufferType &data) {
     }
 }
 
-void _HTTPConnection::onBody(BufferType &data) {
-    auto stream = getStream();
+void _HTTPConnection::onBody(Byte *data, size_t length) {
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
-    const char *content = boost::asio::buffer_cast<const char *>(data);
-    size_t length = boost::asio::buffer_size(data);
     _ioloop->removeTimeout(_timeout);
     ByteArray body;
     if (_decompressor) {
-        body = _decompressor->decompress((const Byte *)content, length);
+        body = _decompressor->decompress(data, length);
     } else {
-        body.assign((const Byte *)content, (const Byte *)content + length);
+        body.assign(data, data + length);
     }
     ByteArray buffer;
     auto &streamCallback = _request->getStreamCallback();
@@ -285,10 +282,10 @@ void _HTTPConnection::onBody(BufferType &data) {
     if (_request->isFollowRedirects() && _request->getMaxRedirects() > 0 && (_code == 301 || _code == 302)) {
         auto newRequest= HTTPRequest::create(_request);
         std::string url = _request->getURL();
-        url = URLParse::urlJoin(url, _headers->getItem("Location"));
+        url = URLParse::urlJoin(url, _headers->at("Location"));
         newRequest->setURL(std::move(url));
         newRequest->decreaseRedirects();
-        newRequest->headers().delItem("Host");
+        newRequest->headers().erase("Host");
         _client->fetch(_originalRequest, std::move(newRequest), std::move(_callback));
         return;
     }
@@ -298,32 +295,27 @@ void _HTTPConnection::onBody(BufferType &data) {
     callback(response);
 }
 
-void _HTTPConnection::onChunkLength(BufferType &data) {
-    const char *dataPtr = boost::asio::buffer_cast<const char *>(data);
-    size_t dataSize = boost::asio::buffer_size(data);
-    std::string content(dataPtr, dataPtr + dataSize);
+void _HTTPConnection::onChunkLength(Byte *data, size_t length) {
+    std::string content((const char *)data, (const char *)data + length);
     boost::trim(content);
-    size_t length = std::stoul(content, nullptr, 16);
-    if (length == 0) {
+    size_t chunkLength = std::stoul(content, nullptr, 16);
+    if (chunkLength == 0) {
         _decompressor.reset();
-        BufferType body(_chunks->data(), _chunks->size());
-        onBody(body);
+        onBody(_chunks->data(), _chunks->size());
     } else {
-        auto stream = getStream();
+        auto stream = fetchStream();
         stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, shared_from_this(),
-                                                std::placeholders::_1));
+                                                std::placeholders::_1, std::placeholders::_2));
     }
 }
 
-void _HTTPConnection::onChunkData(BufferType &data) {
-    const char *content = boost::asio::buffer_cast<const char *>(data);
-    size_t length = boost::asio::buffer_size(data);
-    ASSERT(strncmp(content + length - 2, "\r\n", 2) == 0);
-    auto stream = getStream();
+void _HTTPConnection::onChunkData(Byte *data, size_t length) {
+    ASSERT(strncmp((const char *)data + length - 2, "\r\n", 2) == 0);
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
-    ByteArray chunk((const Byte *)content, (const Byte *)content + length - 2);
+    ByteArray chunk(data, data + length - 2);
     if (_decompressor) {
         chunk = _decompressor->decompress(chunk);
     }
@@ -334,7 +326,7 @@ void _HTTPConnection::onChunkData(BufferType &data) {
         _chunks->resize(_chunks->size() + chunk.size());
         memcpy(_chunks->data() + _chunks->size() - chunk.size(), chunk.data(), chunk.size());
     }
-    _streamKeeper.reset();
+    _stream.reset();
     stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, shared_from_this(),
-                                        std::placeholders::_1));
+                                        std::placeholders::_1, std::placeholders::_2));
 }

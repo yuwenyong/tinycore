@@ -6,18 +6,35 @@
 #define TINYCORE_HTTPUTIL_H
 
 #include "tinycore/common/common.h"
-#include "tinycore/debugging/trace.h"
 #include <boost/regex.hpp>
-
-
-class HTTPHeaders;
-typedef std::unique_ptr<HTTPHeaders> HTTPHeadersPtr;
+#include "tinycore/debugging/trace.h"
 
 
 class HTTPHeaders {
 public:
     typedef std::map<std::string, StringVector> HeadersContainerType;
     typedef std::function<void (const std::string&, const std::string &)> CallbackType;
+
+    class HTTPHeadersSetter {
+    public:
+        HTTPHeadersSetter(std::string *value, StringVector *values)
+                : _value(value)
+                , _values(values) {
+        }
+
+        HTTPHeadersSetter& operator=(const std::string &value) {
+            *_value = value;
+            *_values = {value, };
+            return *this;
+        }
+
+        operator std::string() const {
+            return *_value;
+        }
+    protected:
+        std::string *_value{nullptr};
+        StringVector *_values{nullptr};
+    };
 
     HTTPHeaders() {}
 
@@ -38,28 +55,47 @@ public:
 
     void parseLine(const std::string &line);
 
-    void setItem(const std::string &name, const std::string &value);
+    HTTPHeadersSetter operator[](const std::string &name) {
+        std::string normName = HTTPHeaders::normalizeName(name);
+        return HTTPHeadersSetter(&_items[normName], &_asList[normName]);
+    }
 
-    bool contain(const std::string &name) const {
+    bool has(const std::string &name) const {
         return _items.find(name) != _items.end();
     }
 
-    std::string getItem(const std::string &name) const {
+    const std::string& at(const std::string &name) const {
         return _items.at(HTTPHeaders::normalizeName(name));
     }
 
-    void delItem(const std::string &name);
+    void erase(const std::string &name);
     std::string get(const std::string &name, const std::string &defaultValue="") const;
 
     void update(const StringMap &nameValues) {
         for(auto &nameValue: nameValues) {
-            setItem(nameValue.first, nameValue.second);
+            (*this)[nameValue.first] = nameValue.second;
         }
     }
 
-    static HTTPHeadersPtr parse(const std::string &headers);
+    void clear() {
+        _items.clear();
+        _asList.clear();
+    }
+
+    void parseLines(const std::string &headers);
+
+    static std::unique_ptr<HTTPHeaders> parse(const std::string &headers) {
+        auto h = HTTPHeaders::create();
+        h->parseLines(headers);
+        return h;
+    }
+
+    template <typename ...Args>
+    static std::unique_ptr<HTTPHeaders> create(Args&& ...args) {
+        return make_unique<HTTPHeaders>(std::forward<Args>(args)...);
+    }
 protected:
-    static std::string normalizeName(const std::string& name);
+    static std::string normalizeName(const std::string &name);
 
     StringMap _items;
     HeadersContainerType _asList;
@@ -71,7 +107,7 @@ class HTTPFile {
 public:
     HTTPFile(std::string fileName,
              std::string contentType,
-             std::string body)
+             ByteArray body)
             : _fileName(std::move(fileName))
             , _contentType(std::move(contentType))
             , _body(std::move(body)) {
@@ -86,13 +122,14 @@ public:
         return _contentType;
     }
 
-    const std::string& getBody() const {
+    const ByteArray& getBody() const {
         return _body;
     }
 protected:
     std::string _fileName;
     std::string _contentType;
-    std::string _body;
+    ByteArray _body;
 };
+
 
 #endif //TINYCORE_HTTPUTIL_H

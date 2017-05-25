@@ -4,7 +4,7 @@
 
 #define BOOST_TEST_MODULE web_test
 #include <boost/test/included/unit_test.hpp>
-#include "tinycore/asyncio/testing.h"
+#include "tinycore/tinycore.h"
 
 
 class HelloWorld: public RequestHandler {
@@ -19,7 +19,7 @@ public:
 
 class HelloWorldTestCase: public AsyncHTTPTestCase {
 public:
-    ApplicationPtr getApp() const override {
+    std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
                 url<HelloWorld>("/"),
         };

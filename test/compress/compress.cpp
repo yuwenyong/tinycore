@@ -2,7 +2,7 @@
 // Created by yuwenyong on 17-4-19.
 //
 
-#include "tinycore/compress/gzip.h"
+#include "tinycore/tinycore.h"
 
 
 int main(int argc, char **argv) {

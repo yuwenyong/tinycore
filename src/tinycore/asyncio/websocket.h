@@ -6,9 +6,9 @@
 #define TINYCORE_WEBSOCKET_H
 
 #include "tinycore/common/common.h"
-#include "tinycore/common/errors.h"
-#include "tinycore/asyncio/web.h"
 #include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/web.h"
+#include "tinycore/common/errors.h"
 
 
 #define _NOT_SUPPORTED(func) void func() { ThrowException(Exception, #func " not supported for Web Sockets"); }
@@ -20,25 +20,24 @@ typedef std::unique_ptr<WebSocketRequest> WebSocketRequestPtr;
 
 class TC_COMMON_API WebSocketHandler: public RequestHandler {
 public:
-    typedef HTTPServerRequest::BufferType BufferType;
 
-    WebSocketHandler(Application *application, HTTPServerRequestPtr request);
+    WebSocketHandler(Application *application, std::shared_ptr<HTTPServerRequest> request);
     ~WebSocketHandler();
-    void writeMessage(const char *message, size_t length);
+    void writeMessage(const Byte *message, size_t length);
 
     void writeMessage(const char *message) {
-        writeMessage(message, strlen(message));
+        writeMessage((const Byte *)message, strlen(message));
     }
 
     void writeMessage(const std::string &message) {
-        writeMessage(message.c_str(), message.length());
+        writeMessage((const Byte *)message.data(), message.size());
     }
 
-    void writeMessage(const std::vector<char> &message) {
+    void writeMessage(const ByteArray &message) {
         writeMessage(message.data(), message.size());
     }
 
-    void writeMessage(const JSONType &message) {
+    void writeMessage(const SimpleJSONType &message) {
         std::ostringstream messageBuffer;
         boost::property_tree::write_json(messageBuffer, message);
         std::string content = messageBuffer.str();
@@ -46,26 +45,26 @@ public:
     }
 
     virtual void onOpen(const StringVector &args);
-    virtual void onMessage(const char *data, size_t length) = 0;
+    virtual void onMessage(const Byte *data, size_t length) = 0;
     virtual void onClose();
     void close();
     void onConnectionClose() override;
 protected:
     void execute(TransformsType &transforms, StringVector args) override;
-    void handleChallenge(BufferType &data);
+    void handleChallenge(Byte *data, size_t length);
     void writeResponse(const std::string &challenge);
     void abort();
     void receiveMessage();
-    void onFrameType(BufferType &data);
-    void onEndDelimiter(BufferType &data);
-    void onLengthIndicator(BufferType &data);
+    void onFrameType(Byte *data, size_t length);
+    void onEndDelimiter(Byte *data, size_t length);
+    void onLengthIndicator(Byte *data, size_t length);
 
-    BaseIOStreamPtr getStream() {
-        return _stream.lock();
+    std::shared_ptr<BaseIOStream> fetchStream() {
+        return _streamObserver.lock();
     }
 
-    BaseIOStreamWPtr _stream;
-    BaseIOStreamPtr _streamKeeper;
+    std::weak_ptr<BaseIOStream> _streamObserver;
+    std::shared_ptr<BaseIOStream> _stream;
     bool _clientTerminated;
     StringVector _openArgs;
     WebSocketRequestPtr _wsRequest;
@@ -84,7 +83,7 @@ public:
 
 class WebSocketRequest {
 public:
-    WebSocketRequest(HTTPServerRequestPtr request)
+    WebSocketRequest(std::shared_ptr<HTTPServerRequest> request)
             : _request(std::move(request)) {
 
     }
@@ -95,7 +94,7 @@ protected:
     std::string calculatePart(const std::string &key);
     std::string generateChallengeResponse(const std::string &part1, const std::string &part2, const std::string &part3);
 
-    HTTPServerRequestPtr _request;
+    std::shared_ptr<HTTPServerRequest> _request;
 };
 
 #endif //TINYCORE_WEBSOCKET_H

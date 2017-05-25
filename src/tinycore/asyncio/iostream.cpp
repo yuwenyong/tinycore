@@ -25,27 +25,18 @@ BaseIOStream::~BaseIOStream() {
 
 
 void BaseIOStream::connect(const std::string &address, unsigned short port, ConnectCallbackType callback) {
-    ResolverType resolver(_ioloop->getService());
-    ResolverType::query query(address, std::to_string(port));
-    ResolverType::iterator iter, end;
     _connecting = true;
     _connectCallback = std::move(callback);
-    asyncConnect(resolver.resolve(query));
+    asyncConnect(address, port);
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
-    const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
-                              delimiter.c_str());
-    if (loc) {
-        size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + delimiter.size();
-        BufferType buffer(_readBuffer.getReadPointer(), readBytes);
-        _readBuffer.readCompleted(readBytes);
-        callback(buffer);
-        return;
-    }
     _readDelimiter = std::move(delimiter);
     _readCallback = std::move(callback);
+    if (readFromBuffer()) {
+        return;
+    }
     checkClosed();
     asyncRead();
 }
@@ -53,28 +44,26 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     if (numBytes == 0) {
-        BufferType buffer;
-        callback(buffer);
-        return;
-    }
-    if (_readBuffer.getActiveSize() >= numBytes) {
-        BufferType buffer(_readBuffer.getReadPointer(), numBytes);
-        _readBuffer.readCompleted(numBytes);
-        callback(buffer);
+        callback(nullptr, 0);
         return;
     }
     _readBytes = numBytes;
     _readCallback = std::move(callback);
+    if (readFromBuffer()) {
+        return;
+    }
     checkClosed();
     asyncRead();
 }
 
-void BaseIOStream::write(BufferType &chunk, WriteCallbackType callback) {
+void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType callback) {
     checkClosed();
+    if (length == 0) {
+        return;
+    }
     bool isWriting = writing();
-    size_t bufferSize = boost::asio::buffer_size(chunk);
-    MessageBuffer packet(bufferSize);
-    packet.write(boost::asio::buffer_cast<const Byte*>(chunk), bufferSize);
+    MessageBuffer packet(length);
+    packet.write(data, length);
     _writeQueue.push(std::move(packet));
     _writeCallback = std::move(callback);
     if (!isWriting) {
@@ -88,64 +77,35 @@ void BaseIOStream::connectHandler(const boost::system::error_code &error) {
             _connectCallback = nullptr;
         }
         if (error != boost::asio::error::operation_aborted) {
-            if (error != boost::asio::error::eof) {
-                Log::warn("Read error %d :%s", error.value(), error.message());
-            }
-            close();
+            Log::warn("Connect error %d :%s", error.value(), error.message());
         }
+        close();
     } else {
         if (_connectCallback) {
             ConnectCallbackType callback = std::move(_connectCallback);
-            callback();
+            try {
+                callback();
+            } catch (std::exception &e) {
+                Log::error("Uncaught exception (%s), closing connection.", e.what());
+                close();
+                throw;
+            }
         }
     }
     _connecting = false;
 }
 
 void BaseIOStream::readHandler(const boost::system::error_code &error, size_t transferredBytes) {
-    if (error) {
-        if (_readCallback) {
-            _readCallback = nullptr;
+    try {
+        if (readToBuffer(error, transferredBytes) == 0) {
+            return;
         }
-        if (error != boost::asio::error::operation_aborted) {
-            if (error != boost::asio::error::eof) {
-                Log::warn("Read error %d :%s", error.value(), error.message());
-            }
-            close();
-            if (error != boost::asio::error::eof) {
-                throw boost::system::system_error(error);
-            }
-        }
-    }
-    _readBuffer.writeCompleted(transferredBytes);
-    if (_readBuffer.getBufferSize() > _maxBufferSize) {
-        _readCallback = nullptr;
-        Log::error("Reached maximum read buffer size");
+    } catch (std::exception &e) {
         close();
-        ThrowException(IOError, "Reached maximum read buffer size");
+        return;
     }
-    if (_readBytes > 0) {
-        if (_readBuffer.getActiveSize() >= _readBytes) {
-            ReadCallbackType callback = std::move(_readCallback);
-            size_t readBytes = _readBytes;
-            _readBytes = 0;
-            BufferType buffer(_readBuffer.getReadPointer(), readBytes);
-            _readBuffer.readCompleted(readBytes);
-            callback(buffer);
-            return;
-        }
-    } else if (!_readDelimiter.empty()){
-        const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
-                                  _readDelimiter.c_str());
-        if (loc) {
-            size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter.size();
-            ReadCallbackType callback = std::move(_readCallback);
-            _readDelimiter.clear();
-            BufferType buffer(_readBuffer.getReadPointer(), readBytes);
-            _readBuffer.readCompleted(readBytes);
-            callback(buffer);
-            return;
-        }
+    if (readFromBuffer()) {
+        return;
     }
     if (closed()) {
         if (_readCallback) {
@@ -165,8 +125,8 @@ void BaseIOStream::writeHandler(const boost::system::error_code &error, size_t t
         }
         if (error != boost::asio::error::operation_aborted) {
             Log::warn("Write error %d :%s", error.value(), error.message());
-            close();
         }
+        close();
         return;
     }
     _writeQueue.front().readCompleted(transferredBytes);
@@ -175,7 +135,13 @@ void BaseIOStream::writeHandler(const boost::system::error_code &error, size_t t
     }
     if (_writeQueue.empty() && _writeCallback) {
         WriteCallbackType callback = std::move(_writeCallback);
-        callback();
+        try {
+            callback();
+        } catch (std::exception &e) {
+            Log::error("Uncaught exception (%s), closing connection.", e.what());
+            close();
+            throw;
+        }
         return;
     }
     if (closed()) {
@@ -192,13 +158,83 @@ void BaseIOStream::writeHandler(const boost::system::error_code &error, size_t t
 void BaseIOStream::closeHandler(const boost::system::error_code &error) {
     if (_closeCallback) {
         CloseCallbackType callback = std::move(_closeCallback);
-        callback();
+        try {
+            callback();
+        } catch (std::exception &e) {
+            Log::error("Uncaught exception (%s), closing connection.", e.what());
+            throw;
+        }
     }
     if (error) {
         Log::warn("Close error %d :%s", error.value(), error.message());
-        throw boost::system::system_error(error);
     }
 }
+
+size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t transferredBytes) {
+    if (error) {
+        if (_readCallback) {
+            _readCallback = nullptr;
+        }
+        if (error != boost::asio::error::operation_aborted) {
+            if (error != boost::asio::error::eof) {
+                Log::warn("Read error %d :%s", error.value(), error.message());
+            }
+            close();
+//            if (error != boost::asio::error::eof) {
+//                throw boost::system::system_error(error);
+//            }
+            return 0;
+        }
+    }
+    _readBuffer.writeCompleted(transferredBytes);
+    if (_readBuffer.getBufferSize() > _maxBufferSize) {
+        _readCallback = nullptr;
+        Log::error("Reached maximum read buffer size");
+        close();
+        ThrowException(IOError, "Reached maximum read buffer size");
+    }
+    return transferredBytes;
+}
+
+bool BaseIOStream::readFromBuffer() {
+    if (_readBytes > 0) {
+        if (_readBuffer.getActiveSize() >= _readBytes) {
+            size_t readBytes = _readBytes;
+            ReadCallbackType callback = std::move(_readCallback);
+            _readBytes = 0;
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
+            _readBuffer.readCompleted(readBytes);
+            try {
+                callback(data.data(), data.size());
+            } catch (std::exception &e) {
+                Log::error("Uncaught exception (%s), closing connection.", e.what());
+                close();
+                throw;
+            }
+            return true;
+        }
+    } else if (!_readDelimiter.empty()){
+        const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
+                                  _readDelimiter.c_str());
+        if (loc) {
+            size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter.size();
+            ReadCallbackType callback = std::move(_readCallback);
+            _readDelimiter.clear();
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
+            _readBuffer.readCompleted(readBytes);
+            try {
+                callback(data.data(), data.size());
+            } catch (std::exception &e) {
+                Log::error("Uncaught exception (%s), closing connection.", e.what());
+                close();
+                throw;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 
 IOStream::IOStream(SocketType &&socket,
                    IOLoop *ioloop,
@@ -216,10 +252,11 @@ IOStream::~IOStream() {
 #endif
 }
 
-void IOStream::asyncConnect(ResolverIteratorType endpoint) {
-    boost::asio::async_connect(_socket, endpoint,
-                               std::bind(&BaseIOStream::connectHandler, shared_from_this(),
-                                         std::placeholders::_1));
+void IOStream::asyncConnect(const std::string &address, unsigned short port) {
+    ResolverType resolver(_ioloop->getService());
+    ResolverType::query query(address, std::to_string(port));
+    boost::asio::async_connect(_socket, resolver.resolve(query),
+                               std::bind(&BaseIOStream::connectHandler, shared_from_this(), std::placeholders::_1));
 }
 
 void IOStream::asyncRead() {
@@ -244,7 +281,7 @@ void IOStream::asyncClose() {
 }
 
 SSLIOStream::SSLIOStream(SocketType &&socket,
-                         SSLOptionPtr sslOption,
+                         std::shared_ptr<SSLOption>  sslOption,
                          IOLoop *ioloop,
                          size_t maxBufferSize,
                          size_t readChunkSize)
@@ -262,10 +299,11 @@ SSLIOStream::~SSLIOStream() {
 #endif
 }
 
-void SSLIOStream::asyncConnect(ResolverIteratorType endpoint) {
-    boost::asio::async_connect(_sslSocket.lowest_layer(), endpoint,
-                               std::bind(&BaseIOStream::connectHandler, shared_from_this(),
-                                         std::placeholders::_1));
+void SSLIOStream::asyncConnect(const std::string &address, unsigned short port) {
+    ResolverType resolver(_ioloop->getService());
+    ResolverType::query query(address, std::to_string(port));
+    boost::asio::async_connect(_sslSocket.lowest_layer(), resolver.resolve(query),
+                               std::bind(&BaseIOStream::connectHandler, shared_from_this(), std::placeholders::_1));
 }
 
 void SSLIOStream::asyncRead() {
@@ -306,7 +344,7 @@ void SSLIOStream::doHandshake() {
             _sslSocket.handshake(boost::asio::ssl::stream_base::client, error);
         }
         if (error) {
-            Log::warn("SSL error %d :%s", error.value(), error.message());
+            Log::warn("SSL error %d :%s, closing connection.", error.value(), error.message());
             close();
             throw boost::system::system_error(error);
         } else {

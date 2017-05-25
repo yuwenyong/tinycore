@@ -5,17 +5,17 @@
 #include "tinycore/asyncio/websocket.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/endian/conversion.hpp>
+#include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/log.h"
-#include "tinycore/crypto/hashlib.h"
 #include "tinycore/utilities/string.h"
 
 
-WebSocketHandler::WebSocketHandler(Application *application, HTTPServerRequestPtr request)
+WebSocketHandler::WebSocketHandler(Application *application, std::shared_ptr<HTTPServerRequest> request)
         : RequestHandler(application, request)
         , _clientTerminated(false) {
-    _streamKeeper = request->getConnection()->releaseStream();
-    _stream = _streamKeeper;
+    _stream = request->getConnection()->releaseStream();
+    _streamObserver = _stream;
 #ifndef NDEBUG
     sWatcher->inc(SYS_WEBSOCKETHANDLER_COUNT);
 #endif
@@ -27,14 +27,13 @@ WebSocketHandler::~WebSocketHandler() {
 #endif
 }
 
-void WebSocketHandler::writeMessage(const char *message, size_t length) {
-    std::vector<char> buffer;
+void WebSocketHandler::writeMessage(const Byte *message, size_t length) {
+    ByteArray buffer;
     buffer.push_back('\x00');
     buffer.insert(buffer.end(), message, message + length);
     buffer.push_back('\xff');
-    auto stream = getStream();
-    BufferType chunk(buffer.data(), buffer.size());
-    stream->write(chunk);
+    auto stream = fetchStream();
+    stream->write(buffer.data(), buffer.size());
 }
 
 void WebSocketHandler::onOpen(const StringVector &args) {
@@ -46,15 +45,14 @@ void WebSocketHandler::onClose() {
 }
 
 void WebSocketHandler::close() {
-    auto stream = getStream();
+    auto stream = fetchStream();
     if (_clientTerminated && !_waiting.expired()) {
         sIOLoop->removeTimeout(_waiting);
         _waiting.reset();
         stream->close();
     } else {
-        char data[] = {'\xff', '\x00'};
-        BufferType chunk(data, sizeof(data));
-        stream->write(chunk);
+        const Byte data[] = {'\xff', '\x00'};
+        stream->write(data, sizeof(data));
         _waiting = sIOLoop->addTimeout(5.0f, std::bind(&WebSocketHandler::abort, getSelf<WebSocketHandler>()));
     }
 }
@@ -77,7 +75,7 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
     }
     std::string scheme, origin;
     scheme = _request->getProtocol() == "https" ? "wss" : "ws";
-    origin = _request->getHTTPHeader()->getItem("Origin");
+    origin = _request->getHTTPHeaders()->at("Origin");
     std::string initial = String::format("HTTP/1.1 101 Web Socket Protocol Handshake\r\n"
                                                  "Upgrade: WebSocket\r\n"
                                                  "Connection: Upgrade\r\n"
@@ -86,22 +84,21 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
                                                  "Sec-WebSocket-Location: %s://%s%s\r\n\r\n",
                                          TINYCORE_VER, origin.c_str(), scheme.c_str(), _request->getHost().c_str(),
                                          _request->getURI().c_str());
-    auto stream = std::move(_streamKeeper);
+    auto stream = std::move(_stream);
     ASSERT(stream);
-    BufferType buffer(initial.c_str(), initial.size());
-    stream->write(buffer);
+    stream->write((const Byte *)initial.data(), initial.size());
     stream->readBytes(8, std::bind(&WebSocketHandler::handleChallenge, getSelf<WebSocketHandler>(),
-                                   std::placeholders::_1));
+                                   std::placeholders::_1, std::placeholders::_2));
 }
 
-void WebSocketHandler::handleChallenge(BufferType &data) {
-    auto stream = getStream();
+void WebSocketHandler::handleChallenge(Byte *data, size_t length) {
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
     std::string challengeResponse;
     try {
-        std::string challenge(boost::asio::buffer_cast<const char *>(data), boost::asio::buffer_size(data));
+        std::string challenge((const char *)data, length);
         challengeResponse = _wsRequest->challengeResponse(challenge);
     } catch (ValueError &e) {
         Log::debug("Malformed key data in WebSocket request");
@@ -112,10 +109,9 @@ void WebSocketHandler::handleChallenge(BufferType &data) {
 }
 
 void WebSocketHandler::writeResponse(const std::string &challenge) {
-    auto stream = getStream();
+    auto stream = fetchStream();
     ASSERT(stream);
-    BufferType buffer(challenge.c_str(), challenge.size());
-    stream->write(buffer);
+    stream->write((const Byte *)challenge.data(), challenge.size());
     try {
         onOpen(_openArgs);
     } catch (std::exception &e) {
@@ -127,50 +123,46 @@ void WebSocketHandler::writeResponse(const std::string &challenge) {
 
 void WebSocketHandler::abort() {
     _clientTerminated = true;
-    auto stream = getStream();
+    auto stream = fetchStream();
     stream->close();
 }
 
 void WebSocketHandler::receiveMessage() {
-    auto stream = getStream();
-    _streamKeeper.reset();
-    stream->readBytes(1, std::bind(&WebSocketHandler::onFrameType, getSelf<WebSocketHandler>(), std::placeholders::_1));
+    auto stream = fetchStream();
+    _stream.reset();
+    stream->readBytes(1, std::bind(&WebSocketHandler::onFrameType, getSelf<WebSocketHandler>(), std::placeholders::_1,
+                                   std::placeholders::_2));
 }
 
-void WebSocketHandler::onFrameType(BufferType &data) {
-    auto stream = getStream();
+void WebSocketHandler::onFrameType(Byte *data, size_t length) {
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
-    unsigned char frameType = boost::asio::buffer_cast<const unsigned char *>(data)[0];
+    unsigned char frameType = data[0];
     if (frameType == 0x00) {
         std::string delimiter('\xff', 1);
-        _streamKeeper.reset();
+        _stream.reset();
         stream->readUntil(std::move(delimiter), std::bind(&WebSocketHandler::onEndDelimiter,
                                                           getSelf<WebSocketHandler>(),
-                                                          std::placeholders::_1));
+                                                          std::placeholders::_1, std::placeholders::_2));
     } else if (frameType == 0xff) {
-        _streamKeeper.reset();
+        _stream.reset();
         stream->readBytes(1, std::bind(&WebSocketHandler::onLengthIndicator, getSelf<WebSocketHandler>(),
-                                       std::placeholders::_1));
+                                       std::placeholders::_1, std::placeholders::_2));
     } else {
         abort();
     }
 }
 
-void WebSocketHandler::onEndDelimiter(BufferType &data) {
-    auto stream = getStream();
+void WebSocketHandler::onEndDelimiter(Byte *data, size_t length) {
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
     if (!_clientTerminated) {
         try {
-            const char *frame = boost::asio::buffer_cast<const char *>(data);
-            size_t frameSize = boost::asio::buffer_size(data);
-            if (frameSize > 0) {
-                --frameSize;
-            }
-            onMessage(frame, frameSize);
+            onMessage(data, length - 1);
         } catch (std::exception &e) {
             Log::error("Uncaught exception %s in %s", e.what(), _request->getPath().c_str());
             abort();
@@ -181,12 +173,12 @@ void WebSocketHandler::onEndDelimiter(BufferType &data) {
     }
 }
 
-void WebSocketHandler::onLengthIndicator(BufferType &data) {
-    auto stream = getStream();
+void WebSocketHandler::onLengthIndicator(Byte *data, size_t length) {
+    auto stream = fetchStream();
     if (stream->dying()) {
-        _streamKeeper = stream;
+        _stream = stream;
     }
-    char byte = boost::asio::buffer_cast<const char *>(data)[0];
+    unsigned char byte = data[0];
     if (byte != 0x00) {
         abort();
         return;
@@ -197,7 +189,7 @@ void WebSocketHandler::onLengthIndicator(BufferType &data) {
 
 
 std::string WebSocketRequest::challengeResponse(const std::string &challenge) {
-    auto headers = _request->getHTTPHeader();
+    auto headers = _request->getHTTPHeaders();
     std::string key1, key2, part1, part2;
     key1 = headers->get("Sec-Websocket-Key1");
     key2 = headers->get("Sec-Websocket-Key2");
@@ -211,7 +203,7 @@ std::string WebSocketRequest::challengeResponse(const std::string &challenge) {
 }
 
 void WebSocketRequest::handleWebSocketHeaders() const {
-    auto headers = _request->getHTTPHeader();
+    auto headers = _request->getHTTPHeaders();
     const StringVector fields = {"Origin", "Host", "Sec-Websocket-Key1", "Sec-Websocket-Key2"};
     if (boost::to_lower_copy(headers->get("Upgrade")) != "websocket" ||
         boost::to_lower_copy(headers->get("Connection")) != "upgrade") {
@@ -226,7 +218,7 @@ void WebSocketRequest::handleWebSocketHeaders() const {
 
 std::string WebSocketRequest::calculatePart(const std::string &key) {
     std::string number = String::filter(key, boost::is_digit());
-    int spaces = String::count(key, boost::is_space());
+    size_t spaces = String::count(key, boost::is_space());
     if (number.empty() || spaces == 0) {
         ThrowException(ValueError, "");
     }

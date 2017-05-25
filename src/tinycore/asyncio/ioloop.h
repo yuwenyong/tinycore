@@ -12,18 +12,12 @@
 
 
 class IOLoop;
-class _Timeout;
-typedef std::weak_ptr<_Timeout> Timeout;
-
-class PeriodicCallback;
-typedef std::shared_ptr<PeriodicCallback> PeriodicCallbackPtr;
 
 class _SignalSet {
 public:
     typedef std::function<int ()> CallbackType;
 
     _SignalSet(IOLoop *ioloop= nullptr);
-
     void signal(int signalNumber, CallbackType callback=nullptr);
     void start();
 protected:
@@ -34,6 +28,26 @@ protected:
     bool _running{false};
     std::map<int, CallbackType> _callbacks;
 };
+
+
+class TC_COMMON_API _Timeout {
+public:
+    friend class IOLoop;
+    typedef boost::asio::steady_timer TimerType;
+    typedef std::function<void (const boost::system::error_code&)> CallbackType;
+
+    _Timeout(IOLoop *ioloop);
+    ~_Timeout();
+    _Timeout(const _Timeout&) = delete;
+    _Timeout& operator=(const _Timeout&) = delete;
+protected:
+    void start(float deadline, CallbackType callback);
+    void cancel();
+
+    TimerType _timer;
+};
+
+typedef std::weak_ptr<_Timeout> Timeout;
 
 
 class TC_COMMON_API IOLoop {
@@ -48,7 +62,7 @@ public:
     IOLoop& operator=(const IOLoop&) = delete;
     IOLoop();
     ~IOLoop();
-    int start();
+    void start();
     Timeout addTimeout(float deadline, TimeoutCallbackType callback);
     void removeTimeout(Timeout timeout);
 
@@ -80,38 +94,15 @@ protected:
     volatile bool _stopped{false};
 };
 
+
 #define sIOLoop Singleton<IOLoop>::instance()
-
-
-class TC_COMMON_API _Timeout {
-public:
-    friend class IOLoop;
-    typedef boost::asio::steady_timer TimerType;
-    typedef std::function<void (const boost::system::error_code&)> CallbackType;
-
-    _Timeout(IOLoop* ioloop);
-    ~_Timeout();
-    _Timeout(const _Timeout &) = delete;
-    _Timeout &operator=(const _Timeout &) = delete;
-protected:
-    void start(float deadline, CallbackType callback);
-    void cancel();
-
-    TimerType _timer;
-};
 
 
 class TC_COMMON_API PeriodicCallback: public std::enable_shared_from_this<PeriodicCallback> {
 public:
     typedef IOLoop::TimeoutCallbackType CallbackType;
 
-    PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr)
-            : _callback(std::move(callback))
-            , _callbackTime(callbackTime), _ioloop(ioloop ? ioloop : sIOLoop)
-            , _running(false) {
-
-    }
-
+    PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr);
     ~PeriodicCallback();
 
     void start() {
@@ -123,8 +114,9 @@ public:
         _running = false;
     }
 
-    static PeriodicCallbackPtr create(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr) {
-        return std::make_shared<PeriodicCallback>(std::move(callback), callbackTime, ioloop);
+    template <typename ...Args>
+    static std::shared_ptr<PeriodicCallback> create(Args&& ...args) {
+        return std::make_shared<PeriodicCallback>(std::forward<Args>(args)...);
     }
 protected:
     void run();
@@ -134,5 +126,6 @@ protected:
     IOLoop *_ioloop;
     bool _running;
 };
+
 
 #endif //TINYCORE_IOLOOP_H
