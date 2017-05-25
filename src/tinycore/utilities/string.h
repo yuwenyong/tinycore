@@ -7,14 +7,35 @@
 
 #include "tinycore/common/common.h"
 #include <boost/algorithm/string.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+
+#ifdef HAS_CPP_FORMAT
+#include "fmt/format.h"
+#else
 #include <boost/format.hpp>
+#endif
+
+#ifdef HAS_RAPID_JSON
+#include <rapidjson/document.h>
+#include <rapidjson/writer.h>
+#include <rapidjson/reader.h>
+#include <rapidjson/stringbuffer.h>
+#endif
 
 
 class TC_COMMON_API String {
 public:
-    typedef boost::format FormatType;
+
     typedef std::tuple<std::string, std::string, std::string> PartitionResult;
 
+#ifdef HAS_CPP_FORMAT
+    template<typename... Args>
+    static std::string format(const char *fmt, Args&&... args) {
+        return fmt::sprintf(fmt, std::forward<Args>(args)...);
+    }
+#else
+    typedef boost::format FormatType;
     static std::string format(const char *fmt) {
         return std::string(fmt);
     }
@@ -25,6 +46,7 @@ public:
         format(formatter, std::forward<Args>(args)...);
         return formatter.str();
     }
+#endif
 
     static StringVector split(const std::string &s, bool keepEmpty=true) {
         StringVector result;
@@ -73,7 +95,24 @@ public:
     static std::string toHexStr(const ByteArray &s, bool reverse= false);
     static ByteArray fromHexStr(const std::string &s, bool reverse= false);
     static std::string filter(const std::string &s, std::function<bool (char)> pred);
+
+    static std::string fromJSON(const boost::property_tree::ptree &doc) {
+        std::ostringstream buffer;
+        boost::property_tree::write_json(buffer, doc);
+        return buffer.str();
+    }
+
+#ifdef HAS_RAPID_JSON
+    static std::string fromJSON(const rapidjson::Document &doc) {
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        doc.Accept(writer);
+        return buffer.GetString();
+    }
+#endif
+
 protected:
+#ifndef HAS_CPP_FORMAT
     template <typename T, typename... Args>
     static void format(FormatType &formatter, T &&value, Args&&... args) {
         formatter % value;
@@ -84,6 +123,7 @@ protected:
     static void format(FormatType &formatter, T &&value) {
         formatter % value;
     }
+#endif
 };
 
 #endif //TINYCORE_STRING_H

@@ -11,8 +11,6 @@
 #include <boost/functional/factory.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/xpressive/xpressive.hpp>
 #include "tinycore/asyncio/httpserver.h"
 #include "tinycore/common/errors.h"
@@ -20,6 +18,7 @@
 #include "tinycore/httputils/cookie.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/utilities/container.h"
+#include "tinycore/utilities/string.h"
 
 
 class Application;
@@ -131,10 +130,16 @@ public:
     void write(const SimpleJSONType &chunk) {
         ASSERT(!_finished);
         setHeader("Content-Type", "text/javascript; charset=UTF-8");
-        std::ostringstream chunkBuffer;
-        boost::property_tree::write_json(chunkBuffer, chunk);
-        write(chunkBuffer.str());
+        write(String::fromJSON(chunk));
     }
+
+#ifdef HAS_RAPID_JSON
+    void write(const rapidjson::Document &chunk) {
+        ASSERT(!_finished);
+        setHeader("Content-Type", "text/javascript; charset=UTF-8");
+        write(String::fromJSON(chunk));
+    }
+#endif
 
     void flush(bool includeFooters= false);
 

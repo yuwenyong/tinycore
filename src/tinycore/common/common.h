@@ -144,6 +144,9 @@ using Time = boost::posix_time::time_duration;
 using TimestampClock = std::chrono::steady_clock;
 using Timestamp = TimestampClock::time_point;
 
+#define HAS_CPP_FORMAT
+#define HAS_RAPID_JSON
+
 #define SYS_TIMEOUT_COUNT                   "TinyCore.Timeout.Count"
 #define SYS_PERIODICCALLBACK_COUNT          "TinyCore.PeriodicCallback.Count"
 #define SYS_IOSTREAM_COUNT                  "TinyCore.IOStream.Count"

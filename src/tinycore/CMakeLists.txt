@@ -2,7 +2,7 @@
 CollectSourceFiles(${CMAKE_CURRENT_SOURCE_DIR} PRIVATE_SOURCES)
 add_library(tinycore SHARED ${PRIVATE_SOURCES})
 target_include_directories(tinycore PUBLIC "${CMAKE_SOURCE_DIR}/src/")
-target_link_libraries(tinycore PUBLIC pthread openssl boost zlib)
+target_link_libraries(tinycore PUBLIC pthread openssl boost zlib fmt rapidjson)
 
 #link_directories("/usr/local/lib")
 #include_directories(${CMAKE_SOURCE_DIR}/src/ /usr/local/include)

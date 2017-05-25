@@ -1,3 +1,5 @@
+add_subdirectory(fmt)
+add_subdirectory(rapidjson)
 add_subdirectory(boost)
 add_subdirectory(openssl)
 add_subdirectory(zlib)

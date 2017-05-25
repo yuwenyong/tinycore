@@ -38,11 +38,14 @@ public:
     }
 
     void writeMessage(const SimpleJSONType &message) {
-        std::ostringstream messageBuffer;
-        boost::property_tree::write_json(messageBuffer, message);
-        std::string content = messageBuffer.str();
-        writeMessage(content);
+        writeMessage(String::fromJSON(message));
     }
+
+#ifdef HAS_RAPID_JSON
+    void writeMessage(const rapidjson::Document &message) {
+        writeMessage(String::fromJSON(message));
+    }
+#endif
 
     virtual void onOpen(const StringVector &args);
     virtual void onMessage(const Byte *data, size_t length) = 0;
