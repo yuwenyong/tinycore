@@ -433,6 +433,7 @@ public:
     typedef std::function<void (const HTTPResponse&)> CallbackType;
 
     HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={});
+    ~HTTPClient();
 
     void close() {
 
@@ -473,6 +474,7 @@ public:
 
     _HTTPConnection(IOLoop *ioloop, std::shared_ptr<HTTPClient> client, std::shared_ptr<HTTPRequest> originalRequest,
                     std::shared_ptr<HTTPRequest> request, CallbackType callback);
+    ~_HTTPConnection();
     void start();
 
     template <typename ...Args>

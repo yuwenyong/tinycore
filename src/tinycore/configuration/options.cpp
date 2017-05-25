@@ -61,6 +61,13 @@ void Options::setupWatcherHook() {
         Log::debug("Destroy Timeout,current count:%d", value);
     });
 
+    sWatcher->addIncCallback(SYS_PERIODICCALLBACK_COUNT, [](int oldValue, int increment, int value) {
+        Log::debug("Create PeriodicCallback,current count:%d", value);
+    });
+    sWatcher->addDecCallback(SYS_PERIODICCALLBACK_COUNT, [](int oldValue, int decrement, int value) {
+        Log::debug("Destroy PeriodicCallback,current count:%d", value);
+    });
+
     sWatcher->addIncCallback(SYS_IOSTREAM_COUNT, [](int oldValue, int increment, int value) {
         Log::debug("Create IOStream,current count:%d", value);
     });
@@ -87,6 +94,34 @@ void Options::setupWatcherHook() {
     });
     sWatcher->addDecCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int decrement, int value) {
         Log::debug("Destroy HTTPServerRequest,current count:%d", value);
+    });
+
+    sWatcher->addIncCallback(SYS_REQUESTHANDLER_COUNT, [](int oldValue, int increment, int value) {
+        Log::debug("Create RequestHandler,current count:%d", value);
+    });
+    sWatcher->addDecCallback(SYS_REQUESTHANDLER_COUNT, [](int oldValue, int decrement, int value) {
+        Log::debug("Destroy RequestHandler,current count:%d", value);
+    });
+
+    sWatcher->addIncCallback(SYS_WEBSOCKETHANDLER_COUNT, [](int oldValue, int increment, int value) {
+        Log::debug("Create WebsocketHandler,current count:%d", value);
+    });
+    sWatcher->addDecCallback(SYS_WEBSOCKETHANDLER_COUNT, [](int oldValue, int decrement, int value) {
+        Log::debug("Destroy WebsocketHandler,current count:%d", value);
+    });
+
+    sWatcher->addIncCallback(SYS_HTTPCLIENT_COUNT, [](int oldValue, int increment, int value) {
+        Log::debug("Create HTTPClient,current count:%d", value);
+    });
+    sWatcher->addDecCallback(SYS_HTTPCLIENT_COUNT, [](int oldValue, int decrement, int value) {
+        Log::debug("Destroy HTTPClient,current count:%d", value);
+    });
+
+    sWatcher->addIncCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int increment, int value) {
+        Log::debug("Create HTTPClientConnection,current count:%d", value);
+    });
+    sWatcher->addDecCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
+        Log::debug("Destroy HTTPClientConnection,current count:%d", value);
     });
 #endif
 }

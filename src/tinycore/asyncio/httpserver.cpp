@@ -67,7 +67,8 @@ void HTTPServer::asyncAccept() {
                 } else {
                     stream = IOStream::create(std::move(_socket), _ioloop);
                 }
-                auto connection = HTTPConnection::create(stream, stream->getRemoteAddress(), _requestCallback,
+                std::string remoteAddress = stream->getRemoteAddress();
+                auto connection = HTTPConnection::create(std::move(stream), std::move(remoteAddress), _requestCallback,
                                                          _noKeepAlive, _xheaders);
                 connection->start();
             } catch (std::exception &e) {

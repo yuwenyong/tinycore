@@ -7,6 +7,7 @@
 #include <boost/regex.hpp>
 #include "tinycore/crypto/base64.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/debugging/watcher.h"
 #include "tinycore/httputils/urlparse.h"
 #include "tinycore/logging/log.h"
 
@@ -14,7 +15,15 @@
 HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping)
         : _ioloop(ioloop ? ioloop : sIOLoop)
         , _hostnameMapping(std::move(hostnameMapping)) {
+#ifndef NDEBUG
+    sWatcher->inc(SYS_HTTPCLIENT_COUNT);
+#endif
+}
 
+HTTPClient::~HTTPClient() {
+#ifndef NDEBUG
+    sWatcher->dec(SYS_HTTPCLIENT_COUNT);
+#endif
 }
 
 void HTTPClient::fetch(std::shared_ptr<HTTPRequest> originalRequest, std::shared_ptr<HTTPRequest> request,
@@ -38,7 +47,17 @@ _HTTPConnection::_HTTPConnection(IOLoop *ioloop,
         , _request(std::move(request))
         , _callback(std::move(callback)) {
     _startTime = TimestampClock::now();
+#ifndef NDEBUG
+    sWatcher->inc(SYS_HTTPCLIENTCONNECTION_COUNT);
+#endif
 }
+
+_HTTPConnection::~_HTTPConnection() {
+#ifndef NDEBUG
+    sWatcher->dec(SYS_HTTPCLIENTCONNECTION_COUNT);
+#endif
+}
+
 
 void _HTTPConnection::start() {
     try {

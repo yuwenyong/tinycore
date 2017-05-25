@@ -17,6 +17,9 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) {
+        for (auto &s: args) {
+            std::cout << s <<std::endl;
+        }
         std::string price = getArgument("price");
         write(String::format("Book name:%s, price:%s\n", args[0].c_str(), price.c_str()));
     }
@@ -114,7 +117,9 @@ int main(int argc, char **argv) {
                                     url<HelloWorld>("/"),
                                     url<Book>(R"(/books/(\w+)/)"),
                                     url<ChatUser>("/chat"),
-                            });
+                            }, "", {}, {
+            {"gzip", true},
+    });
     HTTPServer server(HTTPServerCB(application));
     server.listen(3080);
     sIOLoop->start();

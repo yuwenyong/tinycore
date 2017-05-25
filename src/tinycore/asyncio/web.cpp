@@ -570,23 +570,22 @@ void FallbackHandler::prepare() {
 
 GZipContentEncoding::GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request) {
     if (request->supportsHTTP1_1()) {
-        _gzipping = true;
-    } else {
         auto headers = request->getHTTPHeaders();
         std::string acceptEncoding = headers->get("Accept-Encoding");
         _gzipping = acceptEncoding.find("gzip") != std::string::npos;
+    } else {
+        _gzipping = false;
     }
 }
 
 void GZipContentEncoding::transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) {
     if (_gzipping) {
         auto iter = headers.find("Content-Type");
-        std::string contentType = iter != headers.end() ? iter->second : "";
-        auto pos = contentType.find(';');
-        if (pos == std::string::npos) {
-            ThrowException(IndexError, "list index out of range");
+        std::string ctype = iter != headers.end() ? iter->second : "";
+        auto pos = ctype.find(';');
+        if (pos != std::string::npos) {
+            ctype = ctype.substr(0, pos);
         }
-        std::string ctype = contentType.substr(0, pos);
         _gzipping = contentTypes.find(ctype) != contentTypes.end()
                     && (!finishing || chunk.size() >= minLength)
                     && (finishing || headers.find("Content-Length") == headers.end())

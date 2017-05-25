@@ -51,8 +51,8 @@ void WebSocketHandler::close() {
         _waiting.reset();
         stream->close();
     } else {
-        const Byte data[] = {'\xff', '\x00'};
-        stream->write(data, sizeof(data));
+        const char data[] = {'\xff', '\x00'};
+        stream->write((const Byte *)data, sizeof(data));
         _waiting = sIOLoop->addTimeout(5.0f, std::bind(&WebSocketHandler::abort, getSelf<WebSocketHandler>()));
     }
 }
