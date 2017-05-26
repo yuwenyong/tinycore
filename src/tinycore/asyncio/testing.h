@@ -91,7 +91,7 @@ template <typename T>
 struct TestCaseFixture {
     TestCaseFixture() {}
     ~TestCaseFixture() {}
-    T target;
+    T testCase;
 };
 
 

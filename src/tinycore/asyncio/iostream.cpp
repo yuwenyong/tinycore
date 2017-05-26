@@ -31,6 +31,7 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
+//    fprintf(stderr,"ReadUntil:%s\n", delimiter.c_str());
     ASSERT(!_readCallback, "Already reading");
     _readDelimiter = std::move(delimiter);
     _readCallback = std::move(callback);
@@ -42,6 +43,7 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
 }
 
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
+//    fprintf(stderr, "ReadBytes:%d\n", (int)numBytes);
     ASSERT(!_readCallback, "Already reading");
     if (numBytes == 0) {
         callback(nullptr, 0);
@@ -71,7 +73,7 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
     }
 }
 
-void BaseIOStream::connectHandler(const boost::system::error_code &error) {
+void BaseIOStream::onConnect(const boost::system::error_code &error) {
     if (error) {
         if (_connectCallback) {
             _connectCallback = nullptr;
@@ -95,7 +97,7 @@ void BaseIOStream::connectHandler(const boost::system::error_code &error) {
     _connecting = false;
 }
 
-void BaseIOStream::readHandler(const boost::system::error_code &error, size_t transferredBytes) {
+void BaseIOStream::onRead(const boost::system::error_code &error, size_t transferredBytes) {
     try {
         if (readToBuffer(error, transferredBytes) == 0) {
             return;
@@ -118,7 +120,7 @@ void BaseIOStream::readHandler(const boost::system::error_code &error, size_t tr
     }
 }
 
-void BaseIOStream::writeHandler(const boost::system::error_code &error, size_t transferredBytes) {
+void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transferredBytes) {
     if (error) {
         if (_writeCallback) {
             _writeCallback = nullptr;
@@ -155,7 +157,7 @@ void BaseIOStream::writeHandler(const boost::system::error_code &error, size_t t
     }
 }
 
-void BaseIOStream::closeHandler(const boost::system::error_code &error) {
+void BaseIOStream::onClose(const boost::system::error_code &error) {
     if (_closeCallback) {
         CloseCallbackType callback = std::move(_closeCallback);
         try {
@@ -171,6 +173,7 @@ void BaseIOStream::closeHandler(const boost::system::error_code &error) {
 }
 
 size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t transferredBytes) {
+//    fprintf(stderr,"ReadToBuffer:%d\n", (int)transferredBytes);
     if (error) {
         if (_readCallback) {
             _readCallback = nullptr;
@@ -205,6 +208,7 @@ bool BaseIOStream::readFromBuffer() {
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
             _readBuffer.readCompleted(readBytes);
             try {
+//                fprintf(stderr, "Handle Read,consume:%d,left:%d\n", (int)readBytes, (int)_readBuffer.getActiveSize());
                 callback(data.data(), data.size());
             } catch (std::exception &e) {
                 Log::error("Uncaught exception (%s), closing connection.", e.what());
@@ -223,6 +227,8 @@ bool BaseIOStream::readFromBuffer() {
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
             _readBuffer.readCompleted(readBytes);
             try {
+//                fprintf(stderr, "Handle ReadUtil,Consume:%d,Left:%d\n", (int)readBytes,
+//                        (int)_readBuffer.getActiveSize());
                 callback(data.data(), data.size());
             } catch (std::exception &e) {
                 Log::error("Uncaught exception (%s), closing connection.", e.what());
@@ -256,28 +262,29 @@ void IOStream::asyncConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
     boost::asio::async_connect(_socket, resolver.resolve(query),
-                               std::bind(&BaseIOStream::connectHandler, shared_from_this(), std::placeholders::_1));
+                               std::bind(&BaseIOStream::onConnect, shared_from_this(), std::placeholders::_1));
 }
 
 void IOStream::asyncRead() {
+//    fprintf(stderr, "AsyncRead\n");
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
     _socket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
-                            std::bind(&BaseIOStream::readHandler, shared_from_this(), std::placeholders::_1,
+                            std::bind(&BaseIOStream::onRead, shared_from_this(), std::placeholders::_1,
                                       std::placeholders::_2));
 }
 
 void IOStream::asyncWrite() {
     MessageBuffer &buffer = _writeQueue.front();
     _socket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
-                             std::bind(&BaseIOStream::writeHandler, shared_from_this(), std::placeholders::_1,
+                             std::bind(&BaseIOStream::onWrite, shared_from_this(), std::placeholders::_1,
                                        std::placeholders::_2));
 }
 
 void IOStream::asyncClose() {
     boost::system::error_code error;
     _socket.close(error);
-    closeHandler(error);
+    onClose(error);
 }
 
 SSLIOStream::SSLIOStream(SocketType &&socket,
@@ -303,52 +310,92 @@ void SSLIOStream::asyncConnect(const std::string &address, unsigned short port) 
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
     boost::asio::async_connect(_sslSocket.lowest_layer(), resolver.resolve(query),
-                               std::bind(&BaseIOStream::connectHandler, shared_from_this(), std::placeholders::_1));
+                               std::bind(&BaseIOStream::onConnect, shared_from_this(), std::placeholders::_1));
 }
 
 void SSLIOStream::asyncRead() {
-    doHandshake();
-    _readBuffer.normalize();
-    _readBuffer.ensureFreeSpace();
-    _sslSocket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
-                               std::bind(&BaseIOStream::readHandler, shared_from_this(), std::placeholders::_1,
-                                         std::placeholders::_2));
+    if (_handshaked) {
+        doRead();
+    } else {
+        doHandshake();
+    }
 }
 
 void SSLIOStream::asyncWrite() {
-    doHandshake();
-    MessageBuffer& buffer = _writeQueue.front();
-    _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
-                                std::bind(&BaseIOStream::writeHandler, shared_from_this(), std::placeholders::_1,
-                                          std::placeholders::_2));
+    if (_handshaked) {
+        doWrite();
+    } else {
+        doHandshake();
+    }
 }
 
 void SSLIOStream::asyncClose() {
-    boost::system::error_code error;
     if (_handshaked) {
-        _sslSocket.shutdown(error);
-        if (error) {
-            Log::warn("SSL error %d :%s", error.value(), error.message());
-        }
+        auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
+        _sslSocket.async_shutdown(std::bind(&SSLIOStream::onShutdown, self, std::placeholders::_1));
+    } else {
+        doClose();
     }
-    _socket.close(error);
-    closeHandler(error);
 }
 
 void SSLIOStream::doHandshake() {
-    if (!_handshaked) {
-        boost::system::error_code error;
+    if (!_handshaked && !_handshaking) {
+        auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
         if (_sslOption->isServerSide()) {
-            _sslSocket.handshake(boost::asio::ssl::stream_base::server, error);
+
+            _sslSocket.async_handshake(boost::asio::ssl::stream_base::server, std::bind(&SSLIOStream::onHandshake,
+                                                                                        self, std::placeholders::_1));
         } else {
-            _sslSocket.handshake(boost::asio::ssl::stream_base::client, error);
+            _sslSocket.async_handshake(boost::asio::ssl::stream_base::client, std::bind(&SSLIOStream::onHandshake,
+                                                                                        self, std::placeholders::_1));
         }
-        if (error) {
+        _handshaking = true;
+    }
+}
+
+void SSLIOStream::doRead() {
+    _readBuffer.normalize();
+    _readBuffer.ensureFreeSpace();
+    _sslSocket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
+                               std::bind(&BaseIOStream::onRead, shared_from_this(), std::placeholders::_1,
+                                         std::placeholders::_2));
+}
+
+void SSLIOStream::doWrite() {
+    MessageBuffer& buffer = _writeQueue.front();
+    _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
+                                std::bind(&BaseIOStream::onWrite, shared_from_this(), std::placeholders::_1,
+                                          std::placeholders::_2));
+}
+
+void SSLIOStream::doClose() {
+    boost::system::error_code error;
+    _socket.close(error);
+    onClose(error);
+}
+
+void SSLIOStream::onHandshake(const boost::system::error_code &error) {
+    _handshaking = false;
+    if (error) {
+        if (error != boost::asio::error::operation_aborted) {
             Log::warn("SSL error %d :%s, closing connection.", error.value(), error.message());
-            close();
-            throw boost::system::system_error(error);
-        } else {
-            _handshaked = true;
+        }
+        close();
+        throw boost::system::system_error(error);
+    } else {
+        _handshaked = true;
+        if (writing()) {
+            doWrite();
+        }
+        if (reading()) {
+            doRead();
         }
     }
+}
+
+void SSLIOStream::onShutdown(const boost::system::error_code &error) {
+    if (error != boost::asio::error::operation_aborted) {
+        Log::warn("SSL error %d :%s", error.value(), error.message());
+    }
+    doClose();
 }

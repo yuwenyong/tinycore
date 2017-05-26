@@ -86,25 +86,31 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) {
-//        Asynchronous()
-//        auto client = HTTPClient::create();
 //        StringMap formArgs = {{"name", "not sb"}, };
 //        std::string formString = URLParse::urlEncode(formArgs);
 //        ByteArray body(formString.data(), formString.data() + formString.size());
 //        HTTPHeaders headers;
 //        auto request = HTTPRequest::create("http://localhost:3030/", followRedirects_=false, method_="POST",
 //                                           body_=body, connectTimeout_=30.0f, headers_=headers);
-//        client->fetch("http://www.csdn.net/",
-//                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
-        write("Hello world");
-        FATAL(false, "Exit");
+//        write("Hello world");
+//        FATAL(false, "Exit");
+        Asynchronous()
+        auto client = HTTPClient::create();
+        client->fetch("https://github.com/",
+                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
+
     }
 
     void onResp(const HTTPResponse &response) {
         const ByteArray *body = response.getBody();
-        std::string message((const char *)body->data(), body->size());
-        Log::info("HTTP code:%d", response.getCode());
-        Log::info("Message:%s", message.c_str());
+        if (body) {
+            std::string message((const char *)body->data(), body->size());
+            Log::info("HTTP code:%d", response.getCode());
+            Log::info("Message:%s", message.c_str());
+        } else {
+            Log::error("No body found");
+        }
+
         write("Hello world");
         finish();
     }

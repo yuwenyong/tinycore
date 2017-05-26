@@ -40,6 +40,6 @@ public:
 BOOST_GLOBAL_FIXTURE(GlobalFixture);
 
 BOOST_FIXTURE_TEST_CASE(TestHelloWorld, TestCaseFixture<HelloWorldTestCase>) {
-    target.testHelloWorld();
+    testCase.testHelloWorld();
 }
 

@@ -284,10 +284,10 @@ public:
         return !(_readCallback || _writeCallback || _connectCallback);
     }
 
-    void connectHandler(const boost::system::error_code &error);
-    void readHandler(const boost::system::error_code &error, size_t transferredBytes);
-    void writeHandler(const boost::system::error_code &error, size_t transferredBytes);
-    void closeHandler(const boost::system::error_code &error);
+    void onConnect(const boost::system::error_code &error);
+    void onRead(const boost::system::error_code &error, size_t transferredBytes);
+    void onWrite(const boost::system::error_code &error, size_t transferredBytes);
+    void onClose(const boost::system::error_code &error);
 protected:
     virtual void asyncConnect(const std::string &address, unsigned short port) = 0;
     virtual void asyncRead() = 0;
@@ -360,6 +360,12 @@ protected:
     void asyncWrite() override;
     void asyncClose() override;
     void doHandshake();
+    void doRead();
+    void doWrite();
+    void doClose();
+    void onHandshake(const boost::system::error_code &error);
+    void onShutdown(const boost::system::error_code &error);
+
 
     std::shared_ptr<SSLOption> _sslOption;
     SSLSocketType _sslSocket;

@@ -90,9 +90,9 @@ void _HTTPConnection::start() {
                 }
             } else {
                 if (caCerts.empty()) {
-                    sslOption = SSLOption::createClientSide();
+                    sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_NONE);
                 } else {
-                    sslOption = SSLOption::createClientSide(caCerts);
+                    sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_NONE, caCerts);
                 }
             }
             _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop);
@@ -217,6 +217,7 @@ void _HTTPConnection::onConnect() {
 }
 
 void _HTTPConnection::onClose() {
+    fprintf(stderr, "_HTTPConnection::onClose\n");
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;
@@ -228,6 +229,8 @@ void _HTTPConnection::onClose() {
 }
 
 void _HTTPConnection::onHeaders(Byte *data, size_t length) {
+    std::string headersTmp((const char *)data, length);
+//    fprintf(stderr, "Onheaders:%s\n", headersTmp.c_str());
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;
@@ -323,8 +326,8 @@ void _HTTPConnection::onChunkLength(Byte *data, size_t length) {
         onBody(_chunks->data(), _chunks->size());
     } else {
         auto stream = fetchStream();
-        stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, shared_from_this(),
-                                                std::placeholders::_1, std::placeholders::_2));
+        stream->readBytes(chunkLength + 2, std::bind(&_HTTPConnection::onChunkData, shared_from_this(),
+                                                     std::placeholders::_1, std::placeholders::_2));
     }
 }
 
