@@ -1,0 +1,3 @@
+add_executable(ioloop_test ioloop_test.cpp)
+add_dependencies(ioloop_test tinycore)
+target_link_libraries(ioloop_test tinycore)

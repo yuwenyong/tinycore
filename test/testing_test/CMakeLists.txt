@@ -1,0 +1,3 @@
+add_executable(testing_test testing_test.cpp)
+add_dependencies(testing_test tinycore)
+target_link_libraries(testing_test tinycore)

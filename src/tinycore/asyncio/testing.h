@@ -27,13 +27,16 @@ struct GlobalFixture {
 class TC_COMMON_API AsyncTestCase {
 public:
     virtual ~AsyncTestCase();
+    virtual void setUp();
+    virtual void tearDown();
     void stop();
-    void wait();
-    void wait(float timeout);
+    void waitUntilStopped();
+    void wait(float timeout=5.0f);
 protected:
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
+    bool _failure{false};
 };
 
 
@@ -42,16 +45,16 @@ public:
     typedef HTTPClient::CallbackType HTTPClientCallback;
 
     virtual ~AsyncHTTPTestCase();
+    virtual void setUp();
+    virtual void tearDown();
 
     template <typename ...Args>
     void fetch(const std::string &path, HTTPClientCallback callback, Args&& ...args) {
-        onInit();
         _httpClient->fetch(getURL(path), [this, callback](const HTTPResponse &response){
             callback(response);
             stop();
         }, std::forward<Args>(args)...);
         wait();
-        onCleanup();
     }
 
     void fetch(std::shared_ptr<HTTPRequest> request, HTTPClientCallback callback);
@@ -76,9 +79,6 @@ protected:
         return _port.get();
     }
 
-    void onInit();
-    void onCleanup();
-
     bool _inited{false};
     mutable boost::optional<unsigned short> _port;
     std::shared_ptr<HTTPClient> _httpClient;
@@ -89,8 +89,12 @@ protected:
 
 template <typename T>
 struct TestCaseFixture {
-    TestCaseFixture() {}
-    ~TestCaseFixture() {}
+    TestCaseFixture() {
+        testCase.setUp();
+    }
+    ~TestCaseFixture() {
+        testCase.tearDown();
+    }
     T testCase;
 };
 

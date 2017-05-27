@@ -1,0 +1,3 @@
+add_executable(iostream_test iostream_test.cpp)
+add_dependencies(iostream_test tinycore)
+target_link_libraries(iostream_test tinycore)

@@ -1,2 +1,5 @@
 include_directories(${CMAKE_SOURCE_DIR}/src/)
 add_subdirectory(helloworld)
+add_subdirectory(compress)
+add_subdirectory(logging)
+add_subdirectory(networking)

@@ -143,6 +143,7 @@ using Date = boost::gregorian::date;
 using Time = boost::posix_time::time_duration;
 using TimestampClock = std::chrono::steady_clock;
 using Timestamp = TimestampClock::time_point;
+using Duration = TimestampClock::duration;
 
 #define HAS_CPP_FORMAT
 #define HAS_RAPID_JSON

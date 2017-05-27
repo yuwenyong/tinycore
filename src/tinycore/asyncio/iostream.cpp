@@ -394,8 +394,8 @@ void SSLIOStream::onHandshake(const boost::system::error_code &error) {
 }
 
 void SSLIOStream::onShutdown(const boost::system::error_code &error) {
-    if (error != boost::asio::error::operation_aborted) {
-        Log::warn("SSL error %d :%s", error.value(), error.message());
+    if (error.category() == boost::asio::error::get_ssl_category()) {
+        Log::warn("SSL shutdown error %d :%s", error.value(), error.message());
     }
     doClose();
 }
