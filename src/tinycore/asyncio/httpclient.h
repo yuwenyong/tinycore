@@ -138,7 +138,7 @@ public:
     }
 
     void setHeaders(HTTPHeaders headers) {
-        _headers = std::move(_headers);
+        _headers = std::move(headers);
     }
 
     HTTPHeaders& headers() {

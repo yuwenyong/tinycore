@@ -49,8 +49,9 @@ public:
 
     void onZeroBytes(Byte *data, size_t length) {
         BOOST_REQUIRE_EQUAL(length, 0);
-        _stream->readBytes(3, std::bind(&IOStreamTest::onNormalRead2, this, std::placeholders::_1,
-                                        std::placeholders::_2));
+        stop();
+//        _stream->readBytes(3, std::bind(&IOStreamTest::onNormalRead2, this, std::placeholders::_1,
+//                                        std::placeholders::_2));
     }
 
     void onNormalRead2(Byte *data, size_t length) {

@@ -84,7 +84,8 @@ void BaseIOStream::onConnect(const boost::system::error_code &error) {
         close();
     } else {
         if (_connectCallback) {
-            ConnectCallbackType callback = std::move(_connectCallback);
+            ConnectCallbackType callback;
+            callback.swap(_connectCallback);
             try {
                 callback();
             } catch (std::exception &e) {
@@ -136,7 +137,8 @@ void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transf
         _writeQueue.pop();
     }
     if (_writeQueue.empty() && _writeCallback) {
-        WriteCallbackType callback = std::move(_writeCallback);
+        WriteCallbackType callback;
+        callback.swap(_writeCallback);
         try {
             callback();
         } catch (std::exception &e) {
@@ -159,7 +161,8 @@ void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transf
 
 void BaseIOStream::onClose(const boost::system::error_code &error) {
     if (_closeCallback) {
-        CloseCallbackType callback = std::move(_closeCallback);
+        CloseCallbackType callback;
+        callback.swap(_closeCallback);
         try {
             callback();
         } catch (std::exception &e) {
@@ -203,7 +206,8 @@ bool BaseIOStream::readFromBuffer() {
     if (_readBytes > 0) {
         if (_readBuffer.getActiveSize() >= _readBytes) {
             size_t readBytes = _readBytes;
-            ReadCallbackType callback = std::move(_readCallback);
+            ReadCallbackType callback;
+            callback.swap(_readCallback);
             _readBytes = 0;
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
             _readBuffer.readCompleted(readBytes);
@@ -222,7 +226,8 @@ bool BaseIOStream::readFromBuffer() {
                                   _readDelimiter.c_str());
         if (loc) {
             size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter.size();
-            ReadCallbackType callback = std::move(_readCallback);
+            ReadCallbackType callback;
+            callback.swap(_readCallback);
             _readDelimiter.clear();
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
             _readBuffer.readCompleted(readBytes);

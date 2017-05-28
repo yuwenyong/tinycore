@@ -118,7 +118,8 @@ void _HTTPConnection::start() {
         std::string error = e.what();
         Log::warn("uncaught exception:%s", error.c_str());
         if (_callback) {
-            CallbackType callback(std::move(_callback));
+            CallbackType callback;
+            callback.swap(_callback);
             callback(HTTPResponse(_request, 599, error_=error));
         }
     }
@@ -128,7 +129,8 @@ const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT
 
 void _HTTPConnection::onTimeout() {
     if (_callback) {
-        CallbackType callback(std::move(_callback));
+        CallbackType callback;
+        callback.swap(_callback);
         callback(HTTPResponse(_request, 599, error_="Timeout"));
     }
     auto stream = fetchStream();
@@ -223,7 +225,8 @@ void _HTTPConnection::onClose() {
         _stream = stream;
     }
     if (_callback) {
-        CallbackType callback(std::move(_callback));
+        CallbackType callback;
+        callback.swap(_callback);
         callback(HTTPResponse(_request, 599, error_="Connection closed"));
     }
 }
@@ -308,12 +311,15 @@ void _HTTPConnection::onBody(Byte *data, size_t length) {
         newRequest->setURL(std::move(url));
         newRequest->decreaseRedirects();
         newRequest->headers().erase("Host");
-        _client->fetch(_originalRequest, std::move(newRequest), std::move(_callback));
+        CallbackType callback;
+        callback.swap(_callback);
+        _client->fetch(_originalRequest, std::move(newRequest), callback);
         return;
     }
     HTTPResponse response(_originalRequest, _code.get(), headers_=*_headers, body_=buffer,
                           effectiveURL_=_request->getURL());
-    CallbackType callback(std::move(_callback));
+    CallbackType callback;
+    callback.swap(_callback);
     callback(response);
 }
 

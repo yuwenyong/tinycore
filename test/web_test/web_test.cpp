@@ -80,15 +80,14 @@ public:
 
     void onGet(StringVector args) override {
         using namespace rapidjson;
-
         std::string path = args[0];
-        auto &arguments = _request->getArguments();
+//        auto &arguments = _request->getArguments();
         Document doc;
         Document::AllocatorType &a = doc.GetAllocator();
         doc.SetObject();
         doc.AddMember("path", path, a);
-        Value argsObject;
-        argsObject.SetObject();
+//        Value argsObject;
+//        argsObject.SetObject();
 //        for (auto &arg: arguments) {
 //            rapidjson::Value values;
 //            values.SetArray();
@@ -97,7 +96,7 @@ public:
 //            }
 //            doc.AddMember(arg.first.c_str(), values, a);
 //        }
-        doc.AddMember("args", argsObject, a);
+//        doc.AddMember("args", argsObject, a);
         write(doc);
     }
 };
@@ -108,12 +107,14 @@ public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
                 url<EchoHandler>(R"(/(.*))"),
+//                url<EchoHandler>(R"(/book/(.*))"),
         };
         return make_unique<Application>(std::move(handlers));
     }
 
     void testQuestionMark() {
         fetch("/%3F", std::bind(&RequestEncodingTest::onRequest1, this, std::placeholders::_1));
+//        fetch("/book/%3F", std::bind(&RequestEncodingTest::onRequest1, this, std::placeholders::_1));
     }
 
     void onRequest1(const HTTPResponse &response) {
@@ -126,10 +127,11 @@ public:
 
         Document doc;
         Document::AllocatorType &a = doc.GetAllocator();
-        Value argsObj;
-        argsObj.SetObject();
+        doc.SetObject();
+//        Value argsObj;
+//        argsObj.SetObject();
         doc.AddMember("path", "?", a);
-        doc.AddMember("args", argsObj, a);
+//        doc.AddMember("args", argsObj, a);
         BOOST_CHECK_EQUAL(json, doc);
     }
 };

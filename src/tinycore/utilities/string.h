@@ -29,6 +29,10 @@ public:
 
     typedef std::tuple<std::string, std::string, std::string> PartitionResult;
 
+    static std::string format(const char *fmt) {
+        return std::string(fmt);
+    }
+
 #ifdef HAS_CPP_FORMAT
     template<typename... Args>
     static std::string format(const char *fmt, Args&&... args) {
@@ -36,9 +40,6 @@ public:
     }
 #else
     typedef boost::format FormatType;
-    static std::string format(const char *fmt) {
-        return std::string(fmt);
-    }
 
     template <typename... Args>
     static std::string format(const char *fmt, Args&&... args) {
