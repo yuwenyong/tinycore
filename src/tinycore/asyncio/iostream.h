@@ -238,6 +238,10 @@ public:
                  size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~BaseIOStream();
 
+    IOLoop* getIOLoop() {
+        return _ioloop;
+    }
+
     std::string getRemoteAddress() const {
         const auto & end_point = _socket.remote_endpoint();
         return end_point.address().to_string();
@@ -345,7 +349,7 @@ public:
 
     SSLIOStream(SocketType &&socket,
                 std::shared_ptr<SSLOption>  sslOption,
-                IOLoop * ioloop,
+                IOLoop *ioloop,
                 size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE,
                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~SSLIOStream();

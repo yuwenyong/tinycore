@@ -81,7 +81,7 @@ public:
         _headers[name] = std::to_string(value);
     }
 
-    std::string getArgument(const std::string &name, bool strip= true) const;
+    std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
     std::string getArgument(const std::string &name, const std::string &defaultValue, bool strip= true) const;
     StringVector getArguments(const std::string &name, bool strip= true) const;
     const BaseCookie& cookies();

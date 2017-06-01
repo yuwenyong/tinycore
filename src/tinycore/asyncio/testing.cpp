@@ -26,26 +26,20 @@ void AsyncTestCase::stop() {
     _stopped = true;
 }
 
-void AsyncTestCase::waitUntilStopped() {
+void AsyncTestCase::wait(float timeout, ConditionCallback condition) {
     if (!_stopped) {
-        if (!_running) {
-            _running = true;
-            _ioloop.start();
+        if (timeout > 0.000001f) {
+            _ioloop.addTimeout(timeout, [this](){
+                stop();
+                _failure = true;
+            });
         }
-    }
-    ASSERT(_stopped);
-    _stopped = false;
-}
-
-void AsyncTestCase::wait(float timeout) {
-    if (!_stopped) {
-        _ioloop.addTimeout(timeout, [this](){
-            stop();
-            _failure = true;
-        });
-        if (!_running) {
+        while (true) {
             _running = true;
             _ioloop.start();
+            if (_failure || !condition || condition()) {
+                break;
+            }
         }
     }
     ASSERT(_stopped);
@@ -75,12 +69,11 @@ void AsyncHTTPTestCase::tearDown() {
     AsyncTestCase::tearDown();
 }
 
-void AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request, HTTPClientCallback callback) {
-    _httpClient->fetch(std::move(request), [this, callback](const HTTPResponse &response){
-        callback(response);
-        stop();
+HTTPResponse AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request) {
+    _httpClient->fetch(std::move(request), [this](const HTTPResponse &response){
+        stop(response);
     });
-    wait();
+    return waitResult<HTTPResponse>();
 }
 
 bool AsyncHTTPTestCase::getHTTPServerNoKeepAlive() const {

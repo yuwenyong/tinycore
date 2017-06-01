@@ -92,6 +92,9 @@ void IOLoop::start() {
     if (_stopped) {
         return;
     }
+    if (_ioService.stopped()) {
+        _ioService.reset();
+    }
     WorkType work(_ioService);
     _signalSet.start();
     while (!_ioService.stopped()) {

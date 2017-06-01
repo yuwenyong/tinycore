@@ -335,7 +335,7 @@ public:
     )(
             optional
                     (method, (std::string))
-                    (headers, (std::shared_ptr<HTTPHeaders>))
+                    (headers, (HTTPHeaders))
                     (body, (ByteArray))
                     (authUserName, (std::string))
                     (authPassword, (std::string))
@@ -389,12 +389,28 @@ public:
         }
     }
 
+    std::shared_ptr<HTTPRequest> getRequest() const {
+        return _request;
+    }
+
     int getCode() const {
         return _code;
     }
 
+    const HTTPHeaders& getHeaders() const {
+        return _headers;
+    }
+
     const ByteArray* getBody() const {
         return _body.get_ptr();
+    }
+
+    const std::string& getEffectiveURL() const {
+        return _effectiveURL;
+    }
+
+    const std::string* getError() const {
+        return _error.get_ptr();
     }
 
     void rethrow() {

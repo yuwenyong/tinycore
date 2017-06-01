@@ -14,7 +14,7 @@ std::string Base64::b64encode(const std::string &s, const char *altChars) {
     typedef base64_from_binary<transform_width<std::string::const_iterator, 6, 8>> Base64EncodeIterator;
     std::string result;
     std::copy(Base64EncodeIterator(s.begin()), Base64EncodeIterator(s.end()), std::back_inserter(result));
-    size_t extra = result.length() % 3;
+    size_t extra = s.length() % 3;
     if (extra) {
         extra = 3 - extra;
         for (size_t i = 0; i != extra; ++i) {
@@ -37,7 +37,7 @@ ByteArray Base64::b64encode(const ByteArray &s, const char *altChars) {
     typedef base64_from_binary<transform_width<ByteArray::const_iterator, 6, 8>> Base64EncodeIterator;
     ByteArray result;
     std::copy(Base64EncodeIterator(s.begin()), Base64EncodeIterator(s.end()), std::back_inserter(result));
-    size_t extra = result.size() % 3;
+    size_t extra = s.size() % 3;
     if (extra) {
         extra = 3 - extra;
         for (size_t i = 0; i != extra; ++i) {
@@ -68,13 +68,6 @@ std::string Base64::b64decode(const std::string &s, const char *altChars) {
             }
         }
     }
-    size_t extra = temp.length() % 3;
-    if (extra) {
-        extra = 3 - extra;
-        for (size_t i = 0; i != extra; ++i) {
-            temp.push_back('=');
-        }
-    }
     std::copy(Base64DecodeIterator(temp.begin()), Base64DecodeIterator(temp.end()), std::back_inserter(result));
     return result;
 }
@@ -89,13 +82,6 @@ ByteArray Base64::b64decode(const ByteArray &s, const char *altChars) {
             } else if (c == (Byte)altChars[1]) {
                 c = '/';
             }
-        }
-    }
-    size_t extra = temp.size() % 3;
-    if (extra) {
-        extra = 3 - extra;
-        for (size_t i = 0; i != extra; ++i) {
-            temp.push_back('=');
         }
     }
     std::copy(Base64DecodeIterator(temp.begin()), Base64DecodeIterator(temp.end()), std::back_inserter(result));

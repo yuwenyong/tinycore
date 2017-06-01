@@ -102,7 +102,7 @@ void _HTTPConnection::start() {
         _streamObserver = _stream;
         auto self = shared_from_this();
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
-        if (timeout > 0.0f) {
+        if (timeout > 0.000001f) {
             _connectTimeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, self));
         }
         std::weak_ptr<_HTTPConnection> connectionObserver = self;
@@ -147,7 +147,7 @@ void _HTTPConnection::onConnect() {
     _ioloop->removeTimeout(_timeout);
     auto self = shared_from_this();
     float requestTimeout = _request->getRequestTimeout();
-    if (requestTimeout > 0.0f) {
+    if (requestTimeout > 0.000001f) {
         _timeout = _ioloop->addTimeout(requestTimeout, std::bind(&_HTTPConnection::onTimeout, self));
     }
     const std::string &method = _request->getMethod();
@@ -176,7 +176,7 @@ void _HTTPConnection::onConnect() {
     const std::string &authUserName = _request->getAuthUserName();
     if (!authUserName.empty()) {
         std::string auth = authUserName + ":" + _request->getAuthPassword();
-        auth = "Basic " + Base64::b64decode(std::move(auth));
+        auth = "Basic " + Base64::b64encode(std::move(auth));
         headers["Authorization"] = auth;
     }
     const std::string &userAgent = _request->getUserAgent();
@@ -219,7 +219,7 @@ void _HTTPConnection::onConnect() {
 }
 
 void _HTTPConnection::onClose() {
-    fprintf(stderr, "_HTTPConnection::onClose\n");
+//    fprintf(stderr, "_HTTPConnection::onClose\n");
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;
@@ -299,7 +299,7 @@ void _HTTPConnection::onBody(Byte *data, size_t length) {
     auto &streamCallback = _request->getStreamCallback();
     if (streamCallback) {
         if (!_chunks) {
-            streamCallback(buffer);
+            streamCallback(body);
         }
     } else {
         buffer = std::move(body);

@@ -318,6 +318,9 @@ CompressObj::CompressObj(CompressObj &&rhs)
 }
 
 CompressObj& CompressObj::operator=(const CompressObj &rhs) {
+    if (this == &rhs) {
+        return *this;
+    }
     clear();
     _inited = rhs._inited;
     _level = rhs._level;
@@ -536,6 +539,9 @@ DecompressObj::DecompressObj(DecompressObj &&rhs)
 }
 
 DecompressObj& DecompressObj::operator=(const DecompressObj &rhs) {
+    if (this == &rhs) {
+        return *this;
+    }
     clear();
     _inited = rhs._inited;
     _wbits = rhs._wbits;

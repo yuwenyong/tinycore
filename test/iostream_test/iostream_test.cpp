@@ -30,34 +30,52 @@ public:
         BaseIOStream::SocketType socket(_ioloop.getService());
         _stream = IOStream::create(std::move(socket), &_ioloop);
         _stream->connect("localhost", getHTTPPort(), std::bind(&IOStreamTest::onConnect, this));
-        wait();
     }
 
     void onConnect() {
         const char * data = "GET / HTTP/1.0\r\n\r\n";
         _stream->write((const Byte *)data, strlen(data));
-        _stream->readBytes(9, std::bind(&IOStreamTest::onNormalRead, this, std::placeholders::_1,
-                                        std::placeholders::_2));
-    }
 
-    void onNormalRead(Byte *data, size_t length) {
-        std::string readString((char *)data, length);
-        BOOST_REQUIRE_EQUAL(readString, "HTTP/1.0 ");
-        _stream->readBytes(0, std::bind(&IOStreamTest::onZeroBytes, this, std::placeholders::_1,
-                                        std::placeholders::_2));
-    }
+        // normal read
+        do  {
+            _stream->readBytes(9, [this](Byte *d, size_t l){
+                ByteArray bytes;
+                if (l > 0) {
+                    bytes.assign(d, d + l);
+                }
+                stop(std::move(bytes));
+            });
+            ByteArray bytes = waitResult<ByteArray>();
+            std::string readString((char *)bytes.data(), bytes.size());
+            BOOST_REQUIRE_EQUAL(readString, "HTTP/1.0 ");
+        } while (false);
 
-    void onZeroBytes(Byte *data, size_t length) {
-        BOOST_REQUIRE_EQUAL(length, 0);
-        stop();
-//        _stream->readBytes(3, std::bind(&IOStreamTest::onNormalRead2, this, std::placeholders::_1,
-//                                        std::placeholders::_2));
-    }
+        // zero bytes
+        do {
+            _stream->readBytes(0, [this](Byte *d, size_t l){
+                ByteArray bytes;
+                if (l > 0) {
+                    bytes.assign(d, d + l);
+                }
+                stop(std::move(bytes));
+            });
+            ByteArray bytes = waitResult<ByteArray>();
+            BOOST_REQUIRE_EQUAL(bytes.size(), 0);
+        } while (false);
 
-    void onNormalRead2(Byte *data, size_t length) {
-        std::string readString((char *)data, length);
-        BOOST_REQUIRE_EQUAL(readString, "200");
-        stop();
+        // another normal read
+        do {
+            _stream->readBytes(3, [this](Byte *d, size_t l){
+                ByteArray bytes;
+                if (l > 0) {
+                    bytes.assign(d, d + l);
+                }
+                stop(std::move(bytes));
+            });
+            ByteArray bytes = waitResult<ByteArray>();
+            std::string readString((char *)bytes.data(), bytes.size());
+            BOOST_REQUIRE_EQUAL(readString, "200");
+        } while (false);
     }
 
 protected:

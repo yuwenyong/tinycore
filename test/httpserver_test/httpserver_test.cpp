@@ -39,12 +39,11 @@ public:
     void testSSL() {
         std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
         std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, validateCert_=false);
-        fetch(std::move(request), [](const HTTPResponse &response) {
-            const ByteArray *buffer = response.getBody();
-            BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
-            std::string body((const char*)buffer->data(), buffer->size());
-            BOOST_CHECK_EQUAL(body, "Hello world");
-        });
+        HTTPResponse response = fetch(std::move(request));
+        const ByteArray *buffer = response.getBody();
+        BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)buffer->data(), buffer->size());
+        BOOST_CHECK_EQUAL(body, "Hello world");
     }
 
     void testLargePost() {
@@ -55,18 +54,16 @@ public:
         }
         std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, validateCert_=false, method_="POST",
                                                                    body_=data);
-        fetch(std::move(request), [](const HTTPResponse &response) {
-            const ByteArray *buffer = response.getBody();
-            BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
-            std::string body((const char*)buffer->data(), buffer->size());
-            BOOST_CHECK_EQUAL(body, "Got 5000 bytes in POST");
-        });
+        HTTPResponse response = fetch(std::move(request));
+        const ByteArray *buffer = response.getBody();
+        BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)buffer->data(), buffer->size());
+        BOOST_CHECK_EQUAL(body, "Got 5000 bytes in POST");
     }
 
     void testNonSSLRequest() {
-        fetch(getURL("/"), [](const HTTPResponse &response) {
-            BOOST_CHECK_EQUAL(response.getCode(), 599);
-        }, requestTimeout_=3600, connectTimeout_=3600);
+        HTTPResponse response = fetch(getURL("/"), requestTimeout_=3600, connectTimeout_=3600);
+        BOOST_CHECK_EQUAL(response.getCode(), 599);
     }
 };
 

@@ -118,6 +118,7 @@ public:
 
 
 int main(int argc, char **argv) {
+//    sConfigMgr->setString("Appender.Console", "Console,1,7");
     ParseCommandLine(argc, argv);
     Application application({
                                     url<HelloWorld>("/"),
@@ -126,8 +127,21 @@ int main(int argc, char **argv) {
                             }, "", {}, {
             {"gzip", true},
     });
-    HTTPServer server(HTTPServerCB(application));
-    server.listen(3080);
+//    HTTPServer server(HTTPServerCB(application));
+//    server.listen(3080);
+    if (sIOLoop->running()) {
+        Log::info("Running");
+    } else {
+        Log::info("Stopped");
+    }
+    sIOLoop->addTimeout(1.0f, [](){
+        Log::info("First Timer");
+        sIOLoop->stop();
+    });
+    sIOLoop->addTimeout(10.0f, [](){
+        Log::info("Second Timer");
+    });
     sIOLoop->start();
+    Log::info("After stop");
     return 0;
 }

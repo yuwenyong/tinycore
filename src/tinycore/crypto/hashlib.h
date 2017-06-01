@@ -72,6 +72,9 @@ public:
     }
 
     EVPObject& operator=(const EVPObject &rhs) {
+        if (this == &rhs) {
+            return *this;
+        }
         reset();
         _ctx = EVP_MD_CTX_new();
         EVP_MD_CTX_copy(_ctx, rhs._ctx);

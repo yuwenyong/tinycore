@@ -81,22 +81,22 @@ public:
     void onGet(StringVector args) override {
         using namespace rapidjson;
         std::string path = args[0];
-//        auto &arguments = _request->getArguments();
+        auto &arguments = _request->getArguments();
         Document doc;
         Document::AllocatorType &a = doc.GetAllocator();
         doc.SetObject();
         doc.AddMember("path", path, a);
-//        Value argsObject;
-//        argsObject.SetObject();
-//        for (auto &arg: arguments) {
-//            rapidjson::Value values;
-//            values.SetArray();
-//            for (auto &val: arg.second) {
-//                values.PushBack(val, a);
-//            }
-//            doc.AddMember(arg.first.c_str(), values, a);
-//        }
-//        doc.AddMember("args", argsObject, a);
+        Value argsObject;
+        argsObject.SetObject();
+        for (auto &arg: arguments) {
+            rapidjson::Value values;
+            values.SetArray();
+            for (auto &val: arg.second) {
+                values.PushBack(StringRef(val.c_str(), val.size()), a);
+            }
+            argsObject.AddMember(StringRef(arg.first.c_str(), arg.first.size()), values, a);
+        }
+        doc.AddMember("args", argsObject, a);
         write(doc);
     }
 };
@@ -107,32 +107,50 @@ public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
                 url<EchoHandler>(R"(/(.*))"),
-//                url<EchoHandler>(R"(/book/(.*))"),
         };
         return make_unique<Application>(std::move(handlers));
     }
 
     void testQuestionMark() {
-        fetch("/%3F", std::bind(&RequestEncodingTest::onRequest1, this, std::placeholders::_1));
-//        fetch("/book/%3F", std::bind(&RequestEncodingTest::onRequest1, this, std::placeholders::_1));
-    }
-
-    void onRequest1(const HTTPResponse &response) {
         using namespace rapidjson;
-        const ByteArray *buffer = response.getBody();
-        BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
-        std::string body((const char *)buffer->data(), buffer->size());
-        Document json;
-        json.Parse(body.c_str());
+        do {
+            HTTPResponse response = fetch("/%3F");
+            const ByteArray *buffer = response.getBody();
+            BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
+            std::string body((const char *)buffer->data(), buffer->size());
+            Document json;
+            json.Parse(body.c_str());
 
-        Document doc;
-        Document::AllocatorType &a = doc.GetAllocator();
-        doc.SetObject();
-//        Value argsObj;
-//        argsObj.SetObject();
-        doc.AddMember("path", "?", a);
-//        doc.AddMember("args", argsObj, a);
-        BOOST_CHECK_EQUAL(json, doc);
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+            doc.AddMember("path", "?", a);
+            Value argsObj;
+            argsObj.SetObject();
+            doc.AddMember("args", argsObj, a);
+            BOOST_CHECK_EQUAL(json, doc);
+        } while (false);
+        do {
+            HTTPResponse response = fetch("/%3F?%3F=%3F");
+            const ByteArray *buffer = response.getBody();
+            BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
+            std::string body((const char *)buffer->data(), buffer->size());
+            Document json;
+            json.Parse(body.c_str());
+
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+            doc.AddMember("path", "?", a);
+            Value argsObj;
+            argsObj.SetObject();
+            Value values;
+            values.SetArray();
+            values.PushBack("?", a);
+            argsObj.AddMember("?", values, a);
+            doc.AddMember("args", argsObj, a);
+            BOOST_CHECK_EQUAL(json, doc);
+        } while (false);
     }
 };
 

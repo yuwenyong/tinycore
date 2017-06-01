@@ -110,12 +110,15 @@ void RequestHandler::setHeader(const std::string &name, const char *value) {
     _headers[name] = value;
 }
 
-std::string RequestHandler::getArgument(const std::string &name, bool strip) const {
+std::string RequestHandler::getArgument(const std::string &name, const char *defaultValue, bool strip) const {
     auto &arguments = _request->getArguments();
     auto iter = arguments.find(name);
     if (iter == arguments.end()) {
-        std::string error = "Missing argument " + name;
-        ThrowException(HTTPError, 404, std::move(error));
+        if (defaultValue == nullptr) {
+            std::string error = "Missing argument " + name;
+            ThrowException(HTTPError, 404, std::move(error));
+        }
+        return std::string(defaultValue);
     }
     std::string value = iter->second.back();
     boost::regex controlChars(R"([\x00-\x08\x0e-\x1f])");
@@ -648,7 +651,7 @@ void ChunkedTransferEncoding::transformChunk(ByteArray &chunk, bool finishing) {
     if (_chunking) {
         std::string block;
         if (!chunk.empty()) {
-            block = String::format("%x\r\n");
+            block = String::format("%x\r\n", (int)chunk.size());
             chunk.insert(chunk.begin(), (const Byte *)block.data(), (const Byte *)block.data() + block.size());
             block = "\r\n";
             chunk.insert(chunk.end(), (const Byte *)block.data(), (const Byte *)block.data() + block.size());
@@ -681,10 +684,10 @@ URLSpec::URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType ar
 std::tuple<std::string, int> URLSpec::findGroups() {
     auto beg = _pattern.begin(), end = _pattern.end();
     std::string pattern;
-    if (boost::starts_with(pattern, "^")) {
+    if (boost::starts_with(_pattern, "^")) {
         std::advance(beg, 1);
     }
-    if (boost::ends_with(pattern, "$")) {
+    if (boost::ends_with(_pattern, "$")) {
         std::advance(end, -1);
     }
     pattern.assign(beg, end);
@@ -695,7 +698,7 @@ std::tuple<std::string, int> URLSpec::findGroups() {
     std::string::size_type parenLoc;
     fragments = String::split(pattern, '(');
     for (auto &fragment: fragments) {
-        parenLoc = fragment.find('(');
+        parenLoc = fragment.find(')');
         if (parenLoc != std::string::npos) {
             pieces.push_back("%s" + fragment.substr(parenLoc + 1));
         } else {
