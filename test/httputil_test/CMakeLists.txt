@@ -1,0 +1,3 @@
+add_executable(httputil_test httputil_test.cpp)
+add_dependencies(httputil_test tinycore)
+target_link_libraries(httputil_test tinycore)
