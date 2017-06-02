@@ -8,6 +8,7 @@
 #include "tinycore/common/common.h"
 #include <boost/regex.hpp>
 #include "tinycore/debugging/trace.h"
+#include "tinycore/httputils/urlparse.h"
 
 
 class HTTPHeaders {
@@ -129,6 +130,32 @@ protected:
     std::string _fileName;
     std::string _contentType;
     ByteArray _body;
+};
+
+
+class HTTPUtil {
+public:
+    typedef std::map<std::string, std::vector<HTTPFile>> RequestFilesType;
+    typedef URLParse::QueryArguments QueryArgumentsType;
+
+    template <typename ArgsType>
+    static std::string urlConcat(std::string url, const ArgsType &args) {
+        if (args.empty()) {
+            return url;
+        }
+        if (url.empty() || (url.back() != '?' && url.back() != '&')) {
+            if (url.find('?') != std::string::npos) {
+                url.push_back('&');
+            } else {
+                url.push_back('?');
+            }
+        }
+        url += URLParse::urlEncode(args);
+        return url;
+    }
+
+    static void parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgumentsType &arguments,
+                                       RequestFilesType &files);
 };
 
 

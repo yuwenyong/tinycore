@@ -46,7 +46,7 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
 //    fprintf(stderr, "ReadBytes:%d\n", (int)numBytes);
     ASSERT(!_readCallback, "Already reading");
     if (numBytes == 0) {
-        callback(nullptr, 0);
+        callback(ByteArray());
         return;
     }
     _readBytes = numBytes;
@@ -213,7 +213,7 @@ bool BaseIOStream::readFromBuffer() {
             _readBuffer.readCompleted(readBytes);
             try {
 //                fprintf(stderr, "Handle Read,consume:%d,left:%d\n", (int)readBytes, (int)_readBuffer.getActiveSize());
-                callback(data.data(), data.size());
+                callback(std::move(data));
             } catch (std::exception &e) {
                 Log::error("Uncaught exception (%s), closing connection.", e.what());
                 close();
@@ -234,7 +234,7 @@ bool BaseIOStream::readFromBuffer() {
             try {
 //                fprintf(stderr, "Handle ReadUtil,Consume:%d,Left:%d\n", (int)readBytes,
 //                        (int)_readBuffer.getActiveSize());
-                callback(data.data(), data.size());
+                callback(std::move(data));
             } catch (std::exception &e) {
                 Log::error("Uncaught exception (%s), closing connection.", e.what());
                 close();

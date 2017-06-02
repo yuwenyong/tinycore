@@ -33,7 +33,7 @@ public:
 
     ~HTTPServer();
 
-    void listen(unsigned short port, std::string address = "0.0.0.0");
+    void listen(unsigned short port, std::string address = "::");
 
     void bind(unsigned short port, std::string address);
 
@@ -102,11 +102,9 @@ protected:
 
     void finishRequest();
 
-    void onHeaders(Byte *data, size_t length);
+    void onHeaders(ByteArray data);
 
-    void onRequestBody(Byte *data, size_t length);
-
-    void parseMimeBody(const std::string &boundary, const Byte *data, size_t length);
+    void onRequestBody(ByteArray data);
 
     std::weak_ptr<BaseIOStream> _streamObserver;
     std::shared_ptr<BaseIOStream> _stream;
@@ -122,8 +120,8 @@ protected:
 
 class HTTPServerRequest {
 public:
-    typedef std::map<std::string, std::vector<HTTPFile>> RequestFilesType;
-    typedef URLParse::QueryArguments QueryArgumentsType;
+    typedef HTTPUtil::RequestFilesType RequestFilesType;
+    typedef HTTPUtil::QueryArgumentsType QueryArgumentsType;
 
     HTTPServerRequest(const HTTPServerRequest &) = delete;
 
@@ -224,15 +222,31 @@ public:
         return _query;
     }
 
+    QueryArgumentsType& arguments() {
+        return _arguments;
+    }
+
     const QueryArgumentsType& getArguments() const {
         return _arguments;
     }
 
-    void addArgument(const std::string &name, std::string value);
+    void addArgument(const std::string &name, std::string value) {
+        _arguments[name].emplace_back(std::move(value));
+    }
 
-    void addArguments(const std::string &name, StringVector values);
+    void addArguments(const std::string &name, StringVector values) {
+        for (auto &value: values) {
+            addArgument(name, std::move(value));
+        }
+    }
 
-    void addFile(const std::string &name, HTTPFile file);
+    RequestFilesType& files() {
+        return _files;
+    }
+
+    void addFile(const std::string &name, HTTPFile file) {
+        _files[name].emplace_back(file);
+    }
 
     std::string dump() const;
 

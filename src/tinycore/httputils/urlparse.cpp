@@ -528,3 +528,45 @@ std::tuple<std::string, std::string> URLParse::splitNetloc(const std::string &ur
     }
     return std::make_tuple(url.substr(start, delim - start), url.substr(delim));
 }
+
+
+NetlocParseResult NetlocParseResult::create(std::string netloc) {
+    NetlocParseResult result;
+    auto userPos = netloc.rfind('@');
+    if (userPos != std::string::npos) {
+        std::string userInfo = netloc.substr(0, userPos);
+        auto passwordPos = userInfo.find(':');
+        if (passwordPos != std::string::npos) {
+            result.setUserName(userInfo.substr(0, passwordPos));
+            result.setPassword(userInfo.substr(passwordPos + 1));
+        } else {
+            result.setUserName(std::move(userInfo));
+        }
+        netloc = netloc.substr(userPos + 1);
+    }
+    if (netloc.find('[') != std::string::npos && netloc.find(']') != std::string::npos) {
+        auto pos = netloc.find(']');
+        result.setHostName(boost::to_lower_copy(netloc.substr(1, pos)));
+    } else if (netloc.find(':') != std::string::npos) {
+        auto pos = netloc.find(':');
+        result.setHostName(boost::to_lower_copy(netloc.substr(0, pos)));
+    } else if (!netloc.empty()) {
+        result.setHostName(netloc);
+    }
+    if (netloc.find(']') != std::string::npos) {
+        auto pos = netloc.find(']');
+        netloc = netloc.substr(pos + 1);
+    }
+    if (netloc.find(':') != std::string::npos) {
+        auto pos = netloc.find(':');
+        try {
+            int port = std::stoi(netloc.substr(pos + 1));
+            if (port >=0 && port <= 65535) {
+                result.setPort((unsigned short)port);
+            }
+        } catch (...) {
+
+        }
+    }
+    return result;
+}

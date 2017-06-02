@@ -63,6 +63,18 @@ String::PartitionResult String::partition(const std::string &s, const std::strin
     }
 }
 
+String::PartitionResult String::rpartition(const std::string &s, const std::string &sep) {
+    auto pos = s.find(sep);
+    if (pos == std::string::npos) {
+        return std::make_tuple("", "", s);
+    } else {
+        std::string before, after;
+        before.assign(s.begin(), std::next(s.begin(), pos));
+        after.assign(std::next(s.begin(), pos + s.size()), s.end());
+        return std::make_tuple(before, sep, after);
+    }
+}
+
 size_t String::count(const std::string &s, char c) {
     size_t r = 0;
     std::string::size_type i = 0;

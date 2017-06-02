@@ -54,8 +54,8 @@ public:
         _users.insert(getSelf<ChatUser>());
     }
 
-    void onMessage(const Byte *data, size_t length) override {
-        std::string message((const char *)data, length);
+    void onMessage(ByteArray data) override {
+        std::string message((const char *)data.data(), data.size());
         message = String::format("User (%s) says:%s", _userName.c_str(), message.c_str());
         auto self = getSelf<ChatUser>();
         for (auto &u: _users) {

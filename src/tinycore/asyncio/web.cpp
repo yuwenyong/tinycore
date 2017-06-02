@@ -116,7 +116,7 @@ std::string RequestHandler::getArgument(const std::string &name, const char *def
     if (iter == arguments.end()) {
         if (defaultValue == nullptr) {
             std::string error = "Missing argument " + name;
-            ThrowException(HTTPError, 404, std::move(error));
+            ThrowException(HTTPError, 400, std::move(error));
         }
         return std::string(defaultValue);
     }
@@ -254,15 +254,15 @@ void RequestHandler::finish() {
     if (!_headersWritten) {
         const std::string &method = _request->getMethod();
         if (_statusCode == 200 && (method == "GET" || method == "HEAD") && _headers.find("Etag") == _headers.end()) {
-            SHA1Object hasher;
-            hasher.update(_writeBuffer.data(), _writeBuffer.size());
-            std::string etag = "\"" + hasher.hex() + "\"";
-            std::string inm = _request->getHTTPHeaders()->get("If-None-Match");
-            if (inm.find(etag.c_str()) != std::string::npos) {
-                _writeBuffer.clear();
-                setStatus(304);
-            } else {
-                setHeader("Etag", etag);
+            std::string etag = computeEtag();
+            if (!etag.empty()) {
+                std::string inm = _request->getHTTPHeaders()->get("If-None-Match");
+                if (inm.find(etag.c_str()) != std::string::npos) {
+                    _writeBuffer.clear();
+                    setStatus(304);
+                } else {
+                    setHeader("Etag", etag);
+                }
             }
         }
         if (_headers.find("Content-Length") == _headers.end()) {
@@ -302,6 +302,13 @@ void RequestHandler::requireSetting(const std::string &name, const std::string &
         ThrowException(Exception, String::format("You must define the '%s' setting in your application to use %s",
                                                  name.c_str(), feature.c_str()));
     }
+}
+
+std::string RequestHandler::computeEtag() const {
+    SHA1Object hasher;
+    hasher.update(_writeBuffer.data(), _writeBuffer.size());
+    std::string etag = "\"" + hasher.hex() + "\"";
+    return etag;
 }
 
 const StringSet RequestHandler::supportedMethods = {
@@ -453,7 +460,7 @@ void Application::operator()(std::shared_ptr<HTTPServerRequest> request) {
                     args.push_back(match[i].str());
                 }
                 for (auto &s: args) {
-                    s = URLParse::unquote(s);
+                    s = URLParse::unquotePlus(s);
                 }
                 break;
             }

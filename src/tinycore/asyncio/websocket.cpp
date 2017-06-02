@@ -88,17 +88,17 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
     ASSERT(stream);
     stream->write((const Byte *)initial.data(), initial.size());
     stream->readBytes(8, std::bind(&WebSocketHandler::handleChallenge, getSelf<WebSocketHandler>(),
-                                   std::placeholders::_1, std::placeholders::_2));
+                                   std::placeholders::_1));
 }
 
-void WebSocketHandler::handleChallenge(Byte *data, size_t length) {
+void WebSocketHandler::handleChallenge(ByteArray data) {
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;
     }
     std::string challengeResponse;
     try {
-        std::string challenge((const char *)data, length);
+        std::string challenge((const char *)data.data(), data.size());
         challengeResponse = _wsRequest->challengeResponse(challenge);
     } catch (ValueError &e) {
         Log::debug("Malformed key data in WebSocket request");
@@ -130,11 +130,10 @@ void WebSocketHandler::abort() {
 void WebSocketHandler::receiveMessage() {
     auto stream = fetchStream();
     _stream.reset();
-    stream->readBytes(1, std::bind(&WebSocketHandler::onFrameType, getSelf<WebSocketHandler>(), std::placeholders::_1,
-                                   std::placeholders::_2));
+    stream->readBytes(1, std::bind(&WebSocketHandler::onFrameType, getSelf<WebSocketHandler>(), std::placeholders::_1));
 }
 
-void WebSocketHandler::onFrameType(Byte *data, size_t length) {
+void WebSocketHandler::onFrameType(ByteArray data) {
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;
@@ -144,25 +143,25 @@ void WebSocketHandler::onFrameType(Byte *data, size_t length) {
         std::string delimiter('\xff', 1);
         _stream.reset();
         stream->readUntil(std::move(delimiter), std::bind(&WebSocketHandler::onEndDelimiter,
-                                                          getSelf<WebSocketHandler>(),
-                                                          std::placeholders::_1, std::placeholders::_2));
+                                                          getSelf<WebSocketHandler>(), std::placeholders::_1));
     } else if (frameType == 0xff) {
         _stream.reset();
         stream->readBytes(1, std::bind(&WebSocketHandler::onLengthIndicator, getSelf<WebSocketHandler>(),
-                                       std::placeholders::_1, std::placeholders::_2));
+                                       std::placeholders::_1));
     } else {
         abort();
     }
 }
 
-void WebSocketHandler::onEndDelimiter(Byte *data, size_t length) {
+void WebSocketHandler::onEndDelimiter(ByteArray data) {
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;
     }
     if (!_clientTerminated) {
         try {
-            onMessage(data, length - 1);
+            data.pop_back();
+            onMessage(std::move(data));
         } catch (std::exception &e) {
             Log::error("Uncaught exception %s in %s", e.what(), _request->getPath().c_str());
             abort();
@@ -173,7 +172,7 @@ void WebSocketHandler::onEndDelimiter(Byte *data, size_t length) {
     }
 }
 
-void WebSocketHandler::onLengthIndicator(Byte *data, size_t length) {
+void WebSocketHandler::onLengthIndicator(ByteArray data) {
     auto stream = fetchStream();
     if (stream->dying()) {
         _stream = stream;

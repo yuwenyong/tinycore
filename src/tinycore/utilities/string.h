@@ -66,6 +66,7 @@ public:
     static StringVector split(const std::string &s, const std::string &delim, bool keepEmpty=true);
     static StringVector splitLines(const std::string &s, bool keepends=false);
     static PartitionResult partition(const std::string &s, const std::string &sep);
+    static PartitionResult rpartition(const std::string &s, const std::string &sep);
 
     static size_t count(const std::string &s, char c);
     static size_t count(const std::string &s, const char *sub);

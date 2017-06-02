@@ -62,7 +62,7 @@ public:
     void onGet(StringVector args) override {
         Asynchronous();
         auto self = getSelf<HangHandler>();
-        _request->getConnection()->fetchStream()->getIOLoop()->addTimeout(3.0f, [self](){
+        _request->getConnection()->fetchStream()->ioloop()->addTimeout(3.0f, [self](){
 
         });
     }
@@ -126,7 +126,7 @@ public:
 
     void testStreamingCallback() {
         ByteArray chunks;
-        HTTPResponse response = fetch("/hello", streamCallback_=[&chunks](const ByteArray &chunk){
+        HTTPResponse response = fetch("/hello", streamCallback_=[&chunks](ByteArray chunk){
             chunks.insert(chunks.end(), chunk.begin(), chunk.end());
         });
         do {
@@ -161,8 +161,8 @@ public:
         } while (false);
         do {
             std::vector<ByteArray> chunks;
-            HTTPResponse response = fetch("/chunk", streamCallback_=[&chunks](const ByteArray &chunk){
-                chunks.emplace_back(chunk);
+            HTTPResponse response = fetch("/chunk", streamCallback_=[&chunks](ByteArray chunk){
+                chunks.emplace_back(std::move(chunk));
             });
             std::string chunk;
             BOOST_REQUIRE_EQUAL(chunks.size(), 2);

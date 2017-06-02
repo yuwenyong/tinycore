@@ -15,6 +15,7 @@
 #include "tinycore/asyncio/web.h"
 #include "tinycore/compress/zlib.h"
 #include "tinycore/httputils/httplib.h"
+#include "tinycore/httputils/urlparse.h"
 #include "tinycore/utilities/string.h"
 
 
@@ -80,8 +81,8 @@ BOOST_PARAMETER_NAME(error)
 
 class HTTPRequestImpl {
 public:
-    typedef std::function<void (const ByteArray &)> StreamCallbackType;
-    typedef std::function<void (const std::string &)> HeaderCallbackType;
+    typedef std::function<void (ByteArray)> StreamCallbackType;
+    typedef std::function<void (std::string)> HeaderCallbackType;
 
     template <typename ArgumentPack>
     HTTPRequestImpl(ArgumentPack const& args) {
@@ -91,33 +92,33 @@ public:
             std::string timestamp = String::formatUTCDate(ifModifiedSince.get(), true);
             _headers["If-Modified-Since"] = timestamp;
         }
-        if (!_headers.has("Pragma")) {
-            _headers["Pragma"] = "";
-        }
-        _proxyHost = args[opts::_proxyHost | ""];
-        _proxyPort = args[opts::_proxyPort | 0];
-        _proxyUserName = args[opts::_proxyUserName | ""];
+//        if (!_headers.has("Pragma")) {
+//            _headers["Pragma"] = "";
+//        }
+        _proxyHost = args[opts::_proxyHost | boost::none];
+        _proxyPort = args[opts::_proxyPort | boost::none];
+        _proxyUserName = args[opts::_proxyUserName | boost::none];
         _proxyPassword = args[opts::_proxyPassword | ""];
-        if (!_headers.has("Expect")) {
-            _headers["Expect"] = "";
-        }
+//        if (!_headers.has("Expect")) {
+//            _headers["Expect"] = "";
+//        }
         _url = args[opts::_url];
         _method = args[opts::_method | "GET"];
         _body = args[opts::_body | boost::none];
-        _authUserName = args[opts::_authUserName | ""];
+        _authUserName = args[opts::_authUserName | boost::none];
         _authPassword = args[opts::_authPassword | ""];
         _connectTimeout = args[opts::_connectTimeout | 20.0f];
         _requestTimeout = args[opts::_requestTimeout | 20.0f];
         _followRedirects = args[opts::_followRedirects | true];
         _maxRedirects = args[opts::_maxRedirects | 5];
-        _userAgent = args[opts::_userAgent | ""];
+        _userAgent = args[opts::_userAgent | boost::none];
         _useGzip = args[opts::_useGzip | true];
-        _networkInterface = args[opts::_networkInterface | ""];
+        _networkInterface = args[opts::_networkInterface | boost::none];
         _streamCallback = args[opts::_streamCallback | nullptr];
         _headerCallback = args[opts::_headerCallback | nullptr];
         _allowNonstandardMethods = args[opts::_allowNonstandardMethods | false];
         _validateCert = args[opts::_validateCert | true];
-        _caCerts = args[opts::_caCerts | ""];
+        _caCerts = args[opts::_caCerts | boost::none];
         _startTime = TimestampClock::now();
     }
 
@@ -157,8 +158,8 @@ public:
         _authUserName = std::move(authUserName);
     }
 
-    const std::string& getAuthUserName() const {
-        return _authUserName;
+    const std::string* getAuthUserName() const {
+        return _authUserName.get_ptr();
     }
 
     void setAuthPassword(std::string authPassword) {
@@ -201,16 +202,12 @@ public:
         return _maxRedirects;
     }
 
-    void decreaseRedirects() {
-        --_maxRedirects;
-    }
-
     void setUserAgent(std::string userAgent) {
         _userAgent = std::move(userAgent);
     }
 
-    const std::string& getUserAgent() const {
-        return _userAgent;
+    const std::string* getUserAgent() const {
+        return _userAgent.get_ptr();
     }
 
     void setUseGzip(bool useGzip) {
@@ -225,8 +222,8 @@ public:
         _networkInterface = std::move(networkInterface);
     }
 
-    const std::string& getNetworkInterface() const {
-        return _networkInterface;
+    const std::string* getNetworkInterface() const {
+        return _networkInterface.get_ptr();
     }
 
     void setStreamCallback(StreamCallbackType streamCallback) {
@@ -249,24 +246,24 @@ public:
         _proxyHost = std::move(proxyHost);
     }
 
-    const std::string& getProxyHost() const {
-        return _proxyHost;
+    const std::string* getProxyHost() const {
+        return _proxyHost.get_ptr();
     }
 
     void setProxyPort(unsigned short proxyPort) {
         _proxyPort = proxyPort;
     }
 
-    unsigned short getProxyPort() const {
-        return _proxyPort;
+    const unsigned short* getProxyPort() const {
+        return _proxyPort.get_ptr();
     }
 
     void setProxyUserName(std::string proxyUserName) {
         _proxyUserName = std::move(proxyUserName);
     }
 
-    const std::string& getProxyUserName() const {
-        return _proxyUserName;
+    const std::string* getProxyUserName() const {
+        return _proxyUserName.get_ptr();
     }
 
     void setProxyPassword(std::string proxyPassword) {
@@ -297,32 +294,32 @@ public:
         _caCerts = std::move(caCerts);
     }
 
-    const std::string& getCACerts() const {
-        return _caCerts;
+    const std::string* getCACerts() const {
+        return _caCerts.get_ptr();
     }
 protected:
     std::string _url;
     std::string _method;
     HTTPHeaders _headers;
     boost::optional<ByteArray> _body;
-    std::string _authUserName;
+    boost::optional<std::string> _authUserName;
     std::string _authPassword;
     float _connectTimeout;
     float _requestTimeout;
     bool _followRedirects;
     int _maxRedirects;
-    std::string _userAgent;
+    boost::optional<std::string> _userAgent;
     bool _useGzip;
-    std::string _networkInterface;
+    boost::optional<std::string> _networkInterface;
     StreamCallbackType _streamCallback;
     HeaderCallbackType _headerCallback;
-    std::string _proxyHost;
-    unsigned short _proxyPort;
-    std::string _proxyUserName;
+    boost::optional<std::string> _proxyHost;
+    boost::optional<unsigned short> _proxyPort;
+    boost::optional<std::string> _proxyUserName;
     std::string _proxyPassword;
     bool _allowNonstandardMethods;
     bool _validateCert;
-    std::string _caCerts;
+    boost::optional<std::string> _caCerts;
     Timestamp _startTime;
 };
 
@@ -505,12 +502,12 @@ protected:
     }
 
     void onTimeout();
-    void onConnect();
+    void onConnect(URLParse::SplitResult parsed);
     void onClose();
-    void onHeaders(Byte *data, size_t length);
-    void onBody(Byte *data, size_t length);
-    void onChunkLength(Byte *data, size_t length);
-    void onChunkData(Byte *data, size_t length);
+    void onHeaders(ByteArray data);
+    void onBody(ByteArray data);
+    void onChunkLength(ByteArray data);
+    void onChunkData(ByteArray data);
 
     Timestamp _startTime;
     IOLoop *_ioloop;
@@ -526,11 +523,6 @@ protected:
     Timeout _connectTimeout;
     std::weak_ptr<BaseIOStream> _streamObserver;
     std::shared_ptr<BaseIOStream> _stream;
-    std::string _parsedScheme;
-    std::string _parsedNetloc;
-    std::string _parsedPath;
-    std::string _parsedQuery;
-    std::string _parsedFragment;
 };
 
 #endif //TINYCORE_HTTPCLIENT_H

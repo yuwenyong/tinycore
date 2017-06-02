@@ -129,14 +129,14 @@ public:
 
     void write(const SimpleJSONType &chunk) {
         ASSERT(!_finished);
-        setHeader("Content-Type", "text/javascript; charset=UTF-8");
+        setHeader("Content-Type", "application/json; charset=UTF-8");
         write(String::fromJSON(chunk));
     }
 
 #ifdef HAS_RAPID_JSON
     void write(const rapidjson::Document &chunk) {
         ASSERT(!_finished);
-        setHeader("Content-Type", "text/javascript; charset=UTF-8");
+        setHeader("Content-Type", "application/json; charset=UTF-8");
         write(String::fromJSON(chunk));
     }
 #endif
@@ -156,6 +156,8 @@ public:
 
     template <typename... Args>
     std::string reverseURL(const std::string &name, Args&&... args);
+
+    virtual std::string computeEtag() const;
 
     template <typename T>
     std::shared_ptr<T> getSelf() {

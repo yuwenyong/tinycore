@@ -227,7 +227,7 @@ public:
     typedef boost::asio::ip::tcp::resolver ResolverType;
     typedef boost::asio::ip::tcp::endpoint EndPointType;
 
-    typedef std::function<void (Byte*, size_t)> ReadCallbackType;
+    typedef std::function<void (ByteArray)> ReadCallbackType;
     typedef std::function<void ()> WriteCallbackType;
     typedef std::function<void ()> CloseCallbackType;
     typedef std::function<void ()> ConnectCallbackType;
@@ -238,7 +238,7 @@ public:
                  size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~BaseIOStream();
 
-    IOLoop* getIOLoop() {
+    IOLoop* ioloop() {
         return _ioloop;
     }
 

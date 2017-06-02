@@ -38,12 +38,8 @@ public:
 
         // normal read
         do  {
-            _stream->readBytes(9, [this](Byte *d, size_t l){
-                ByteArray bytes;
-                if (l > 0) {
-                    bytes.assign(d, d + l);
-                }
-                stop(std::move(bytes));
+            _stream->readBytes(9, [this](ByteArray d){
+                stop(std::move(d));
             });
             ByteArray bytes = waitResult<ByteArray>();
             std::string readString((char *)bytes.data(), bytes.size());
@@ -52,12 +48,8 @@ public:
 
         // zero bytes
         do {
-            _stream->readBytes(0, [this](Byte *d, size_t l){
-                ByteArray bytes;
-                if (l > 0) {
-                    bytes.assign(d, d + l);
-                }
-                stop(std::move(bytes));
+            _stream->readBytes(0, [this](ByteArray d){
+                stop(std::move(d));
             });
             ByteArray bytes = waitResult<ByteArray>();
             BOOST_REQUIRE_EQUAL(bytes.size(), 0);
@@ -65,12 +57,8 @@ public:
 
         // another normal read
         do {
-            _stream->readBytes(3, [this](Byte *d, size_t l){
-                ByteArray bytes;
-                if (l > 0) {
-                    bytes.assign(d, d + l);
-                }
-                stop(std::move(bytes));
+            _stream->readBytes(3, [this](ByteArray d){
+                stop(std::move(d));
             });
             ByteArray bytes = waitResult<ByteArray>();
             std::string readString((char *)bytes.data(), bytes.size());

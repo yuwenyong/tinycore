@@ -15,7 +15,6 @@
 
 
 class WebSocketRequest;
-typedef std::unique_ptr<WebSocketRequest> WebSocketRequestPtr;
 
 
 class TC_COMMON_API WebSocketHandler: public RequestHandler {
@@ -48,19 +47,19 @@ public:
 #endif
 
     virtual void onOpen(const StringVector &args);
-    virtual void onMessage(const Byte *data, size_t length) = 0;
+    virtual void onMessage(const ByteArray data) = 0;
     virtual void onClose();
     void close();
     void onConnectionClose() override;
 protected:
     void execute(TransformsType &transforms, StringVector args) override;
-    void handleChallenge(Byte *data, size_t length);
+    void handleChallenge(ByteArray data);
     void writeResponse(const std::string &challenge);
     void abort();
     void receiveMessage();
-    void onFrameType(Byte *data, size_t length);
-    void onEndDelimiter(Byte *data, size_t length);
-    void onLengthIndicator(Byte *data, size_t length);
+    void onFrameType(ByteArray data);
+    void onEndDelimiter(ByteArray data);
+    void onLengthIndicator(ByteArray data);
 
     std::shared_ptr<BaseIOStream> fetchStream() {
         return _streamObserver.lock();
@@ -70,7 +69,7 @@ protected:
     std::shared_ptr<BaseIOStream> _stream;
     bool _clientTerminated;
     StringVector _openArgs;
-    WebSocketRequestPtr _wsRequest;
+    std::unique_ptr<WebSocketRequest> _wsRequest;
     Timeout _waiting;
 public:
     _NOT_SUPPORTED(write)

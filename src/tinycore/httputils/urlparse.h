@@ -7,6 +7,7 @@
 
 #include "tinycore/common/common.h"
 #include <tuple>
+#include <boost/optional.hpp>
 
 
 class TC_COMMON_API URLParse {
@@ -44,6 +45,57 @@ protected:
     static const std::map<std::string, char> _hexToChar;
     static const char * _alwaysSafe;
     static const std::map<char, std::string> _safeMap;
+};
+
+
+class TC_COMMON_API NetlocParseResult {
+public:
+    void setHostName(std::string hostName) {
+        _hostName = std::move(hostName);
+    }
+
+    const std::string* getHostName() const {
+        return _hostName.get_ptr();
+    }
+
+    void setPort(unsigned short port) {
+        _port = port;
+    }
+
+    const unsigned short* getPort() const {
+        return _port.get_ptr();
+    }
+
+    void setUserName(std::string userName) {
+        _userName = std::move(userName);
+    }
+
+    const std::string* getUserName() const {
+        return _userName.get_ptr();
+    }
+
+    void setPassword(std::string password) {
+        _password = std::move(password);
+    }
+
+    const std::string& getPassword() const {
+        return _password;
+    }
+
+    static NetlocParseResult create(std::string netloc);
+
+    static NetlocParseResult create(const URLParse::ParseResult &result) {
+        return create(std::get<1>(result));
+    }
+
+    static NetlocParseResult create(const URLParse::SplitResult &result) {
+        return create(std::get<1>(result));
+    }
+protected:
+    boost::optional<std::string> _hostName;
+    boost::optional<unsigned short> _port;
+    boost::optional<std::string> _userName;
+    std::string _password;
 };
 
 //class URLSplitKey {

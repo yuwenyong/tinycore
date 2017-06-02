@@ -111,8 +111,7 @@ HTTPConnection::~HTTPConnection() {
 void HTTPConnection::start() {
     ASSERT(_stream);
     auto stream = std::move(_stream);
-    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1,
-                                            std::placeholders::_2));
+    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
 }
 
 void HTTPConnection::write(const Byte *chunk, size_t length) {
@@ -175,7 +174,7 @@ void HTTPConnection::finishRequest() {
     start();
 }
 
-void HTTPConnection::onHeaders(Byte *data, size_t length) {
+void HTTPConnection::onHeaders(ByteArray data) {
     ASSERT(!_stream);
     auto stream = fetchStream();
     ASSERT(stream);
@@ -183,13 +182,13 @@ void HTTPConnection::onHeaders(Byte *data, size_t length) {
         _stream = stream;
     }
     try {
-        const char *eol = StrNStr((char *)data, length, "\r\n");
+        const char *eol = StrNStr((char *)data.data(), data.size(), "\r\n");
         std::string startLine, rest;
         if (eol) {
-            startLine.assign((const char *)data, eol);
-            rest.assign(eol, (const char *)data + length);
+            startLine.assign((const char *)data.data(), eol);
+            rest.assign(eol, (const char *)data.data() + data.size());
         } else {
-            startLine.assign((char *)data, length);
+            startLine.assign((char *)data.data(), data.size());
         }
         StringVector requestLineComponents = String::split(startLine);
         if (requestLineComponents.size() != 3) {
@@ -218,7 +217,7 @@ void HTTPConnection::onHeaders(Byte *data, size_t length) {
             }
             _stream.reset();
             stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, shared_from_this(),
-                                                       std::placeholders::_1, std::placeholders::_2));
+                                                       std::placeholders::_1));
             return;
         }
         _request->setConnection(shared_from_this());
@@ -229,7 +228,7 @@ void HTTPConnection::onHeaders(Byte *data, size_t length) {
     }
 }
 
-void HTTPConnection::onRequestBody(Byte *data, size_t length) {
+void HTTPConnection::onRequestBody(ByteArray data) {
     ASSERT(!_stream);
     auto stream = fetchStream();
     ASSERT(stream);
@@ -237,7 +236,7 @@ void HTTPConnection::onRequestBody(Byte *data, size_t length) {
         _stream = stream;
     }
     ASSERT(_request);
-    _request->setBody(ByteArray(data, data + length));
+    _request->setBody(std::move(data));
     auto headers = _request->getHTTPHeaders();
     std::string contentType = headers->get("Content-Type");
     const std::string &method = _request->getMethod();
@@ -251,6 +250,7 @@ void HTTPConnection::onRequestBody(Byte *data, size_t length) {
                 }
             }
         } else if (boost::starts_with(contentType, "multipart/form-data")) {
+            const ByteArray &body = _request->getBody();
             StringVector fields = String::split(contentType, ';');
             bool found = false;
             std::string k, sep, v;
@@ -258,7 +258,7 @@ void HTTPConnection::onRequestBody(Byte *data, size_t length) {
                 boost::trim(field);
                 std::tie(k, sep, v) = String::partition(field, "=");
                 if (k == "boundary" && !v.empty()) {
-                    parseMimeBody(v, data, length);
+                    HTTPUtil::parseMultipartFormData(std::move(v), body, _request->arguments(), _request->files());
                     found = true;
                     break;
                 }
@@ -270,92 +270,6 @@ void HTTPConnection::onRequestBody(Byte *data, size_t length) {
     }
     _request->setConnection(shared_from_this());
     _requestCallback(std::move(_request));
-}
-
-void HTTPConnection::parseMimeBody(const std::string &boundary, const Byte *data, size_t length) {
-    ASSERT(_request);
-    std::string realBoundary;
-    if (boost::starts_with(boundary, "\"") && boost::ends_with(boundary, "\"")) {
-        if (boundary.length() >= 2) {
-            realBoundary = boundary.substr(1, boundary.length() - 2);
-        }
-    } else {
-        realBoundary = boundary;
-    }
-    size_t footerLength;
-    if (length >= 2 && (char)data[length - 2] == '\r' && (char)data[length - 1] == '\n') {
-        footerLength = realBoundary.length() + 6;
-    } else {
-        footerLength = realBoundary.length() + 4;
-    }
-    if (length <= footerLength) {
-        return;
-    }
-    std::string sep("--" + realBoundary + "\r\n");
-    const Byte *beg = data, *end = data + length - footerLength, *cur, *val;
-    size_t eoh, eon, valSize;
-    std::string part, nameHeader, name, nameValue, ctype;
-    HTTPHeaders headers;
-    StringMap nameValues;
-    StringVector nameParts;
-    decltype(nameValues.begin()) nameIter, fileNameIter;
-    for (; true; beg = cur + sep.size()) {
-        cur = std::search(beg, end, (const Byte *)sep.data(), (const Byte *)sep.data() + sep.size());
-        if (cur == end) {
-            break;
-        }
-        if (cur == beg) {
-            continue;
-        }
-        part.assign(beg, cur);
-        eoh = part.find("\r\n\r\n");
-        if (eoh == std::string::npos) {
-            Log::warn("multipart/form-data missing headers");
-            continue;
-        }
-        headers.clear();
-        headers.parseLines(part.substr(0, eoh));
-        nameHeader = headers.get("Content-Disposition");
-        if (!boost::starts_with(nameHeader, "form-data;") || !boost::ends_with(part, "\r\n")) {
-            Log::warn("Invalid multipart/form-data");
-            continue;
-        }
-        if (part.length() <= eoh + 6) {
-            val = (const Byte *)part.data();
-            valSize = 0;
-        } else {
-            val = (const Byte *)part.data() + eoh + 4;
-            valSize = part.size() - eoh - 6;
-        }
-        nameValues.clear();
-        nameHeader = nameHeader.substr(10);
-        nameParts = String::split(nameHeader, ';');
-        for (auto &namePart: nameParts) {
-            boost::trim(namePart);
-            eon = namePart.find('=');
-            if (eon == std::string::npos) {
-                ThrowException(ValueError, "need more than 2 values to unpack");
-            }
-            name = namePart.substr(0, eon);
-            nameValue = namePart.substr(eon + 1);
-            boost::trim(nameValue);
-            nameValues.emplace(std::move(name), std::move(nameValue));
-        }
-        nameIter = nameValues.find("name");
-        if (nameIter == nameValues.end()) {
-            Log::warn("multipart/form-data value missing name");
-            continue;
-        }
-        name = nameIter->second;
-        fileNameIter = nameValues.find("filename");
-        if (fileNameIter != nameValues.end()) {
-            ctype = headers.get("Content-Type", "application/unknown");
-            _request->addFile(name, HTTPFile(std::move(fileNameIter->second), std::move(ctype),
-                                             ByteArray(val, val + valSize)));
-        } else {
-            _request->addArgument(name, std::string((const char *)val, valSize));
-        }
-    }
 }
 
 
@@ -437,34 +351,34 @@ float HTTPServerRequest::requestTime() const {
     return elapse.count() / 1000 + elapse.count() % 1000 / 1000.0f;
 }
 
-void HTTPServerRequest::addArgument(const std::string &name, std::string value) {
-    auto iter = _arguments.find(name);
-    if (iter != _arguments.end()) {
-        iter->second.emplace_back(std::move(value));
-    } else {
-        _arguments[name].emplace_back(std::move(value));
-    }
-}
-
-void HTTPServerRequest::addArguments(const std::string &name, StringVector values) {
-    auto iter = _arguments.find(name);
-    if (iter != _arguments.end()) {
-        for (auto &value: values) {
-            iter->second.emplace_back(std::move(value));
-        }
-    } else {
-        _arguments.emplace(std::move(name), std::move(values));
-    }
-}
-
-void HTTPServerRequest::addFile(const std::string &name, HTTPFile file) {
-    auto iter = _files.find(name);
-    if (iter != _files.end()) {
-        iter->second.emplace_back(std::move(file));
-    } else {
-        _files[name].emplace_back(std::move(file));
-    }
-}
+//void HTTPServerRequest::addArgument(const std::string &name, std::string value) {
+//    auto iter = _arguments.find(name);
+//    if (iter != _arguments.end()) {
+//        iter->second.emplace_back(std::move(value));
+//    } else {
+//        _arguments[name].emplace_back(std::move(value));
+//    }
+//}
+//
+//void HTTPServerRequest::addArguments(const std::string &name, StringVector values) {
+//    auto iter = _arguments.find(name);
+//    if (iter != _arguments.end()) {
+//        for (auto &value: values) {
+//            iter->second.emplace_back(std::move(value));
+//        }
+//    } else {
+//        _arguments.emplace(std::move(name), std::move(values));
+//    }
+//}
+//
+//void HTTPServerRequest::addFile(const std::string &name, HTTPFile file) {
+//    auto iter = _files.find(name);
+//    if (iter != _files.end()) {
+//        iter->second.emplace_back(std::move(file));
+//    } else {
+//        _files[name].emplace_back(std::move(file));
+//    }
+//}
 
 std::string HTTPServerRequest::dump() const {
     StringVector argsList;
