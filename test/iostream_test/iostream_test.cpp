@@ -66,6 +66,26 @@ public:
         } while (false);
     }
 
+    void testConnectionRefused() {
+        bool connectCalled = false;
+        BaseIOStream::SocketType socket(_ioloop.getService());
+        _stream = IOStream::create(std::move(socket), &_ioloop);
+        _stream->setCloseCallback([this](){
+            stop();
+        });
+        _stream->connect("localhost", getUnusedPort(), [&connectCalled](){
+            connectCalled = true;
+        });
+        wait();
+        BOOST_CHECK(!connectCalled);
+    }
+
+    void testConnectionClosed() {
+        HTTPHeaders headers;
+        headers["Connection"] = "close";
+        HTTPResponse response = fetch("/", headers_=headers);
+        response.rethrow();
+    }
 protected:
     std::shared_ptr<IOStream> _stream;
 };
@@ -75,4 +95,12 @@ BOOST_GLOBAL_FIXTURE(GlobalFixture);
 
 BOOST_FIXTURE_TEST_CASE(TestIOStream, TestCaseFixture<IOStreamTest>) {
     testCase.testReadZeroBytes();
+}
+
+BOOST_FIXTURE_TEST_CASE(TestConnectionRefused, TestCaseFixture<IOStreamTest>) {
+    testCase.testConnectionRefused();
+}
+
+BOOST_FIXTURE_TEST_CASE(TestConnectionClosed, TestCaseFixture<IOStreamTest>) {
+    testCase.testConnectionClosed();
 }

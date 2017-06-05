@@ -62,7 +62,7 @@ public:
     }
 
     void testNonSSLRequest() {
-        HTTPResponse response = fetch(getURL("/"), requestTimeout_=3600, connectTimeout_=3600);
+        HTTPResponse response = fetch("/", requestTimeout_=3600, connectTimeout_=3600);
         BOOST_CHECK_EQUAL(response.getCode(), 599);
     }
 };

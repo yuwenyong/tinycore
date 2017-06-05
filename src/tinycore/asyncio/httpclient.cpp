@@ -267,7 +267,7 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     } else {
         firstLine.assign(content, data.size());
     }
-    const boost::regex firstLinePattern("HTTP/1.[01] ([0-9]+)");
+    const boost::regex firstLinePattern("HTTP/1.[01] ([0-9]+) .*");
     boost::smatch match;
     if (boost::regex_match(firstLine, match, firstLinePattern)) {
         _code = std::stoi(match[1]);

@@ -70,7 +70,7 @@ String::PartitionResult String::rpartition(const std::string &s, const std::stri
     } else {
         std::string before, after;
         before.assign(s.begin(), std::next(s.begin(), pos));
-        after.assign(std::next(s.begin(), pos + s.size()), s.end());
+        after.assign(std::next(s.begin(), pos + sep.size()), s.end());
         return std::make_tuple(before, sep, after);
     }
 }

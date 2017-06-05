@@ -85,6 +85,16 @@ public:
 };
 
 
+class EchoPostHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onPost(StringVector args) override {
+        write(_request->getBody());
+    }
+};
+
+
 class HTTPClientTestCase: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
@@ -95,6 +105,7 @@ public:
                 url<AuthHandler>("/auth"),
                 url<HangHandler>("/hang"),
                 url<CountDownHandler>(R"(/countdown/([0-9]+))", "countdown"),
+                url<EchoPostHandler>("/echopost"),
         };
         std::string defaultHost;
         Application::TransformsType transforms;
@@ -236,6 +247,34 @@ public:
         BOOST_CHECK(boost::ends_with(response.getEffectiveURL(), "/countdown/2"));
         BOOST_CHECK(boost::ends_with(response.getHeaders().at("Location"), "/countdown/1"));
     }
+
+    void testCredentialsInURL() {
+        std::string url = boost::replace_all_copy(getURL("/auth"), "http://", "http://me:secret@");
+        _httpClient->fetch(url, [this](const HTTPResponse &response){
+            stop(response);
+        });
+        HTTPResponse response = waitResult<HTTPResponse>();
+        const ByteArray *responseBody = response.getBody();
+        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)responseBody->data(), responseBody->size());
+        BOOST_CHECK_EQUAL(body, "Basic " + Base64::b64encode("me:secret"));
+    }
+
+    void testBodyEncoding() {
+        // todo
+    }
+
+    void testIPV6() {
+        std::string url = boost::replace_all_copy(getURL("/hello"), "localhost", "[::1]");
+        _httpClient->fetch(url, [this](const HTTPResponse &response){
+            stop(response);
+        });
+        HTTPResponse response = waitResult<HTTPResponse>();
+        const ByteArray *responseBody = response.getBody();
+        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)responseBody->data(), responseBody->size());
+        BOOST_CHECK_EQUAL(body, "Hello world!");
+    }
 };
 
 BOOST_GLOBAL_FIXTURE(GlobalFixture);
@@ -278,4 +317,16 @@ BOOST_FIXTURE_TEST_CASE(TestFollowRedirect, TestCaseFixture<HTTPClientTestCase>)
 
 BOOST_FIXTURE_TEST_CASE(TestMaxRedirects, TestCaseFixture<HTTPClientTestCase>) {
     testCase.testMaxRedirects();
+}
+
+BOOST_FIXTURE_TEST_CASE(TestCredentialsInURL, TestCaseFixture<HTTPClientTestCase>) {
+    testCase.testCredentialsInURL();
+}
+
+BOOST_FIXTURE_TEST_CASE(TestBodyEncoding, TestCaseFixture<HTTPClientTestCase>) {
+    testCase.testBodyEncoding();
+}
+
+BOOST_FIXTURE_TEST_CASE(TestIPV6, TestCaseFixture<HTTPClientTestCase>) {
+    testCase.testIPV6();
 }
