@@ -265,6 +265,10 @@ const StringMap Morsel::reserved = {
 };
 
 
+BaseCookie::~BaseCookie() {
+
+}
+
 BaseCookie::DecodeResultType BaseCookie::valueDecode(const std::string &val) {
     return std::make_tuple(val, val);
 }
@@ -309,4 +313,13 @@ void BaseCookie::parseString(const std::string &str, const boost::regex &patt) {
             m = &_items.at(k);
         }
     }
+}
+
+
+EncodeResultType SimpleCookie::valueEncode(const std::string &val) {
+    return std::make_tuple(CookieUtil::unquote(val), val);
+}
+
+DecodeResultType SimpleCookie::valueDecode(const std::string &val) {
+    return std::make_tuple(val, CookieUtil::quote(val));
 }

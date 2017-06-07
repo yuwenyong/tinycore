@@ -15,7 +15,6 @@
 #include "tinycore/asyncio/httpserver.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
-#include "tinycore/httputils/cookie.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/utilities/container.h"
 #include "tinycore/utilities/string.h"

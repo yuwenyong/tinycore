@@ -18,13 +18,10 @@ HTTPServer::HTTPServer(RequestCallbackType requestCallback,
                        IOLoop *ioloop,
                        bool xheaders,
                        std::shared_ptr<SSLOption> sslOption)
-        : _requestCallback(std::move(requestCallback))
+        : TCPServer(ioloop, std::move(sslOption))
+        , _requestCallback(std::move(requestCallback))
         , _noKeepAlive(noKeepAlive)
-        , _ioloop(ioloop ? ioloop : sIOLoop)
-        , _xheaders(xheaders)
-        , _sslOption(std::move(sslOption))
-        , _acceptor(_ioloop->getService())
-        , _socket(_ioloop->getService()){
+        , _xheaders(xheaders) {
 
 }
 
@@ -32,51 +29,10 @@ HTTPServer::~HTTPServer() {
 
 }
 
-void HTTPServer::listen(unsigned short port, std::string address) {
-    bind(port, std::move(address));
-    start();
-}
-
-void HTTPServer::bind(unsigned short port, std::string address) {
-    BaseIOStream::ResolverType resolver(_ioloop->getService());
-    BaseIOStream::ResolverType::query query(address, std::to_string(port));
-    BaseIOStream::EndPointType endpoint = *resolver.resolve(query);
-    _acceptor.open(endpoint.protocol());
-    _acceptor.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
-    _acceptor.bind(endpoint);
-    _acceptor.listen();
-}
-
-void HTTPServer::stop() {
-    _acceptor.close();
-}
-
-void HTTPServer::asyncAccept() {
-    _acceptor.async_accept(_socket, [this](const boost::system::error_code &ec) {
-        if (ec) {
-            if (ec != boost::asio::error::operation_aborted) {
-                throw boost::system::system_error(ec);
-            } else {
-                return;
-            }
-        } else {
-            try {
-                std::shared_ptr<BaseIOStream> stream;
-                if (_sslOption) {
-                    stream = SSLIOStream::create(std::move(_socket), _sslOption, _ioloop);
-                } else {
-                    stream = IOStream::create(std::move(_socket), _ioloop);
-                }
-                std::string remoteAddress = stream->getRemoteAddress();
-                auto connection = HTTPConnection::create(std::move(stream), std::move(remoteAddress), _requestCallback,
-                                                         _noKeepAlive, _xheaders);
-                connection->start();
-            } catch (std::exception &e) {
-                Log::error("Error in connection callback:%s", e.what());
-            }
-            asyncAccept();
-        }
-    });
+void HTTPServer::handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) {
+    auto connection = HTTPConnection::create(std::move(stream), std::move(address), _requestCallback, _noKeepAlive,
+                                             _xheaders);
+    connection->start();
 }
 
 
@@ -114,10 +70,11 @@ void HTTPConnection::start() {
     stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
 }
 
-void HTTPConnection::write(const Byte *chunk, size_t length) {
+void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
     ASSERT(fetchRequest(), "Request closed");
     auto stream = fetchStream();
     if (stream && !stream->closed()) {
+        _writeCallback = std::move(callback);
         _stream.reset();
         stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
     }
@@ -139,6 +96,11 @@ void HTTPConnection::onWriteComplete() {
     ASSERT(stream);
     if (stream->dying()) {
         _stream = std::move(stream);
+    }
+    if (_writeCallback) {
+        WriteCallbackType callback;
+        callback.swap(_writeCallback);
+        callback();
     }
     if (_requestFinished) {
         finishRequest();
@@ -329,9 +291,23 @@ HTTPServerRequest::~HTTPServerRequest() {
 #endif
 }
 
-void HTTPServerRequest::write(const Byte *chunk, size_t length) {
+const SimpleCookie& HTTPServerRequest::cookies() const {
+    if (!_cookies) {
+        _cookies.emplace();
+        if (_headers->has("Cookie")) {
+            try {
+                _cookies->load(_headers->at("Cookie"));
+            } catch (...) {
+                _cookies->clear();
+            }
+        }
+    }
+    return _cookies.get();
+}
+
+void HTTPServerRequest::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
     ASSERT(_connection);
-    _connection->write(chunk, length);
+    _connection->write(chunk, length, std::move(callback));
 }
 
 void HTTPServerRequest::finish() {

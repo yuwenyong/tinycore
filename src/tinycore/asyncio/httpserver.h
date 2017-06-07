@@ -7,10 +7,9 @@
 
 #include "tinycore/common/common.h"
 #include <chrono>
-#include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
-#include "tinycore/asyncio/iostream.h"
 #include "tinycore/asyncio/httputil.h"
+#include "tinycore/asyncio/netutil.h"
+#include "tinycore/httputils/cookie.h"
 #include "tinycore/httputils/urlparse.h"
 
 
@@ -18,7 +17,6 @@ class HTTPServerRequest;
 
 class HTTPServer {
 public:
-    typedef boost::asio::ip::tcp::acceptor AcceptorType;
     typedef std::function<void(std::shared_ptr<HTTPServerRequest>)> RequestCallbackType;
 
     HTTPServer(const HTTPServer &) = delete;
@@ -31,33 +29,20 @@ public:
                bool xheaders = false,
                std::shared_ptr<SSLOption> sslOption = nullptr);
 
-    ~HTTPServer();
+    virtual ~HTTPServer();
 
-    void listen(unsigned short port, std::string address = "::");
-
-    void bind(unsigned short port, std::string address);
-
-    void start() {
-        asyncAccept();
-    }
-
-    void stop();
+    void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) override;
 protected:
-    void asyncAccept();
-
     RequestCallbackType _requestCallback;
     bool _noKeepAlive;
-    IOLoop *_ioloop;
     bool _xheaders;
-    std::shared_ptr<SSLOption> _sslOption;
-    AcceptorType _acceptor;
-    BaseIOStream::SocketType _socket;
 };
 
 
 class HTTPConnection : public std::enable_shared_from_this<HTTPConnection> {
 public:
     typedef HTTPServer::RequestCallbackType RequestCallbackType;
+    typedef std::function<void ()> WriteCallbackType;
 
     HTTPConnection(const HTTPConnection &) = delete;
 
@@ -72,7 +57,7 @@ public:
 
     void start();
 
-    void write(const Byte *chunk, size_t length);
+    void write(const Byte *chunk, size_t length, WriteCallbackType callback= nullptr);
 
     void finish();
 
@@ -115,6 +100,7 @@ protected:
     std::weak_ptr<HTTPServerRequest> _requestObserver;
     std::shared_ptr<HTTPServerRequest> _request;
     bool _requestFinished{false};
+    WriteCallbackType _writeCallback;
 };
 
 
@@ -122,6 +108,8 @@ class HTTPServerRequest {
 public:
     typedef HTTPUtil::RequestFilesType RequestFilesType;
     typedef HTTPUtil::QueryArgumentsType QueryArgumentsType;
+    typedef HTTPConnection::WriteCallbackType WriteCallbackType;
+    typedef boost::optional<SimpleCookie> CookiesType;
 
     HTTPServerRequest(const HTTPServerRequest &) = delete;
 
@@ -144,18 +132,20 @@ public:
         return _version == "HTTP/1.1";
     }
 
-    void write(const Byte *chunk, size_t length);
+    const SimpleCookie& cookies() const;
 
-    void write(const ByteArray &chunk) {
-        write(chunk.data(), chunk.size());
+    void write(const Byte *chunk, size_t length, WriteCallbackType callback= nullptr);
+
+    void write(const ByteArray &chunk, WriteCallbackType callback= nullptr) {
+        write(chunk.data(), chunk.size(), std::move(callback));
     }
 
-    void write(const char *chunk) {
-        write((const Byte *)chunk, strlen(chunk));
+    void write(const char *chunk, WriteCallbackType callback= nullptr) {
+        write((const Byte *)chunk, strlen(chunk), std::move(callback));
     }
 
-    void write(const std::string &chunk) {
-        write((const Byte *)chunk.data(), chunk.length());
+    void write(const std::string &chunk, WriteCallbackType callback= nullptr) {
+        write((const Byte *)chunk.data(), chunk.length(), std::move(callback));
     }
 
     void finish();
@@ -270,6 +260,7 @@ protected:
     std::string _path;
     std::string _query;
     QueryArgumentsType _arguments;
+    mutable CookiesType _cookies;
 };
 
 

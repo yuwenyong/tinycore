@@ -102,6 +102,8 @@ public:
         load(input);
     }
 
+    virtual ~BaseCookie();
+
     const Morsel& at(const std::string &key) const {
         return _items.at(key);
     }
@@ -129,8 +131,8 @@ public:
         }
     }
 
-    DecodeResultType valueDecode(const std::string &val);
-    EncodeResultType valueEncode(const std::string &val);
+    virtual DecodeResultType valueDecode(const std::string &val);
+    virtual EncodeResultType valueEncode(const std::string &val);
 
     std::string output(const StringMap *attrs= nullptr, const std::string &header= "Set-Cookie:",
                        const std::string &sep= "\015\012") const;
@@ -143,6 +145,10 @@ public:
         for (auto &kv: rawdata) {
             (*this)[kv.first] = kv.second;
         }
+    }
+
+    void clear() {
+        _items.clear();
     }
 protected:
     void set(const std::string &key, const std::string &realValue, const std::string &codedValue) {
@@ -157,6 +163,16 @@ protected:
     void parseString(const std::string &str, const boost::regex &patt =CookieUtil::cookiePattern);
 
     MorselContainerType _items;
+};
+
+
+class SimpleCookie: public BaseCookie {
+public:
+    using BaseCookie::BaseCookie;
+
+    SimpleCookie() = default;
+    DecodeResultType valueDecode(const std::string &val);
+    EncodeResultType valueEncode(const std::string &val);
 };
 
 #endif //TINYCORE_COOKIE_H
