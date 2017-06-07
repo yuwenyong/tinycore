@@ -62,6 +62,7 @@ public:
     }
 
     bool has(const std::string &name) const {
+        std::string normName = HTTPHeaders::normalizeName(name);
         return _items.find(name) != _items.end();
     }
 
@@ -100,6 +101,7 @@ protected:
 
     StringMap _items;
     HeadersContainerType _asList;
+    std::string _lastKey;
     static const boost::regex _normalizedHeader;
 };
 
@@ -156,6 +158,10 @@ public:
 
     static void parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgumentsType &arguments,
                                        RequestFilesType &files);
+
+protected:
+    static StringVector parseParam(std::string s);
+    static std::tuple<std::string, StringMap> parseHeader(const std::string &line);
 };
 
 

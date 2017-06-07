@@ -8,6 +8,7 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
+#include "tinycore/logging/log.h"
 #include "tinycore/utilities/objectmanager.h"
 
 
@@ -41,6 +42,8 @@ public:
     _Timeout(const _Timeout&) = delete;
     _Timeout& operator=(const _Timeout&) = delete;
 protected:
+    void start(const Timestamp &deadline, CallbackType callback);
+    void start(const Duration &deadline, CallbackType callback);
     void start(float deadline, CallbackType callback);
     void cancel();
 
@@ -63,7 +66,25 @@ public:
     IOLoop();
     ~IOLoop();
     void start();
-    Timeout addTimeout(float deadline, TimeoutCallbackType callback);
+
+    template <typename T>
+    Timeout addTimeout(T &&deadline, TimeoutCallbackType callback) {
+        auto timeoutHandle = std::make_shared<_Timeout>(this);
+        timeoutHandle->start(std::forward<T>(deadline), [callback, timeoutHandle](const boost::system::error_code &error) {
+            if (!error) {
+                callback();
+            } else {
+#ifndef NDEBUG
+                if (error != boost::asio::error::operation_aborted) {
+                    std::string errorMessage = error.message();
+                    Log::error("ErrorCode:%d,ErrorMessage:%s", error.value(), errorMessage.c_str());
+                }
+#endif
+            }
+        });
+        return Timeout(timeoutHandle);
+    }
+
     void removeTimeout(Timeout timeout);
 
     void addCallback(CallbackType callback) {
@@ -103,11 +124,12 @@ public:
     typedef IOLoop::TimeoutCallbackType CallbackType;
 
     PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop= nullptr);
+    PeriodicCallback(CallbackType callback, Duration callbackTime, IOLoop *ioloop= nullptr);
     ~PeriodicCallback();
 
     void start() {
         _running = true;
-        _ioloop->addTimeout(_callbackTime, std::bind(&PeriodicCallback::run, shared_from_this()));
+        scheduleNext();
     }
 
     void stop() {
@@ -121,8 +143,14 @@ public:
 protected:
     void run();
 
+    void scheduleNext() {
+        if (_running) {
+            _ioloop->addTimeout(_callbackTime, std::bind(&PeriodicCallback::run, shared_from_this()));
+        }
+    }
+
     CallbackType _callback;
-    float _callbackTime;
+    Duration _callbackTime;
     IOLoop *_ioloop;
     bool _running;
 };

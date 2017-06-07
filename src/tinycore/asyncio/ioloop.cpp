@@ -5,7 +5,6 @@
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
 
 
 _SignalSet::_SignalSet(IOLoop *ioloop)
@@ -67,6 +66,16 @@ _Timeout::~_Timeout() {
 #endif
 }
 
+void _Timeout::start(const Timestamp &deadline, CallbackType callback) {
+    _timer.expires_at(deadline);
+    _timer.async_wait(std::move(callback));
+}
+
+void _Timeout::start(const Duration &deadline, CallbackType callback) {
+    _timer.expires_from_now(deadline);
+    _timer.async_wait(std::move(callback));
+}
+
 void _Timeout::start(float deadline, CallbackType callback) {
     _timer.expires_from_now(std::chrono::milliseconds(int64_t(deadline * 1000)));
     _timer.async_wait(std::move(callback));
@@ -110,35 +119,23 @@ void IOLoop::start() {
     _stopped = false;
 }
 
-Timeout IOLoop::addTimeout(float deadline, TimeoutCallbackType callback) {
-    auto timeoutPtr = std::make_shared<_Timeout>(this);
-    timeoutPtr->start(deadline, [callback, timeoutPtr](const boost::system::error_code &error) {
-        if (!error) {
-            callback();
-        } else {
-#ifndef NDEBUG
-            if (error != boost::asio::error::operation_aborted) {
-                std::string errorMessage = error.message();
-                Log::error("ErrorCode:%d,ErrorMessage:%s", error.value(), errorMessage.c_str());
-            }
-#endif
-        }
-    });
-    return Timeout(timeoutPtr);
-}
-
-
 void IOLoop::removeTimeout(Timeout timeout) {
-    auto timeoutPtr = timeout.lock();
-    if (timeoutPtr) {
-        timeoutPtr->cancel();
+    auto timeoutHandle = timeout.lock();
+    if (timeoutHandle) {
+        timeoutHandle->cancel();
     }
 }
 
 
 PeriodicCallback::PeriodicCallback(CallbackType callback, float callbackTime, IOLoop *ioloop)
+        : PeriodicCallback(std::move(callback),
+                           std::chrono::milliseconds(int64_t(callbackTime * 1000)),
+                           ioloop) {
+}
+
+PeriodicCallback::PeriodicCallback(CallbackType callback, Duration callbackTime, IOLoop *ioloop)
         : _callback(std::move(callback))
-        , _callbackTime(callbackTime)
+        , _callbackTime(std::move(callbackTime))
         , _ioloop(ioloop ? ioloop : sIOLoop)
         , _running(false) {
 #ifndef NDEBUG
@@ -158,12 +155,8 @@ void PeriodicCallback::run() {
     }
     try {
         _callback();
-    } catch (SystemExit &e) {
-        throw;
     } catch (std::exception &e) {
         Log::error("Error in periodic callback:%s", e.what());
     }
-    if (_running) {
-        start();
-    }
+    scheduleNext();
 }

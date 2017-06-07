@@ -13,6 +13,7 @@ const boost::regex HTTPHeaders::_normalizedHeader("^[A-Z0-9][a-z0-9]*(-[A-Z0-9][
 
 void HTTPHeaders::add(const std::string &name, const std::string &value) {
     std::string normName = normalizeName(name);
+    _lastKey = normName;
     if (has(normName)) {
         _items[normName] += ',' + value;
         _asList[normName].emplace_back(value);
@@ -32,14 +33,25 @@ StringVector HTTPHeaders::getList(const std::string &name) const {
 }
 
 void HTTPHeaders::parseLine(const std::string &line) {
-    size_t pos = line.find(":");
-    if (pos == 0 || pos == std::string::npos) {
-        ThrowException(ValueError, "Need more than 1 value to unpack");
+    ASSERT(!line.empty());
+    if (std::isspace(line[0])) {
+        std::string newPart = " " + boost::trim_left_copy(line);
+        auto &asList = _asList.at(_lastKey);
+        if (asList.empty()) {
+            ThrowException(IndexError, "list index out of range");
+        }
+        asList.back() += newPart;
+        _items.at(_lastKey) += newPart;
+    } else {
+        size_t pos = line.find(":");
+        if (pos == 0 || pos == std::string::npos) {
+            ThrowException(ValueError, "Need more than 1 value to unpack");
+        }
+        std::string name = line.substr(0, pos);
+        std::string value = line.substr(pos + 1, std::string::npos);
+        boost::trim(value);
+        add(name, value);
     }
-    std::string name = line.substr(0, pos);
-    std::string value = line.substr(pos + 1, std::string::npos);
-    boost::trim(value);
-    return add(name, value);
 }
 
 void HTTPHeaders::erase(const std::string &name) {
@@ -101,12 +113,11 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
     }
     std::string sep("--" + boundary + "\r\n");
     const Byte *beg = data.data(), *end = data.data() + data.size() - footerLength, *cur, *val;
-    size_t eoh, eon, valSize;
-    std::string part, nameHeader, name, nameValue, ctype;
+    size_t eoh, valSize;
+    std::string part, dispHeader, disposition, name, ctype;
     HTTPHeaders headers;
-    StringMap nameValues;
-    StringVector nameParts;
-    decltype(nameValues.begin()) nameIter, fileNameIter;
+    StringMap dispParams;
+    decltype(dispParams.begin()) nameIter, fileNameIter;
     for (; true; beg = cur + sep.size()) {
         cur = std::search(beg, end, (const Byte *)sep.data(), (const Byte *)sep.data() + sep.size());
         if (cur == end) {
@@ -123,8 +134,9 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
         }
         headers.clear();
         headers.parseLines(part.substr(0, eoh));
-        nameHeader = headers.get("Content-Disposition");
-        if (!boost::starts_with(nameHeader, "form-data;") || !boost::ends_with(part, "\r\n")) {
+        dispHeader = headers.get("Content-Disposition");
+        std::tie(disposition, dispParams) = parseHeader(dispHeader);
+        if (disposition != "form-data" || !boost::ends_with(part, "\r\n")) {
             Log::warn("Invalid multipart/form-data");
             continue;
         }
@@ -135,28 +147,14 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
             val = (const Byte *)part.data() + eoh + 4;
             valSize = part.size() - eoh - 6;
         }
-        nameValues.clear();
-        nameHeader = nameHeader.substr(10);
-        nameParts = String::split(nameHeader, ';');
-        for (auto &namePart: nameParts) {
-            boost::trim(namePart);
-            eon = namePart.find('=');
-            if (eon == std::string::npos) {
-                ThrowException(ValueError, "need more than 2 values to unpack");
-            }
-            name = namePart.substr(0, eon);
-            nameValue = namePart.substr(eon + 1);
-            boost::trim(nameValue);
-            nameValues.emplace(std::move(name), std::move(nameValue));
-        }
-        nameIter = nameValues.find("name");
-        if (nameIter == nameValues.end()) {
+        nameIter = dispParams.find("name");
+        if (nameIter == dispParams.end()) {
             Log::warn("multipart/form-data value missing name");
             continue;
         }
         name = nameIter->second;
-        fileNameIter = nameValues.find("filename");
-        if (fileNameIter != nameValues.end()) {
+        fileNameIter = dispParams.find("filename");
+        if (fileNameIter != dispParams.end()) {
             ctype = headers.get("Content-Type", "application/unknown");
             files[name].emplace_back(HTTPFile(std::move(fileNameIter->second), std::move(ctype),
                                               ByteArray(val, val + valSize)));
@@ -164,4 +162,46 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
             arguments[name].emplace_back((const char *)val, valSize);
         }
     }
+}
+
+StringVector HTTPUtil::parseParam(std::string s) {
+    StringVector parts;
+    size_t end;
+    while (!s.empty() && s[0] == ';') {
+        s.erase(s.begin());
+        end = s.find(';');
+        while (end != std::string::npos
+               && ((String::count(s, '"', 0, end) - String::count(s, "\\\"", 0, end)) % 2 != 0)) {
+            end = s.find('"', end + 1);
+        }
+        if (end == std::string::npos) {
+            end = s.size();
+        }
+        parts.emplace_back(boost::trim_copy(s.substr(0, end)));
+        s = s.substr(end);
+    }
+    return parts;
+}
+
+std::tuple<std::string, StringMap> HTTPUtil::parseHeader(const std::string &line) {
+    StringVector parts = parseParam(";" + line);
+    std::string key = std::move(parts[0]);
+    parts.erase(parts.begin());
+    StringMap pdict;
+    size_t i;
+    std::string name, value;
+    for (auto &p: parts) {
+        i = p.find('=');
+        if (i != std::string::npos) {
+            name = boost::to_lower_copy(boost::trim_copy(p.substr(0, i)));
+            value = boost::trim_copy(p.substr(i + 1));
+            if (value.size() >= 2 && value.front() == '\"' && value.back() == '\"') {
+                value = value.substr(1, value.size() - 2);
+                boost::replace_all(value, "\\\\", "\\");
+                boost::replace_all(value, "\\\"", "\"");
+            }
+            pdict[std::move(name)] = std::move(value);
+        }
+    }
+    return std::make_tuple(std::move(key), std::move(pdict));
 }

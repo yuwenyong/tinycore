@@ -75,20 +75,32 @@ String::PartitionResult String::rpartition(const std::string &s, const std::stri
     }
 }
 
-size_t String::count(const std::string &s, char c) {
-    size_t r = 0;
-    std::string::size_type i = 0;
+size_t String::count(const std::string &s, char c, size_t start, size_t len) {
+    size_t e = len ? std::min(start + len, s.size()) : s.size();
+    if (start >= e) {
+        return 0;
+    }
+    size_t i = start, r = 0;
     while ((i = s.find(c, i)) != std::string::npos) {
+        if (i + 1 > e) {
+            break;
+        }
         ++i;
         ++r;
     }
     return r;
 }
 
-size_t String::count(const std::string &s, const char *sub) {
-    size_t r = 0;
-    std::string::size_type i = 0, m = strlen(sub);
+size_t String::count(const std::string &s, const char *sub, size_t start, size_t len) {
+    size_t e = len ? std::min(start + len, s.size()) : s.size();
+    if (start >= e) {
+        return 0;
+    }
+    size_t i = start, r = 0, m = strlen(sub);
     while ((i = s.find(sub, i)) != std::string::npos) {
+        if (i + m > e) {
+            break;
+        }
         i += m;
         ++r;
     }

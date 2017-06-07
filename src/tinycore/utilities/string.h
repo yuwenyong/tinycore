@@ -68,8 +68,8 @@ public:
     static PartitionResult partition(const std::string &s, const std::string &sep);
     static PartitionResult rpartition(const std::string &s, const std::string &sep);
 
-    static size_t count(const std::string &s, char c);
-    static size_t count(const std::string &s, const char *sub);
+    static size_t count(const std::string &s, char c, size_t start=0, size_t len=0);
+    static size_t count(const std::string &s, const char *sub, size_t start=0, size_t len=0);
     static size_t count(const std::string &s, std::function<bool (char)> pred);
 
     static void capitalize(std::string &s);
