@@ -9,6 +9,8 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/logic/tribool.hpp>
+#include <boost/optional.hpp>
+#include <boost/regex.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/utilities/messagebuffer.h"
 
@@ -228,6 +230,7 @@ public:
     typedef boost::asio::ip::tcp::endpoint EndPointType;
 
     typedef std::function<void (ByteArray)> ReadCallbackType;
+    typedef std::function<void (ByteArray)> StreamingCallbackType;
     typedef std::function<void ()> WriteCallbackType;
     typedef std::function<void ()> CloseCallbackType;
     typedef std::function<void ()> ConnectCallbackType;
@@ -253,20 +256,17 @@ public:
     }
 
     void connect(const std::string &address, unsigned short port, ConnectCallbackType callback);
+    void readUntilRegex(const std::string &regex, ReadCallbackType callback);
     void readUntil(std::string delimiter, ReadCallbackType callback);
-    void readBytes(size_t numBytes, ReadCallbackType callback);
+    void readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
+    void readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
     void write(const Byte *data, size_t length, WriteCallbackType callback=nullptr);
 
     void setCloseCallback(CloseCallbackType callback) {
         _closeCallback = std::move(callback);
     }
 
-    void close() {
-        if (!closed()) {
-            _closed = true;
-            asyncClose();
-        }
-    }
+    void close();
 
     bool reading() const {
         return static_cast<bool>(_readCallback);
@@ -312,10 +312,13 @@ protected:
     size_t _maxBufferSize;
     MessageBuffer _readBuffer;
     std::queue<MessageBuffer> _writeQueue;
-    std::string _readDelimiter;
-    size_t _readBytes{0};
+    boost::optional<std::string> _readDelimiter;
+    boost::optional<boost::regex> _readRegex;
+    boost::optional<size_t> _readBytes;
+    bool _readUntilClose{false};
     bool _closed{false};
     ReadCallbackType _readCallback;
+    StreamingCallbackType _streamingCallback;
     WriteCallbackType _writeCallback;
     CloseCallbackType _closeCallback;
     ConnectCallbackType _connectCallback;

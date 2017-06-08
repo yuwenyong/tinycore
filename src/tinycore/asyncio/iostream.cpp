@@ -30,8 +30,18 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
     asyncConnect(address, port);
 }
 
+void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType callback) {
+    ASSERT(!_readCallback, "Already reading");
+    _readRegex = boost::regex(regex);
+    _readCallback = std::move(callback);
+    if (readFromBuffer()) {
+        return;
+    }
+    checkClosed();
+    asyncRead();
+}
+
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
-//    fprintf(stderr,"ReadUntil:%s\n", delimiter.c_str());
     ASSERT(!_readCallback, "Already reading");
     _readDelimiter = std::move(delimiter);
     _readCallback = std::move(callback);
@@ -42,19 +52,31 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     asyncRead();
 }
 
-void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback) {
-//    fprintf(stderr, "ReadBytes:%d\n", (int)numBytes);
+void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     ASSERT(!_readCallback, "Already reading");
-    if (numBytes == 0) {
-        callback(ByteArray());
-        return;
-    }
+//    if (numBytes == 0) {
+//        callback(ByteArray());
+//        return;
+//    }
     _readBytes = numBytes;
     _readCallback = std::move(callback);
+    _streamingCallback = std::move(streamingCallback);
     if (readFromBuffer()) {
         return;
     }
     checkClosed();
+    asyncRead();
+}
+
+void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback) {
+    ASSERT(!_readCallback, "Already reading");
+    if (closed()) {
+        callback(_readBuffer.move());
+        return;
+    }
+    _readUntilClose = true;
+    _readCallback = std::move(callback);
+    _streamingCallback = std::move(streamingCallback);
     asyncRead();
 }
 
@@ -70,6 +92,21 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
     _writeCallback = std::move(callback);
     if (!isWriting) {
         asyncWrite();
+    }
+}
+
+void BaseIOStream::close() {
+    if (!closed()) {
+        if (_readUntilClose) {
+            ReadCallbackType callback;
+            callback.swap(_readCallback);
+            _readUntilClose = false;
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
+            _readBuffer.readCompleted(_readBuffer.getActiveSize());
+            callback(std::move(data));
+        }
+        _closed = true;
+        asyncClose();
     }
 }
 
@@ -181,6 +218,9 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t
         if (_readCallback) {
             _readCallback = nullptr;
         }
+        if (_streamingCallback) {
+            _streamingCallback = nullptr;
+        }
         if (error != boost::asio::error::operation_aborted) {
             if (error != boost::asio::error::eof) {
                 Log::warn("Read error %d :%s", error.value(), error.message());
@@ -203,14 +243,25 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t
 }
 
 bool BaseIOStream::readFromBuffer() {
-    if (_readBytes > 0) {
-        if (_readBuffer.getActiveSize() >= _readBytes) {
-            size_t readBytes = _readBytes;
+    if (_readBytes) {
+        if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
+            size_t bytesToConsume = std::min(_readBytes.get(), _readBuffer.getActiveSize());
+            _readBytes.get() -= bytesToConsume;
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + bytesToConsume);
+            _readBuffer.readCompleted(bytesToConsume);
+            _streamingCallback(std::move(data));
+        }
+        if (_readBuffer.getActiveSize() >= _readBytes.get()) {
+            size_t numBytes = _readBytes.get();
             ReadCallbackType callback;
             callback.swap(_readCallback);
-            _readBytes = 0;
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
-            _readBuffer.readCompleted(readBytes);
+            _streamingCallback = nullptr;
+            _readBytes = boost::none;
+            ByteArray data;
+            if (numBytes > 0) {
+                data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + numBytes);
+                _readBuffer.readCompleted(numBytes);
+            }
             try {
 //                fprintf(stderr, "Handle Read,consume:%d,left:%d\n", (int)readBytes, (int)_readBuffer.getActiveSize());
                 callback(std::move(data));
@@ -221,14 +272,15 @@ bool BaseIOStream::readFromBuffer() {
             }
             return true;
         }
-    } else if (!_readDelimiter.empty()){
+    } else if (_readDelimiter) {
         const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
-                                  _readDelimiter.c_str());
+                                  _readDelimiter->c_str());
         if (loc) {
-            size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter.size();
+            size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter->size();
             ReadCallbackType callback;
             callback.swap(_readCallback);
-            _readDelimiter.clear();
+            _streamingCallback = nullptr;
+            _readDelimiter = boost::none;
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
             _readBuffer.readCompleted(readBytes);
             try {
@@ -241,6 +293,33 @@ bool BaseIOStream::readFromBuffer() {
                 throw;
             }
             return true;
+        }
+    } else if (_readRegex) {
+        boost::cmatch m;
+        if (boost::regex_search((const char *)_readBuffer.getReadPointer(),
+                                (const char *)_readBuffer.getReadPointer() + _readBuffer.getActiveSize(), m,
+                                _readRegex.get())) {
+            auto readBytes = m.position((size_t)0) + m.length();
+            ReadCallbackType callback;
+            callback.swap(_readCallback);
+            _streamingCallback = nullptr;
+            _readRegex = boost::none;
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
+            _readBuffer.readCompleted((size_t)readBytes);
+            try {
+                callback(std::move(data));
+            } catch (std::exception &e) {
+                Log::error("Uncaught exception (%s), closing connection.", e.what());
+                close();
+                throw;
+            }
+            return true;
+        }
+    } else if (_readUntilClose) {
+        if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
+            _readBuffer.readCompleted(_readBuffer.getActiveSize());
+            _streamingCallback(std::move(data));
         }
     }
     return false;
