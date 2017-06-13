@@ -30,10 +30,12 @@ class TC_COMMON_API RequestHandler: public std::enable_shared_from_this<RequestH
 public:
     typedef std::map<std::string, boost::any> ArgsType;
     typedef boost::ptr_vector<OutputTransform> TransformsType;
+    typedef std::vector<std::pair<std::string, std::string>> ListHeadersType;
     typedef std::map<std::string, boost::any> SettingsType;
-    typedef boost::optional<BaseCookie> CookiesType;
-    typedef boost::optional<std::vector<BaseCookie>> NewCookiesType;
+//    typedef boost::optional<BaseCookie> CookiesType;
+    typedef boost::optional<std::vector<SimpleCookie>> NewCookiesType;
     typedef boost::property_tree::ptree SimpleJSONType;
+    typedef HTTPServerRequest::WriteCallbackType FlushCallbackType;
 
     friend class Application;
 
@@ -53,6 +55,7 @@ public:
     virtual void prepare();
     virtual void onConnectionClose();
     void clear();
+    virtual void setDefaultHeaders();
 
     void setStatus(int statusCode) {
         ASSERT(HTTPResponses.find(statusCode) != HTTPResponses.end());
@@ -63,29 +66,27 @@ public:
         return _statusCode;
     }
 
-    void setHeader(const std::string &name, const DateTime &value) {
-        _headers[name] = String::formatUTCDate(value, true);
+    template <typename T>
+    void setHeader(std::string name, T &&value) {
+        std::string converted = convertHeaderValue(std::forward<T>(value));
+        _headers[std::move(name)] = std::move(converted);
     }
 
-    void setHeader(const std::string &name, const std::string &value);
-    void setHeader(const std::string &name, const char *value);
-
-//    template <typename T>
-//    void setHeader(const std::string &name, T &&value) {
-//        _headers[name] = std::to_string(std::forward<T>(value));
-//    }
-
     template <typename T>
-    void setHeader(const std::string &name, T value) {
-        _headers[name] = std::to_string(value);
+    void addHeader(std::string name, T &&value) {
+        std::string converted = convertHeaderValue(std::forward<T>(value));
+        _listHeaders.emplace_back(std::move(name), std::move(value));
     }
 
     std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
     std::string getArgument(const std::string &name, const std::string &defaultValue, bool strip= true) const;
     StringVector getArguments(const std::string &name, bool strip= true) const;
-    const BaseCookie& cookies();
 
-    std::string getCookie(const std::string &name, const std::string &defaultValue= {}) {
+    const SimpleCookie& cookies() const {
+        return _request->cookies();
+    }
+
+    std::string getCookie(const std::string &name, const std::string &defaultValue= "") const {
         if (cookies().has(name)) {
             return cookies().at(name).getValue();
         }
@@ -140,7 +141,7 @@ public:
     }
 #endif
 
-    void flush(bool includeFooters= false);
+    void flush(bool includeFooters= false, FlushCallbackType callback= nullptr);
 
     template <typename... Args>
     void finish(Args&&... args) {
@@ -149,8 +150,8 @@ public:
     }
 
     void finish();
-    void sendError(int statusCode = 500, std::exception *e= nullptr);
-    virtual std::string getErrorHTML(int statusCode, std::exception *e= nullptr);
+    void sendError(int statusCode = 500, std::exception *error= nullptr);
+    virtual void writeError(int statusCode = 500, std::exception *error= nullptr);
     void requireSetting(const std::string &name, const std::string &feature="this feature");
 
     template <typename... Args>
@@ -165,6 +166,27 @@ public:
 
     static const StringSet supportedMethods;
 protected:
+    std::string convertHeaderValue(const std::string &value) {
+        boost::regex unsafe(R"([\x00-\x1f])");
+        if (value.length() > 4000 || boost::regex_search(value, unsafe)) {
+            ThrowException(ValueError, "Unsafe header value " + value);
+        }
+        return value;
+    }
+
+    std::string convertHeaderValue(const char *value) {
+        return convertHeaderValue(std::string(value));
+    }
+
+    std::string convertHeaderValue(const DateTime &value) {
+        return convertHeaderValue(String::formatUTCDate(value, true));
+    }
+
+    template <typename T>
+    std::string convertHeaderValue(T value) {
+        return convertHeaderValue(std::to_string(value));
+    }
+
     virtual void execute(TransformsType &transforms, StringVector args);
     std::string generateHeaders() const;
     void log();
@@ -182,9 +204,9 @@ protected:
     bool _autoFinish{true};
     TransformsType _transforms;
     StringMap _headers;
+    ListHeadersType _listHeaders;
     ByteArray _writeBuffer;
     int _statusCode;
-    CookiesType _cookies;
     NewCookiesType _newCookies;
 };
 
@@ -380,13 +402,14 @@ public:
     void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) override;
     void transformChunk(ByteArray &chunk, bool finishing) override;
 
-    static const StringSet contentTypes;
-    static const int minLength = 5;
 protected:
+    static const StringSet _contentTypes;
+    static const int _minLength = 5;
+
     bool _gzipping;
     std::shared_ptr<std::stringstream> _gzipValue;
     GzipFile _gzipFile;
-    size_t _gzipPos{0};
+//    size_t _gzipPos{0};
 };
 
 

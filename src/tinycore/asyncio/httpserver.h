@@ -15,7 +15,7 @@
 
 class HTTPServerRequest;
 
-class HTTPServer {
+class HTTPServer: public TCPServer {
 public:
     typedef std::function<void(std::shared_ptr<HTTPServerRequest>)> RequestCallbackType;
 

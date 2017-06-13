@@ -82,32 +82,19 @@ void RequestHandler::clear() {
             {"Server", TINYCORE_VER },
             {"Content-Type", "text/html; charset=UTF-8"},
     };
+//    _listHeaders.clear();
+    setDefaultHeaders();
     if (!_request->supportsHTTP1_1()) {
         if (_request->getHTTPHeaders()->get("Connection") == "Keep-Alive") {
             setHeader("Connection", "Keep-Alive");
         }
     }
-    _writeBuffer.clear();
+//    _writeBuffer.clear();
     _statusCode = 200;
 }
 
-void RequestHandler::setHeader(const std::string &name, const std::string &value) {
-    boost::regex unsafe(R"([\x00-\x1f])");
-    if (value.length() > 4000 || boost::regex_search(value, unsafe)) {
-        std::string error;
-        error = "Unsafe header value " + value;
-        ThrowException(ValueError, std::move(error));
-    }
-    _headers[name] = value;
-}
+void RequestHandler::setDefaultHeaders() {
 
-void RequestHandler::setHeader(const std::string &name, const char *value) {
-    boost::regex unsafe(R"([\x00-\x1f])");
-    if (strlen(value) > 4000 || boost::regex_search(value, unsafe)) {
-        std::string error = "Unsafe header value " + std::string(value);
-        ThrowException(ValueError, std::move(error));
-    }
-    _headers[name] = value;
 }
 
 std::string RequestHandler::getArgument(const std::string &name, const char *defaultValue, bool strip) const {
@@ -162,20 +149,6 @@ StringVector RequestHandler::getArguments(const std::string &name, bool strip) c
     return values;
 }
 
-const BaseCookie& RequestHandler::cookies() {
-    if (!_cookies) {
-        _cookies.emplace();
-        if (_request->getHTTPHeaders()->has("Cookie")) {
-            try {
-                _cookies->load(_request->getHTTPHeaders()->at("Cookie"));
-            } catch (...) {
-                clearAllCookies();
-            }
-        }
-    }
-    return _cookies.get();
-}
-
 void RequestHandler::setCookie(const std::string &name, const std::string &value, const char *domain,
                                const DateTime *expires, const char *path, int *expiresDays, const StringMap *args) {
     boost::regex patt(R"([\x00-\x20])");
@@ -186,7 +159,7 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
         _newCookies.emplace();
     }
     _newCookies->emplace_back();
-    BaseCookie &newCookie = _newCookies->back();
+    SimpleCookie &newCookie = _newCookies->back();
     newCookie[name] = value;
     Morsel &morsel = newCookie.at(name);
     if (domain) {
@@ -221,7 +194,7 @@ void RequestHandler::redirect(const std::string &url, bool permanent) {
     finish();
 }
 
-void RequestHandler::flush(bool includeFooters) {
+void RequestHandler::flush(bool includeFooters, FlushCallbackType callback) {
     ByteArray chunk = std::move(_writeBuffer);
     std::string headers;
     if (!_headersWritten) {
@@ -237,7 +210,7 @@ void RequestHandler::flush(bool includeFooters) {
     }
     if (_request->getMethod() == "HEAD") {
         if (!headers.empty()) {
-            _request->write(headers);
+            _request->write(headers, std::move(callback));
         }
         return;
     }
@@ -245,7 +218,7 @@ void RequestHandler::flush(bool includeFooters) {
         headers.append((const char *)chunk.data(), chunk.size());
     }
     if (!headers.empty()) {
-        _request->write(headers);
+        _request->write(headers, std::move(callback));
     }
 }
 
@@ -276,7 +249,7 @@ void RequestHandler::finish() {
     _finished = true;
 }
 
-void RequestHandler::sendError(int statusCode, std::exception *e) {
+void RequestHandler::sendError(int statusCode, std::exception *error) {
     if (_headersWritten) {
         Log::error("Cannot send error response after headers written");
         if (!_finished) {
@@ -286,14 +259,20 @@ void RequestHandler::sendError(int statusCode, std::exception *e) {
     }
     clear();
     setStatus(statusCode);
-    std::string message = getErrorHTML(statusCode, e);
-    finish(std::move(message));
+    try {
+        writeError(statusCode, error);
+    } catch (std::exception &e) {
+        Log::error("Uncaught exception in writeError: %s", e.what());
+    }
+    if (!_finished) {
+        finish();
+    }
 }
 
-std::string RequestHandler::getErrorHTML(int statusCode, std::exception *e) {
+void RequestHandler::writeError(int statusCode, std::exception *error) {
     const std::string &message = HTTPResponses.at(statusCode);
-    return String::format("<html><title>%d: %s</title><body>%d: %s</body></html>", statusCode, message.c_str(),
-                          statusCode, message.c_str());
+    finish(String::format("<html><title>%d: %s</title><body>%d: %s</body></html>", statusCode, message.c_str(),
+                          statusCode, message.c_str()));
 }
 
 void RequestHandler::requireSetting(const std::string &name, const std::string &feature) {
@@ -354,6 +333,9 @@ std::string RequestHandler::generateHeaders() const {
     for (auto &header: _headers) {
         lines.emplace_back(header.first + ": " + header.second);
     }
+    for (auto &header: _listHeaders) {
+        lines.emplace_back(header.first + ": " + header.second);
+    }
     if (_newCookies) {
         for (auto &cookieDict: _newCookies.get()) {
             cookieDict.getAll([&lines](const std::string &key, const Morsel &cookie) {
@@ -376,15 +358,15 @@ void RequestHandler::handleRequestException(std::exception *e) {
         int statusCode = error->getStatusCode();
         if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
             Log::error("Bad HTTP status code: %d", statusCode);
-            sendError(500, e);
+            sendError(500, error);
         } else {
-            sendError(statusCode, e);
+            sendError(statusCode, error);
         }
     } else {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
-        Log::error("Uncaught exception %s\n%s\n%s", e->what(), summary.c_str(), requestInfo.c_str());
-        sendError(500, e);
+        Log::error("Uncaught exception %s\n%s\n%s", error->what(), summary.c_str(), requestInfo.c_str());
+        sendError(500, error);
     }
 }
 
@@ -596,8 +578,8 @@ void GZipContentEncoding::transformFirstChunk(StringMap &headers, ByteArray &chu
         if (pos != std::string::npos) {
             ctype = ctype.substr(0, pos);
         }
-        _gzipping = contentTypes.find(ctype) != contentTypes.end()
-                    && (!finishing || chunk.size() >= minLength)
+        _gzipping = _contentTypes.find(ctype) != _contentTypes.end()
+                    && (!finishing || chunk.size() >= _minLength)
                     && (finishing || headers.find("Content-Length") == headers.end())
                     && headers.find("Content-Encoding") == headers.end();
     }
@@ -605,7 +587,7 @@ void GZipContentEncoding::transformFirstChunk(StringMap &headers, ByteArray &chu
         headers["Content-Encoding"] = "gzip";
         _gzipValue = std::make_shared<std::stringstream>();
         _gzipFile.initWithOutputStream(_gzipValue);
-        _gzipPos = 0;
+//        _gzipPos = 0;
         transformChunk(chunk, finishing);
         if (headers.find("Content-Length") != headers.end()) {
             headers["Content-Length"] = std::to_string(chunk.size());
@@ -621,17 +603,21 @@ void GZipContentEncoding::transformChunk(ByteArray &chunk, bool finishing) {
         } else {
             _gzipFile.flush();
         }
-        std::string gzipValue = _gzipValue->str();
-        chunk.assign((const Byte *)gzipValue.data() + _gzipPos, (const Byte *)gzipValue.data() + gzipValue.size());
-        _gzipPos += chunk.size();
+        auto length = _gzipValue->tellp() - _gzipValue->tellg();
+        chunk.resize((size_t)length);
+        _gzipValue->read((char *)chunk.data(), length);
+//        std::string gzipValue = _gzipValue->str();
+//        chunk.assign((const Byte *)gzipValue.data() + _gzipPos, (const Byte *)gzipValue.data() + gzipValue.size());
+//        _gzipPos += chunk.size();
     }
 }
 
-const StringSet GZipContentEncoding::contentTypes = {
+const StringSet GZipContentEncoding::_contentTypes = {
         "text/plain",
         "text/html",
         "text/css",
         "text/xml",
+        "application/javascript",
         "application/x-javascript",
         "application/xml",
         "application/atom+xml",
@@ -640,7 +626,7 @@ const StringSet GZipContentEncoding::contentTypes = {
         "application/xhtml+xml"
 };
 
-const int GZipContentEncoding::minLength;
+const int GZipContentEncoding::_minLength;
 
 
 void ChunkedTransferEncoding::transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) {
