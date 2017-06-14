@@ -255,6 +255,10 @@ public:
         return end_point.port();
     }
 
+    void start() {
+        asyncRead();
+    }
+
     void connect(const std::string &address, unsigned short port, ConnectCallbackType callback);
     void readUntilRegex(const std::string &regex, ReadCallbackType callback);
     void readUntil(std::string delimiter, ReadCallbackType callback);
@@ -282,10 +286,6 @@ public:
 
     size_t getMaxBufferSize() const {
         return _maxBufferSize;
-    }
-
-    bool dying() const {
-        return !(_readCallback || _writeCallback || _connectCallback);
     }
 
     void onConnect(const boost::system::error_code &error);

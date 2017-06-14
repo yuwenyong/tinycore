@@ -159,8 +159,12 @@ public:
 
     virtual std::string computeEtag() const;
 
+    std::shared_ptr<HTTPServerRequest> getRequest() const {
+        return _request;
+    }
+
     template <typename T>
-    std::shared_ptr<T> getSelf() {
+    std::shared_ptr<T> getSelf() const {
         return std::static_pointer_cast<T>(shared_from_this());
     }
 

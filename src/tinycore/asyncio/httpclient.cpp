@@ -88,6 +88,7 @@ void _HTTPConnection::start() {
             host = iter->second;
         }
         BaseIOStream::SocketType socket(_ioloop->getService());
+        std::shared_ptr<BaseIOStream> stream;
         if (scheme == "https") {
             std::shared_ptr<SSLOption> sslOption;
             auto caCerts = _request->getCACerts();
@@ -104,25 +105,20 @@ void _HTTPConnection::start() {
                     sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_NONE);
                 }
             }
-            _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop);
+            stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop);
         } else {
-            _stream = IOStream::create(std::move(socket), _ioloop);
+            stream = IOStream::create(std::move(socket), _ioloop);
         }
-        _streamObserver = _stream;
+        _stream = stream;
         auto self = shared_from_this();
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout > 0.000001f) {
             _connectTimeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, self));
         }
-        std::weak_ptr<_HTTPConnection> connectionObserver = self;
-        _stream->setCloseCallback([connectionObserver](){
-            auto connection = connectionObserver.lock();
-            if (connection) {
-                connection->onClose();
-            }
+        stream->setCloseCallback([self](){
+            self->onClose();
         });
-        auto stream = std::move(_stream);
-        stream->connect(host, port, std::bind(&_HTTPConnection::onConnect, self, parsed));
+        stream->connect(host, port, std::bind(&_HTTPConnection::onConnect, self, std::move(parsed)));
     } catch (std::exception &e) {
         std::string error = e.what();
         Log::warn("uncaught exception:%s", error.c_str());
@@ -149,10 +145,6 @@ void _HTTPConnection::onTimeout() {
 }
 
 void _HTTPConnection::onConnect(URLParse::SplitResult parsed) {
-    auto stream = fetchStream();
-    if (stream->dying()) {
-        _stream = stream;
-    }
     _ioloop->removeTimeout(_timeout);
     auto self = shared_from_this();
     float requestTimeout = _request->getRequestTimeout();
@@ -232,20 +224,17 @@ void _HTTPConnection::onConnect(URLParse::SplitResult parsed) {
     });
     std::string headerData = boost::join(requestLines, "\r\n");
     headerData += "\r\n\r\n";
+    auto stream = fetchStream();
+    stream->start();
     stream->write((const Byte *)headerData.data(), headerData.size());
     if (hasBody) {
         stream->write(requestBody->data(), requestBody->size());
     }
-    _stream.reset();
     stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, self, std::placeholders::_1));
 }
 
 void _HTTPConnection::onClose() {
 //    fprintf(stderr, "_HTTPConnection::onClose\n");
-    auto stream = fetchStream();
-    if (stream->dying()) {
-        _stream = stream;
-    }
     if (_callback) {
         CallbackType callback;
         callback.swap(_callback);
@@ -254,10 +243,6 @@ void _HTTPConnection::onClose() {
 }
 
 void _HTTPConnection::onHeaders(ByteArray data) {
-    auto stream = fetchStream();
-    if (stream->dying()) {
-        _stream = stream;
-    }
     const char *content = (const char *)data.data();
     const char *eol = StrNStr(content, data.size(), "\r\n");
     std::string firstLine, headerData;
@@ -285,14 +270,13 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     if (_request->isUseGzip() && _headers->get("Content-Encoding") == "gzip") {
         _decompressor = make_unique<DecompressObj>(16 + Zlib::maxWBits);
     }
+    auto stream = fetchStream();
     if (_headers->get("Transfer-Encoding") == "chunked") {
         _chunks = ByteArray();
-        _stream.reset();
         stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, shared_from_this(),
                                             std::placeholders::_1));
     } else if (_headers->has("Content-Length")) {
         size_t contentLength = std::stoul(_headers->at("Content-Length"));
-        _stream.reset();
         stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, shared_from_this(),
                                                    std::placeholders::_1));
     } else {
@@ -303,10 +287,6 @@ void _HTTPConnection::onHeaders(ByteArray data) {
 }
 
 void _HTTPConnection::onBody(ByteArray data) {
-    auto stream = fetchStream();
-    if (stream->dying()) {
-        _stream = stream;
-    }
     _ioloop->removeTimeout(_timeout);
     if (_decompressor) {
         data = _decompressor->decompress(data);
@@ -356,9 +336,6 @@ void _HTTPConnection::onChunkLength(ByteArray data) {
 void _HTTPConnection::onChunkData(ByteArray data) {
     ASSERT(strncmp((const char *)data.data() + data.size() - 2, "\r\n", 2) == 0);
     auto stream = fetchStream();
-    if (stream->dying()) {
-        _stream = stream;
-    }
     data.erase(std::prev(data.end(), 2), data.end());
     ByteArray chunk(std::move(data));
     if (_decompressor) {
@@ -370,6 +347,5 @@ void _HTTPConnection::onChunkData(ByteArray data) {
     } else {
         _chunks->insert(_chunks->end(), chunk.begin(), chunk.end());
     }
-    _stream.reset();
     stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, shared_from_this(), std::placeholders::_1));
 }

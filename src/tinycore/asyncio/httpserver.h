@@ -65,16 +65,15 @@ public:
         return _xheaders;
     }
 
-    std::shared_ptr<BaseIOStream> fetchStream() {
-        return _streamObserver.lock();
+    std::weak_ptr<BaseIOStream> getStream() const {
+        return _stream;
     }
 
-    std::shared_ptr<BaseIOStream> releaseStream() {
-        ASSERT(_stream);
-        return std::move(_stream);
+    std::shared_ptr<BaseIOStream> fetchStream() const {
+        return _stream.lock();
     }
 
-    std::shared_ptr<HTTPServerRequest> fetchRequest() {
+    std::shared_ptr<HTTPServerRequest> fetchRequest() const {
         return _requestObserver.lock();
     }
 
@@ -91,8 +90,7 @@ protected:
 
     void onRequestBody(ByteArray data);
 
-    std::weak_ptr<BaseIOStream> _streamObserver;
-    std::shared_ptr<BaseIOStream> _stream;
+    std::weak_ptr<BaseIOStream> _stream;
     std::string _address;
     const RequestCallbackType &_requestCallback;
     bool _noKeepAlive;

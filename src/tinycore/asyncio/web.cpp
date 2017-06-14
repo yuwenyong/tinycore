@@ -27,12 +27,9 @@ RequestHandler::~RequestHandler() {
 
 void RequestHandler::start(ArgsType &args) {
     auto stream = _request->getConnection()->fetchStream();
-    std::weak_ptr<RequestHandler> handlerObserver = shared_from_this();
-    stream->setCloseCallback([handlerObserver](){
-        auto handler = handlerObserver.lock();
-        if (handler) {
-            handler->onConnectionClose();
-        }
+    auto self = shared_from_this();
+    stream->setCloseCallback([self](){
+        self->onConnectionClose();
     });
     initialize(args);
 }

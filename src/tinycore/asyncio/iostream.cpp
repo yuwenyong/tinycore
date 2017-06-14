@@ -34,38 +34,37 @@ void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType cal
     ASSERT(!_readCallback, "Already reading");
     _readRegex = boost::regex(regex);
     _readCallback = std::move(callback);
-    if (readFromBuffer()) {
-        return;
-    }
-    checkClosed();
-    asyncRead();
+    readFromBuffer();
+//    if (readFromBuffer()) {
+//        return;
+//    }
+//    checkClosed();
+//    asyncRead();
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     _readDelimiter = std::move(delimiter);
     _readCallback = std::move(callback);
-    if (readFromBuffer()) {
-        return;
-    }
-    checkClosed();
-    asyncRead();
+    readFromBuffer();
+//    if (readFromBuffer()) {
+//        return;
+//    }
+//    checkClosed();
+//    asyncRead();
 }
 
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     ASSERT(!_readCallback, "Already reading");
-//    if (numBytes == 0) {
-//        callback(ByteArray());
-//        return;
-//    }
     _readBytes = numBytes;
     _readCallback = std::move(callback);
     _streamingCallback = std::move(streamingCallback);
-    if (readFromBuffer()) {
-        return;
-    }
-    checkClosed();
-    asyncRead();
+    readFromBuffer();
+//    if (readFromBuffer()) {
+//        return;
+//    }
+//    checkClosed();
+//    asyncRead();
 }
 
 void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback) {
@@ -77,7 +76,7 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
     _readUntilClose = true;
     _readCallback = std::move(callback);
     _streamingCallback = std::move(streamingCallback);
-    asyncRead();
+//    asyncRead();
 }
 
 void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType callback) {
@@ -97,16 +96,8 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
 
 void BaseIOStream::close() {
     if (!closed()) {
-        if (_readUntilClose) {
-            ReadCallbackType callback;
-            callback.swap(_readCallback);
-            _readUntilClose = false;
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-            _readBuffer.readCompleted(_readBuffer.getActiveSize());
-            callback(std::move(data));
-        }
-        _closed = true;
         asyncClose();
+        _closed = true;
     }
 }
 
@@ -144,18 +135,22 @@ void BaseIOStream::onRead(const boost::system::error_code &error, size_t transfe
         close();
         return;
     }
-    if (readFromBuffer()) {
-        return;
-    }
-    if (closed()) {
-        if (_readCallback) {
-            _readCallback = nullptr;
-        }
-        return;
-    }
-    if (_readCallback) {
+    readFromBuffer();
+    if (!closed()) {
         asyncRead();
     }
+//    if (readFromBuffer()) {
+//        return;
+//    }
+//    if (closed()) {
+//        if (_readCallback) {
+//            _readCallback = nullptr;
+//        }
+//        return;
+//    }
+//    if (_readCallback) {
+//        asyncRead();
+//    }
 }
 
 void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transferredBytes) {
@@ -197,6 +192,14 @@ void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transf
 }
 
 void BaseIOStream::onClose(const boost::system::error_code &error) {
+    if (_readUntilClose) {
+        ReadCallbackType callback;
+        callback.swap(_readCallback);
+        _readUntilClose = false;
+        ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
+        _readBuffer.readCompleted(_readBuffer.getActiveSize());
+        callback(std::move(data));
+    }
     if (_closeCallback) {
         CloseCallbackType callback;
         callback.swap(_closeCallback);
@@ -213,7 +216,6 @@ void BaseIOStream::onClose(const boost::system::error_code &error) {
 }
 
 size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t transferredBytes) {
-//    fprintf(stderr,"ReadToBuffer:%d\n", (int)transferredBytes);
     if (error) {
         if (_readCallback) {
             _readCallback = nullptr;
@@ -226,11 +228,11 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t
                 Log::warn("Read error %d :%s", error.value(), error.message());
             }
             close();
-//            if (error != boost::asio::error::eof) {
-//                throw boost::system::system_error(error);
-//            }
-            return 0;
+            if (error != boost::asio::error::eof) {
+                throw boost::system::system_error(error);
+            }
         }
+        return 0;
     }
     _readBuffer.writeCompleted(transferredBytes);
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
@@ -416,7 +418,7 @@ void SSLIOStream::asyncWrite() {
 void SSLIOStream::asyncClose() {
     if (_handshaked) {
         auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
-        _sslSocket.async_shutdown(std::bind(&SSLIOStream::onShutdown, self, std::placeholders::_1));
+        _sslSocket.async_shutdown(std::bind(&SSLIOStream::onShutdown, std::move(self), std::placeholders::_1));
     } else {
         doClose();
     }
@@ -428,10 +430,12 @@ void SSLIOStream::doHandshake() {
         if (_sslOption->isServerSide()) {
 
             _sslSocket.async_handshake(boost::asio::ssl::stream_base::server, std::bind(&SSLIOStream::onHandshake,
-                                                                                        self, std::placeholders::_1));
+                                                                                        std::move(self),
+                                                                                        std::placeholders::_1));
         } else {
             _sslSocket.async_handshake(boost::asio::ssl::stream_base::client, std::bind(&SSLIOStream::onHandshake,
-                                                                                        self, std::placeholders::_1));
+                                                                                        std::move(self),
+                                                                                        std::placeholders::_1));
         }
         _handshaking = true;
     }

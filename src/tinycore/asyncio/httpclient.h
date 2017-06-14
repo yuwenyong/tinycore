@@ -497,8 +497,8 @@ public:
 
     static const StringSet supportedMethods;
 protected:
-    std::shared_ptr<BaseIOStream> fetchStream() {
-        return _streamObserver.lock();
+    std::shared_ptr<BaseIOStream> fetchStream() const {
+        return _stream.lock();
     }
 
     void onTimeout();
@@ -521,8 +521,7 @@ protected:
     std::unique_ptr<DecompressObj> _decompressor;
     Timeout _timeout;
     Timeout _connectTimeout;
-    std::weak_ptr<BaseIOStream> _streamObserver;
-    std::shared_ptr<BaseIOStream> _stream;
+    std::weak_ptr<BaseIOStream> _stream;
 };
 
 #endif //TINYCORE_HTTPCLIENT_H

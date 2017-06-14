@@ -47,8 +47,7 @@ HTTPConnection::HTTPConnection(std::shared_ptr<BaseIOStream> stream,
                                const RequestCallbackType &requestCallback,
                                bool noKeepAlive,
                                bool xheaders)
-        : _streamObserver(stream)
-        , _stream(std::move(stream))
+        : _stream(stream)
         , _address(std::move(address))
         , _requestCallback(requestCallback)
         , _noKeepAlive(noKeepAlive)
@@ -65,8 +64,9 @@ HTTPConnection::~HTTPConnection() {
 }
 
 void HTTPConnection::start() {
-    ASSERT(_stream);
-    auto stream = std::move(_stream);
+    auto stream = fetchStream();
+    ASSERT(stream);
+    stream->start();
     stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
 }
 
@@ -75,7 +75,6 @@ void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType c
     auto stream = fetchStream();
     if (stream && !stream->closed()) {
         _writeCallback = std::move(callback);
-        _stream.reset();
         stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
     }
 }
@@ -91,12 +90,8 @@ void HTTPConnection::finish() {
 }
 
 void HTTPConnection::onWriteComplete() {
-    ASSERT(!_stream);
     auto stream = fetchStream();
     ASSERT(stream);
-    if (stream->dying()) {
-        _stream = std::move(stream);
-    }
     if (_writeCallback) {
         WriteCallbackType callback;
         callback.swap(_writeCallback);
@@ -127,22 +122,18 @@ void HTTPConnection::finishRequest() {
     }
     _request.reset();
     _requestFinished = false;
+    auto stream = fetchStream();
+    ASSERT(stream);
     if (disconnect) {
-        auto stream = fetchStream();
-        ASSERT(stream);
         stream->close();
         return;
     }
-    start();
+    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
 }
 
 void HTTPConnection::onHeaders(ByteArray data) {
-    ASSERT(!_stream);
     auto stream = fetchStream();
     ASSERT(stream);
-    if (stream->dying()) {
-        _stream = stream;
-    }
     try {
         const char *eol = StrNStr((char *)data.data(), data.size(), "\r\n");
         std::string startLine, rest;
@@ -177,7 +168,6 @@ void HTTPConnection::onHeaders(ByteArray data) {
                 const char *continueLine = "HTTP/1.1 100 (Continue)\r\n\r\n";
                 stream->write((const Byte *)continueLine, strlen(continueLine));
             }
-            _stream.reset();
             stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, shared_from_this(),
                                                        std::placeholders::_1));
             return;
@@ -191,12 +181,8 @@ void HTTPConnection::onHeaders(ByteArray data) {
 }
 
 void HTTPConnection::onRequestBody(ByteArray data) {
-    ASSERT(!_stream);
     auto stream = fetchStream();
     ASSERT(stream);
-    if (stream->dying()) {
-        _stream = stream;
-    }
     ASSERT(_request);
     _request->setBody(std::move(data));
     auto headers = _request->getHTTPHeaders();
