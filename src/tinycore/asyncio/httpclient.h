@@ -6,9 +6,9 @@
 #define TINYCORE_HTTPCLIENT_H
 
 #include "tinycore/common/common.h"
+#include "tinycore/common/params.h"
 #include <chrono>
 #include <boost/optional.hpp>
-#include <boost/parameter.hpp>
 #include "tinycore/asyncio/httputil.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/iostream.h"
@@ -19,69 +19,9 @@
 #include "tinycore/utilities/string.h"
 
 
-namespace opts {
-BOOST_PARAMETER_NAME(url)
-BOOST_PARAMETER_NAME(method)
-BOOST_PARAMETER_NAME(headers)
-BOOST_PARAMETER_NAME(body)
-BOOST_PARAMETER_NAME(authUserName)
-BOOST_PARAMETER_NAME(authPassword)
-BOOST_PARAMETER_NAME(connectTimeout)
-BOOST_PARAMETER_NAME(requestTimeout)
-BOOST_PARAMETER_NAME(ifModifiedSince)
-BOOST_PARAMETER_NAME(followRedirects)
-BOOST_PARAMETER_NAME(maxRedirects)
-BOOST_PARAMETER_NAME(userAgent)
-BOOST_PARAMETER_NAME(useGzip)
-BOOST_PARAMETER_NAME(networkInterface)
-BOOST_PARAMETER_NAME(streamCallback)
-BOOST_PARAMETER_NAME(headerCallback)
-//BOOST_PARAMETER_NAME(prepareCurlCallback)
-BOOST_PARAMETER_NAME(proxyHost)
-BOOST_PARAMETER_NAME(proxyPort)
-BOOST_PARAMETER_NAME(proxyUserName)
-BOOST_PARAMETER_NAME(proxyPassword)
-BOOST_PARAMETER_NAME(allowNonstandardMethods)
-BOOST_PARAMETER_NAME(validateCert)
-BOOST_PARAMETER_NAME(caCerts)
-BOOST_PARAMETER_NAME(request)
-BOOST_PARAMETER_NAME(code)
-BOOST_PARAMETER_NAME(effectiveURL)
-BOOST_PARAMETER_NAME(error)
-}
-
-#define url_ opts::_url
-#define method_ opts::_method
-#define headers_ opts::_headers
-#define body_ opts::_body
-#define authUserName_ opts::_authUserName
-#define authPassword_ opts::_authPassword
-#define connectTimeout_ opts::_connectTimeout
-#define requestTimeout_ opts::_requestTimeout
-#define ifModifiedSince_ opts::_ifModifiedSince
-#define followRedirects_ opts::_followRedirects
-#define maxRedirects_ opts::_maxRedirects
-#define userAgent_ opts::_userAgent
-#define useGzip_ opts::_useGzip
-#define networkInterface_ opts::_networkInterface
-#define streamCallback_ opts::_streamCallback
-#define headerCallback_ opts::_headerCallback
-#define proxyHost_ opts::_proxyHost
-#define proxyPort_ opts::_proxyPort
-#define proxyUserName_ opts::_proxyUserName
-#define proxyPassword_ opts::_proxyPassword
-#define allowNonstandardMethods_ opts::_allowNonstandardMethods
-#define validateCert_ opts::_validateCert
-#define caCerts_ opts::_caCerts
-#define request_ opts::_request
-#define code_ opts::_code
-#define effectiveURL_ opts::_effectiveURL
-#define error_ opts::_error
-
-
 class HTTPRequestImpl {
 public:
-    typedef std::function<void (ByteArray)> StreamCallbackType;
+    typedef std::function<void (ByteArray)> StreamingCallbackType;
     typedef std::function<void (std::string)> HeaderCallbackType;
 
     template <typename ArgumentPack>
@@ -114,11 +54,13 @@ public:
         _userAgent = args[opts::_userAgent | boost::none];
         _useGzip = args[opts::_useGzip | true];
         _networkInterface = args[opts::_networkInterface | boost::none];
-        _streamCallback = args[opts::_streamCallback | nullptr];
+        _streamingCallback = args[opts::_streamingCallback | nullptr];
         _headerCallback = args[opts::_headerCallback | nullptr];
         _allowNonstandardMethods = args[opts::_allowNonstandardMethods | false];
         _validateCert = args[opts::_validateCert | true];
         _caCerts = args[opts::_caCerts | boost::none];
+        _clientKey = args[opts::_clientKey | boost::none];
+        _clientCert = args[opts::_clientCert | boost::none];
         _startTime = TimestampClock::now();
     }
 
@@ -226,12 +168,12 @@ public:
         return _networkInterface.get_ptr();
     }
 
-    void setStreamCallback(StreamCallbackType streamCallback) {
-        _streamCallback = std::move(streamCallback);
+    void setStreamingCallback(StreamingCallbackType streamingCallback) {
+        _streamingCallback = std::move(streamingCallback);
     }
 
-    const StreamCallbackType& getStreamCallback() const {
-        return _streamCallback;
+    const StreamingCallbackType& getStreamingCallback() const {
+        return _streamingCallback;
     }
 
     void setHeaderCallback(HeaderCallbackType headerCallback) {
@@ -297,6 +239,22 @@ public:
     const std::string* getCACerts() const {
         return _caCerts.get_ptr();
     }
+
+    void setClientKey(std::string clientKey) {
+        _clientKey = std::move(clientKey);
+    }
+
+    const std::string* getClientKey() const {
+        return _clientKey.get_ptr();
+    }
+
+    void setClientCert(std::string clientCert) {
+        _clientCert = std::move(clientCert);
+    }
+
+    const std::string* getClientCert() const {
+        return _clientCert.get_ptr();
+    }
 protected:
     std::string _url;
     std::string _method;
@@ -311,7 +269,7 @@ protected:
     boost::optional<std::string> _userAgent;
     bool _useGzip;
     boost::optional<std::string> _networkInterface;
-    StreamCallbackType _streamCallback;
+    StreamingCallbackType _streamingCallback;
     HeaderCallbackType _headerCallback;
     boost::optional<std::string> _proxyHost;
     boost::optional<unsigned short> _proxyPort;
@@ -320,6 +278,8 @@ protected:
     bool _allowNonstandardMethods;
     bool _validateCert;
     boost::optional<std::string> _caCerts;
+    boost::optional<std::string> _clientKey;
+    boost::optional<std::string> _clientCert;
     Timestamp _startTime;
 };
 
@@ -344,7 +304,7 @@ public:
                     (userAgent, (std::string))
                     (useGzip, (bool))
                     (networkInterface, (std::string))
-                    (streamCallback, (StreamCallbackType))
+                    (streamingCallback, (StreamingCallbackType))
                     (headerCallback, (HeaderCallbackType))
                     (proxyHost, (std::string))
                     (proxyPort, (unsigned short))
@@ -353,7 +313,17 @@ public:
                     (allowNonstandardMethods, (bool))
                     (validateCert, (bool))
                     (caCerts, (std::string))
+                    (clientKey, (std::string))
+                    (clientCert, (std::string))
     ))
+
+    void setOriginalRequest(std::shared_ptr<HTTPRequest> originalRequest) {
+        _originalRequest = std::move(originalRequest);
+    }
+
+    std::shared_ptr<HTTPRequest> getOriginalRequest() const {
+        return _originalRequest;
+    }
 
     static std::shared_ptr<HTTPRequest> create(std::shared_ptr<HTTPRequest> request) {
         return std::make_shared<HTTPRequest>(*request);
@@ -363,6 +333,8 @@ public:
     static std::shared_ptr<HTTPRequest> create(Args&& ...args) {
         return std::make_shared<HTTPRequest>(std::forward<Args>(args)...);
     }
+protected:
+    std::shared_ptr<HTTPRequest> _originalRequest;  
 };
 
 
@@ -375,15 +347,13 @@ public:
         _headers = args[opts::_headers | HTTPHeaders()];
         _body = args[opts::_body | boost::none];
         _effectiveURL = args[opts::_effectiveURL | _request->getURL()];
-        _error = args[opts::_error | boost::none];
+        _error = args[opts::_error | nullptr];
         if (!_error) {
             if (_code < 200 || _code >= 300) {
-                auto iter = HTTPResponses.find(_code);
-                if (iter != HTTPResponses.end()) {
-                    _error = iter->second;
-                }
+                _error = std::make_exception_ptr(MakeException(HTTPError, _code));
             }
         }
+        _requestTime = args[opts::_requestTime | boost::none];
     }
 
     std::shared_ptr<HTTPRequest> getRequest() const {
@@ -406,13 +376,17 @@ public:
         return _effectiveURL;
     }
 
-    const std::string* getError() const {
-        return _error.get_ptr();
+    std::exception_ptr getError() const {
+        return _error;
+    }
+
+    const Duration* getRequestTime() const {
+        return _requestTime.get_ptr();
     }
 
     void rethrow() {
         if (_error) {
-            ThrowException(HTTPError, _code, _error.get());
+            std::rethrow_exception(_error);
         }
     }
 protected:
@@ -421,7 +395,8 @@ protected:
     HTTPHeaders _headers;
     boost::optional<ByteArray> _body;
     std::string _effectiveURL;
-    boost::optional<std::string> _error;
+    std::exception_ptr _error;
+    boost::optional<Duration> _requestTime;
 };
 
 
@@ -436,7 +411,7 @@ public:
                     (headers, (HTTPHeaders))
                     (body, (ByteArray))
                     (effectiveURL, (std::string))
-                    (error, (std::string))
+                    (error, (std::exception_ptr))
     ))
 };
 
@@ -461,8 +436,6 @@ public:
         fetch(request, request, std::move(callback));
     }
 
-    void fetch(std::shared_ptr<HTTPRequest> originalRequest, std::shared_ptr<HTTPRequest> request, CallbackType callback);
-
     template <typename ...Args>
     static std::shared_ptr<HTTPClient> create(Args&& ...args) {
         return std::make_shared<HTTPClient>(std::forward<Args>(args)...);
@@ -485,8 +458,8 @@ class _HTTPConnection: public std::enable_shared_from_this<_HTTPConnection> {
 public:
     typedef HTTPClient::CallbackType CallbackType;
 
-    _HTTPConnection(IOLoop *ioloop, std::shared_ptr<HTTPClient> client, std::shared_ptr<HTTPRequest> originalRequest,
-                    std::shared_ptr<HTTPRequest> request, CallbackType callback);
+    _HTTPConnection(IOLoop *ioloop, std::shared_ptr<HTTPClient> client, std::shared_ptr<HTTPRequest> request,
+                    CallbackType callback);
     ~_HTTPConnection();
     void start();
 
@@ -502,7 +475,7 @@ protected:
     }
 
     void onTimeout();
-    void onConnect(URLParse::SplitResult parsed);
+    void onConnect(URLSplitResult parsed);
     void onClose();
     void onHeaders(ByteArray data);
     void onBody(ByteArray data);
@@ -512,7 +485,6 @@ protected:
     Timestamp _startTime;
     IOLoop *_ioloop;
     std::shared_ptr<HTTPClient> _client;
-    std::shared_ptr<HTTPRequest> _originalRequest;
     std::shared_ptr<HTTPRequest> _request;
     CallbackType _callback;
     boost::optional<int> _code;

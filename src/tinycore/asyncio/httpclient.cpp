@@ -25,24 +25,13 @@ HTTPClient::~HTTPClient() {
 #endif
 }
 
-void HTTPClient::fetch(std::shared_ptr<HTTPRequest> originalRequest, std::shared_ptr<HTTPRequest> request,
-                       CallbackType callback) {
-    auto self = shared_from_this();
-    auto connection = _HTTPConnection::create(_ioloop, self, std::move(originalRequest), std::move(request),
-                                              std::bind(&HTTPClient::onFetchComplete, self, callback,
-                                                        std::placeholders::_1));
-    connection->start();
-}
-
 
 _HTTPConnection::_HTTPConnection(IOLoop *ioloop,
                                  std::shared_ptr<HTTPClient> client,
-                                 std::shared_ptr<HTTPRequest> originalRequest,
                                  std::shared_ptr<HTTPRequest> request,
                                  CallbackType callback)
         : _ioloop(ioloop)
         , _client(std::move(client))
-        , _originalRequest(std::move(originalRequest))
         , _request(std::move(request))
         , _callback(std::move(callback)) {
     _startTime = TimestampClock::now();
@@ -61,8 +50,8 @@ _HTTPConnection::~_HTTPConnection() {
 void _HTTPConnection::start() {
     try {
         auto parsed = URLParse::urlSplit(_request->getURL());
-        const std::string &scheme = std::get<0>(parsed);
-        std::string netloc = std::get<1>(parsed);
+        const std::string &scheme = parsed.getScheme();
+        std::string netloc = parsed.getNetloc();
         if (netloc.find('@') != std::string::npos) {
             std::string userPass, _;
             std::tie(userPass, _, netloc) = String::rpartition(netloc, "@");
@@ -125,7 +114,7 @@ void _HTTPConnection::start() {
         if (_callback) {
             CallbackType callback;
             callback.swap(_callback);
-            callback(HTTPResponse(_request, 599, error_=error));
+            callback(HTTPResponse(_request, 599, opts::_error=error));
         }
     }
 }
@@ -136,7 +125,7 @@ void _HTTPConnection::onTimeout() {
     if (_callback) {
         CallbackType callback;
         callback.swap(_callback);
-        callback(HTTPResponse(_request, 599, error_="Timeout"));
+        callback(HTTPResponse(_request, 599, opts::_error="Timeout"));
     }
     auto stream = fetchStream();
     if (stream) {
@@ -144,7 +133,7 @@ void _HTTPConnection::onTimeout() {
     }
 }
 
-void _HTTPConnection::onConnect(URLParse::SplitResult parsed) {
+void _HTTPConnection::onConnect(URLSplitResult parsed) {
     _ioloop->removeTimeout(_timeout);
     auto self = shared_from_this();
     float requestTimeout = _request->getRequestTimeout();
@@ -172,13 +161,12 @@ void _HTTPConnection::onConnect(URLParse::SplitResult parsed) {
     }
     auto &headers = _request->headers();
     if (!headers.has("Host")) {
-        headers["Host"] = std::get<1>(parsed);
+        headers["Host"] = parsed.getNetloc();
     }
     std::string userName, password;
-    auto result = NetlocParseResult::create(parsed);
-    if (result.getUserName()) {
-        userName = *result.getUserName();
-        password = result.getPassword();
+    if (parsed.getUserName()) {
+        userName = *parsed.getUserName();
+        password = parsed.getPassword();
     } else if (_request->getAuthUserName()) {
         userName = *_request->getAuthUserName();
         password = _request->getAuthPassword();
@@ -206,8 +194,8 @@ void _HTTPConnection::onConnect(URLParse::SplitResult parsed) {
     if (_request->isUseGzip()) {
         headers["Accept-Encoding"] = "gzip";
     }
-    const std::string &parsedPath = std::get<2>(parsed);
-    const std::string &parsedQuery = std::get<3>(parsed);
+    const std::string &parsedPath = parsed.getPath();
+    const std::string &parsedQuery = parsed.getQuery();
     std::string reqPath = parsedPath.empty() ? "/" : parsedPath;
     if (!parsedQuery.empty()) {
         reqPath += '?';
@@ -238,7 +226,7 @@ void _HTTPConnection::onClose() {
     if (_callback) {
         CallbackType callback;
         callback.swap(_callback);
-        callback(HTTPResponse(_request, 599, error_="Connection closed"));
+        callback(HTTPResponse(_request, 599, opts::_error="Connection closed"));
     }
 }
 
@@ -292,13 +280,17 @@ void _HTTPConnection::onBody(ByteArray data) {
         data = _decompressor->decompress(data);
     }
     ByteArray buffer;
-    auto &streamCallback = _request->getStreamCallback();
-    if (streamCallback) {
+    auto &streamingCallback = _request->getStreamingCallback();
+    if (streamingCallback) {
         if (!_chunks) {
-            streamCallback(std::move(data));
+            streamingCallback(std::move(data));
         }
     } else {
         buffer = std::move(data);
+    }
+    auto originalRequest = _request->getOriginalRequest();
+    if (!originalRequest) {
+        originalRequest = _request;
     }
     if (_request->isFollowRedirects() && _request->getMaxRedirects() > 0 && (_code == 301 || _code == 302)) {
         auto newRequest= HTTPRequest::create(_request);
@@ -307,13 +299,14 @@ void _HTTPConnection::onBody(ByteArray data) {
         newRequest->setURL(std::move(url));
         newRequest->setMaxRedirects(_request->getMaxRedirects() - 1);
         newRequest->headers().erase("Host");
+        newRequest->setOriginalRequest(std::move(originalRequest));
         CallbackType callback;
         callback.swap(_callback);
-        _client->fetch(_originalRequest, std::move(newRequest), callback);
+        _client->fetch(std::move(newRequest), callback);
         return;
     }
-    HTTPResponse response(_originalRequest, _code.get(), headers_=*_headers, body_=buffer,
-                          effectiveURL_=_request->getURL());
+    HTTPResponse response(originalRequest, _code.get(), opts::_headers=*_headers, opts::_body=buffer,
+                          opts::_effectiveURL=_request->getURL());
     CallbackType callback;
     callback.swap(_callback);
     callback(response);
@@ -341,9 +334,9 @@ void _HTTPConnection::onChunkData(ByteArray data) {
     if (_decompressor) {
         chunk = _decompressor->decompress(chunk);
     }
-    auto &streamCallback = _request->getStreamCallback();
-    if (streamCallback) {
-        streamCallback(chunk);
+    auto &streamingCallback = _request->getStreamingCallback();
+    if (streamingCallback) {
+        streamingCallback(chunk);
     } else {
         _chunks->insert(_chunks->end(), chunk.begin(), chunk.end());
     }

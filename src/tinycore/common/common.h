@@ -136,7 +136,6 @@ std::unique_ptr<T> make_unique(Args&& ...args) {
 #   define BOOST_ASIO_DISABLE_BUFFER_DEBUGGING
 #endif
 
-#define BOOST_PARAMETER_MAX_ARITY 25
 
 using DateTime = boost::posix_time::ptime;
 using Date = boost::gregorian::date;

@@ -218,7 +218,7 @@ public:
     }
 
     void testRequestTimeout() {
-        HTTPResponse response = fetch("/hang", requestTimeout_=0.1f);
+        HTTPResponse response = fetch("/hang", ARG_requestTimeout=0.1f);
         BOOST_REQUIRE_EQUAL(response.getCode(), 599);
         BOOST_CHECK_EQUAL(*response.getError(), "Timeout");
     }

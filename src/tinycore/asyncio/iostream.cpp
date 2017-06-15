@@ -380,7 +380,7 @@ SSLIOStream::SSLIOStream(SocketType &&socket,
                          size_t readChunkSize)
         : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize)
         , _sslOption(std::move(sslOption))
-        , _sslSocket(_socket, _sslOption->getContext()) {
+        , _sslSocket(_socket, _sslOption->context()) {
 #ifndef NDEBUG
     sWatcher->inc(SYS_SSLIOSTREAM_COUNT);
 #endif

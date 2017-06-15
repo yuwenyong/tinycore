@@ -103,12 +103,18 @@ protected:
 
 class TC_COMMON_API ExceptionHelper {
 public:
-    template <typename Exception, typename... Args>
+    template <typename Error, typename... Args>
     static void throwException(const char *file, int line, const char *func, Args&&... args) {
-        throw Exception(file, line, func, std::forward<Args>(args)...);
+        throw Error(file, line, func, std::forward<Args>(args)...);
+    }
+
+    template <typename Error, typename... Args>
+    static Error makeException(const char *file, int line, const char *func, Args&&... args) {
+        return Error(file, line, func, std::forward<Args>(args)...);
     }
 };
 
 #define ThrowException(Exception, ...) ExceptionHelper::throwException<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define MakeException(Exception, ...) ExceptionHelper::makeException<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 #endif //TINYCORE_ERRORS_H

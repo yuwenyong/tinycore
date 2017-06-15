@@ -9,6 +9,48 @@
 #include "tinycore/common/errors.h"
 
 
+void URLSplitResult::parse() const {
+    std::string netloc = _netloc;
+    auto userPos = netloc.rfind('@');
+    if (userPos != std::string::npos) {
+        std::string userInfo = netloc.substr(0, userPos);
+        auto passwordPos = userInfo.find(':');
+        if (passwordPos != std::string::npos) {
+            _userName = userInfo.substr(0, passwordPos);
+            _password = userInfo.substr(passwordPos + 1);
+        } else {
+            _userName = std::move(userInfo);
+        }
+        netloc = netloc.substr(userPos + 1);
+    }
+    if (netloc.find('[') != std::string::npos && netloc.find(']') != std::string::npos) {
+        auto pos = netloc.find(']');
+        _hostName = boost::to_lower_copy(netloc.substr(1, pos));
+    } else if (netloc.find(':') != std::string::npos) {
+        auto pos = netloc.find(':');
+        _hostName = boost::to_lower_copy(netloc.substr(0, pos));
+    } else if (!netloc.empty()) {
+        _hostName = netloc;
+    }
+    if (netloc.find(']') != std::string::npos) {
+        auto pos = netloc.find(']');
+        netloc = netloc.substr(pos + 1);
+    }
+    if (netloc.find(':') != std::string::npos) {
+        auto pos = netloc.find(':');
+        try {
+            int port = std::stoi(netloc.substr(pos + 1));
+            if (port >=0 && port <= 65535) {
+                _port = (unsigned short)port;
+            }
+        } catch (...) {
+
+        }
+    }
+    _parsed = true;
+}
+
+
 const StringSet URLParse::_usesRelative = {"ftp", "http", "gopher", "nntp", "imap",
                                            "wais", "file", "https", "shttp", "mms",
                                            "prospero", "rtsp", "rtspu", "", "sftp",
@@ -157,28 +199,32 @@ const std::map<char, std::string> URLParse::_safeMap = {
         {'\x79', "y"},  {'\xfa', "%FA"},  {'\x7d', "%7D"},  {'\xfe', "%FE"}
 };
 
-URLParse::ParseResult URLParse::urlParse(const std::string &url, const std::string &scheme, bool allowFragments) {
-    std::string tempScheme, tempURL, netloc, query, fragment, params;
-    std::tie(tempScheme, netloc, tempURL, query, fragment) = urlSplit(url, scheme, allowFragments);
-    if (_usesParams.find(scheme) != _usesParams.end() && tempURL.find(';') != std::string::npos) {
-        std::tie(tempURL, params) = splitParams(tempURL);
+
+URLParseResult URLParse::urlParse(const std::string &url, const std::string &scheme, bool allowFragments) {
+    URLSplitResult split = urlSplit(url, scheme, allowFragments);
+    const std::string &scheme_ = split.getScheme();
+    const std::string &netloc = split.getNetloc();
+    std::string url_ = split.getPath();
+    const std::string &query = split.getQuery();
+    const std::string &fragment = split.getFragment();
+    std::string params;
+    if (_usesParams.find(scheme_) != _usesParams.end() && url_.find(';') != std::string::npos) {
+        std::tie(url_, params) = splitParams(url_);
     }
-    return std::make_tuple(std::move(tempScheme), std::move(netloc), std::move(tempURL), std::move(params),
-                           std::move(query), std::move(fragment));
+    return URLParseResult(scheme_, netloc, std::move(url_), std::move(params), query, fragment);
 }
 
-
-URLParse::SplitResult URLParse::urlSplit(const std::string &url, const std::string &scheme, bool allowFragments) {
-    std::string tempScheme(scheme), tempURL(url), netloc, query, fragment;
+URLSplitResult URLParse::urlSplit(const std::string &url, const std::string &scheme, bool allowFragments) {
+    std::string scheme_(scheme), url_(url), netloc, query, fragment;
     size_t leftBracket, rightBracket, pos;
-    auto i = tempURL.find(':');
+    auto i = url_.find(':');
     if (i != std::string::npos) {
-        std::string temp = tempURL.substr(0, i);
+        std::string temp = url_.substr(0, i);
         if (boost::ilexicographical_compare(temp, "http")) {
-            tempScheme = boost::to_lower_copy(temp);
-            tempURL = tempURL.substr(i + 1);
-            if (boost::starts_with(tempURL, "//")) {
-                std::tie(netloc, tempURL) = splitNetloc(tempURL, 2);
+            scheme_ = boost::to_lower_copy(temp);
+            url_ = url_.substr(i + 1);
+            if (boost::starts_with(url_, "//")) {
+                std::tie(netloc, url_) = splitNetloc(url_, 2);
                 leftBracket = netloc.find('[');
                 rightBracket = netloc.find(']');
                 if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
@@ -187,31 +233,31 @@ URLParse::SplitResult URLParse::urlSplit(const std::string &url, const std::stri
                 }
             }
             if (allowFragments) {
-                pos = tempURL.find('#');
+                pos = url_.find('#');
                 if (pos != std::string::npos) {
-                    fragment = tempURL.substr(pos + 1);
-                    tempURL = tempURL.substr(0, pos);
+                    fragment = url_.substr(pos + 1);
+                    url_ = url_.substr(0, pos);
                 }
             }
-            pos = tempURL.find('?');
+            pos = url_.find('?');
             if (pos != std::string::npos) {
-                query = tempURL.substr(pos + 1);
-                tempURL = tempURL.substr(0, pos);
+                query = url_.substr(pos + 1);
+                url_ = url_.substr(0, pos);
             }
-            return std::make_tuple(std::move(tempScheme), std::move(netloc), std::move(tempURL), std::move(query),
-                                   std::move(fragment));
+            return URLSplitResult(std::move(scheme_), std::move(netloc), std::move(url_), std::move(query),
+                                  std::move(fragment));
         }
         pos = temp.find_first_not_of(_schemeChars);
         if (pos == std::string::npos) {
-            std::string rest = tempURL.substr(i + 1);
+            std::string rest = url_.substr(i + 1);
             if (rest.empty() || rest.find_first_not_of("0123456789") != std::string::npos) {
-                tempScheme = boost::to_lower_copy(temp);
-                tempURL = std::move(rest);
+                scheme_ = boost::to_lower_copy(temp);
+                url_ = std::move(rest);
             }
         }
     }
-    if (boost::starts_with(tempURL, "//")) {
-        std::tie(netloc, tempURL) = splitNetloc(tempURL, 2);
+    if (boost::starts_with(url_, "//")) {
+        std::tie(netloc, url_) = splitNetloc(url_, 2);
         leftBracket = netloc.find('[');
         rightBracket = netloc.find(']');
         if ((leftBracket != std::string::npos && rightBracket == std::string::npos) ||
@@ -220,33 +266,40 @@ URLParse::SplitResult URLParse::urlSplit(const std::string &url, const std::stri
         }
     }
     if (allowFragments) {
-        pos = tempURL.find('#');
+        pos = url_.find('#');
         if (pos != std::string::npos) {
-            fragment = tempURL.substr(pos + 1);
-            tempURL = tempURL.substr(0, pos);
+            fragment = url_.substr(pos + 1);
+            url_ = url_.substr(0, pos);
         }
     }
-    pos = tempURL.find('?');
+    pos = url_.find('?');
     if (pos != std::string::npos) {
-        query = tempURL.substr(pos + 1);
-        tempURL = tempURL.substr(0, pos);
+        query = url_.substr(pos + 1);
+        url_ = url_.substr(0, pos);
     }
-    return std::make_tuple(std::move(tempScheme), std::move(netloc), std::move(tempURL), std::move(query),
-                           std::move(fragment));
+    return URLSplitResult(std::move(scheme_), std::move(netloc), std::move(url_), std::move(query),
+                          std::move(fragment));
 }
 
-std::string URLParse::urlUnparse(const ParseResult &data) {
-    std::string scheme, netloc, url, params, query, fragment;
-    std::tie(scheme, netloc, url, params, query, fragment) = data;
+std::string URLParse::urlUnparse(const URLParseResult &data) {
+    const std::string &scheme = data.getScheme();
+    const std::string &netloc = data.getNetloc();
+    std::string url = data.getPath();
+    const std::string &params = data.getParams();
+    const std::string &query = data.getQuery();
+    const std::string &fragment = data.getFragment();
     if (!params.empty()) {
         url += ';' + params;
     }
-    return urlUnsplit(std::make_tuple(scheme, netloc, url, query, fragment));
+    return urlUnsplit(URLSplitResult(scheme, netloc, std::move(url), query, fragment));
 }
 
-std::string URLParse::urlUnsplit(const SplitResult &data) {
-    std::string scheme, netloc, url, query, fragment;
-    std::tie(scheme, netloc, url, query, fragment) = data;
+std::string URLParse::urlUnsplit(const URLSplitResult &data) {
+    const std::string &scheme = data.getScheme();
+    const std::string &netloc = data.getNetloc();
+    const std::string &query = data.getQuery();
+    const std::string &fragment = data.getFragment();
+    std::string url = data.getPath();
     if (!netloc.empty() || (!scheme.empty() && _usesNetloc.find(scheme) != _usesNetloc.end() &&
                             !boost::starts_with(url, "//"))) {
         if (!url.empty() && url[0] != '/') {
@@ -273,21 +326,37 @@ std::string URLParse::urlJoin(const std::string &base, const std::string &url, b
     if (url.empty()) {
         return base;
     }
+    URLParseResult bparsed = urlParse(base, "", allowFragments);
     std::string bscheme, bnetloc, bpath, bparams, bquery, bfragment;
-    std::tie(bscheme, bnetloc, bpath, bparams, bquery, bfragment) = urlParse(base, "", allowFragments);
+    bscheme = bparsed.getScheme();
+    bnetloc = bparsed.getNetloc();
+    bpath = bparsed.getPath();
+    bparams = bparsed.getParams();
+    bquery = bparsed.getQuery();
+    bfragment = bparsed.getFragment();
+
+    URLParseResult parsed = urlParse(url, bscheme, allowFragments);
     std::string scheme, netloc, path, params, query, fragment;
-    std::tie(scheme, netloc, path, params, query, fragment) = urlParse(url, bscheme, allowFragments);
+    scheme = parsed.getScheme();
+    netloc = parsed.getNetloc();
+    path = parsed.getPath();
+    params = parsed.getParams();
+    query = parsed.getQuery();
+    fragment = parsed.getFragment();
+
     if (scheme != bscheme || _usesRelative.find(scheme) == _usesRelative.end()) {
         return url;
     }
     if (_usesNetloc.find(scheme) != _usesNetloc.end()) {
         if (!netloc.empty()) {
-            return urlUnparse(std::make_tuple(scheme, netloc, path, params, query, fragment));
+            return urlUnparse(URLParseResult(std::move(scheme), std::move(netloc), std::move(path), std::move(params),
+                                             std::move(query), std::move(fragment)));
         }
         netloc = std::move(bnetloc);
     }
     if (!path.empty() && path[0] == '/') {
-        return urlUnparse(std::make_tuple(scheme, netloc, path, params, query, fragment));
+        return urlUnparse(URLParseResult(std::move(scheme), std::move(netloc), std::move(path), std::move(params),
+                                         std::move(query), std::move(fragment)));
     }
     if (path.empty() && params.empty()) {
         path = std::move(bpath);
@@ -295,7 +364,8 @@ std::string URLParse::urlJoin(const std::string &base, const std::string &url, b
         if (query.empty()) {
             query = std::move(bquery);
         }
-        return urlUnparse(std::make_tuple(scheme, netloc, path, params, query, fragment));
+        return urlUnparse(URLParseResult(std::move(scheme), std::move(netloc), std::move(path), std::move(params),
+                                         std::move(query), std::move(fragment)));
     }
     StringVector bpathSplit, pathSplit, segments;
     bpathSplit = String::split(bpath, '/');
@@ -332,14 +402,20 @@ std::string URLParse::urlJoin(const std::string &base, const std::string &url, b
         segments.pop_back();
         segments.back() = "";
     }
-    return urlUnparse(std::make_tuple(scheme, netloc, boost::join(segments, "/"), params, query, fragment));
+    return urlUnparse(URLParseResult(std::move(scheme), std::move(netloc), boost::join(segments, "/"),
+                                     std::move(params), std::move(query), std::move(fragment)));
 }
 
 std::tuple<std::string, std::string> URLParse::urlDefrag(const std::string &url) {
     if (url.find('#') != std::string::npos) {
-        std::string s, n, p, a, q, frag;
-        std::tie(s, n, p, a, q, frag) = urlParse(url);
-        std::string defrag = urlUnparse(std::make_tuple(s, n, p, a, q, ""));
+        URLParseResult parsed = urlParse(url);
+        const std::string &s = parsed.getScheme();
+        const std::string &n = parsed.getNetloc();
+        const std::string &p = parsed.getPath();
+        const std::string &a = parsed.getParams();
+        const std::string &q = parsed.getQuery();
+        const std::string &frag = parsed.getFragment();
+        std::string defrag = urlUnparse(URLParseResult(s, n, p, a, q, ""));
         return std::make_tuple(defrag, frag);
     } else {
         return std::make_tuple(url, "");
@@ -527,46 +603,4 @@ std::tuple<std::string, std::string> URLParse::splitNetloc(const std::string &ur
         }
     }
     return std::make_tuple(url.substr(start, delim - start), url.substr(delim));
-}
-
-
-NetlocParseResult NetlocParseResult::create(std::string netloc) {
-    NetlocParseResult result;
-    auto userPos = netloc.rfind('@');
-    if (userPos != std::string::npos) {
-        std::string userInfo = netloc.substr(0, userPos);
-        auto passwordPos = userInfo.find(':');
-        if (passwordPos != std::string::npos) {
-            result.setUserName(userInfo.substr(0, passwordPos));
-            result.setPassword(userInfo.substr(passwordPos + 1));
-        } else {
-            result.setUserName(std::move(userInfo));
-        }
-        netloc = netloc.substr(userPos + 1);
-    }
-    if (netloc.find('[') != std::string::npos && netloc.find(']') != std::string::npos) {
-        auto pos = netloc.find(']');
-        result.setHostName(boost::to_lower_copy(netloc.substr(1, pos)));
-    } else if (netloc.find(':') != std::string::npos) {
-        auto pos = netloc.find(':');
-        result.setHostName(boost::to_lower_copy(netloc.substr(0, pos)));
-    } else if (!netloc.empty()) {
-        result.setHostName(netloc);
-    }
-    if (netloc.find(']') != std::string::npos) {
-        auto pos = netloc.find(']');
-        netloc = netloc.substr(pos + 1);
-    }
-    if (netloc.find(':') != std::string::npos) {
-        auto pos = netloc.find(':');
-        try {
-            int port = std::stoi(netloc.substr(pos + 1));
-            if (port >=0 && port <= 65535) {
-                result.setPort((unsigned short)port);
-            }
-        } catch (...) {
-
-        }
-    }
-    return result;
 }

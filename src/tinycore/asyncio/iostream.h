@@ -8,7 +8,6 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
-#include <boost/logic/tribool.hpp>
 #include <boost/optional.hpp>
 #include <boost/regex.hpp>
 #include "tinycore/common/errors.h"
@@ -25,10 +24,9 @@ enum class SSLVerifyMode {
 class SSLOption {
 public:
     typedef boost::asio::ssl::context SSLContextType;
-    typedef std::shared_ptr<SSLOption> PtrType;
 
-    SSLOption()
-            : _serverSide(boost::indeterminate)
+    SSLOption(bool serverSide)
+            : _serverSide(true)
             , _context(boost::asio::ssl::context::sslv23) {
         boost::system::error_code ec;
         _context.set_options(boost::asio::ssl::context::no_sslv3, ec);
@@ -38,150 +36,6 @@ public:
 
     }
 
-    void initServerSide(const std::string &certFile) {
-        _serverSide = true;
-        setCertFile(certFile);
-        setKeyFile(certFile);
-    }
-
-    void initServerSide(const std::string &certFile, const std::string &keyFile) {
-        _serverSide = true;
-        setCertFile(certFile);
-        setKeyFile(keyFile);
-    }
-
-    void initServerSideWithPassword(const std::string &certFile, const std::string &password) {
-        _serverSide = true;
-        initServerSide(certFile);
-        setPassword(password);
-    }
-
-    void initServerSideWithPassword(const std::string &certFile, const std::string &keyFile,
-                                    const std::string &password) {
-        _serverSide = true;
-        initServerSide(certFile, keyFile);
-        setPassword(password);
-    }
-
-    void initClientSide(SSLVerifyMode verifyMode = SSLVerifyMode::CERT_REQUIRED) {
-        _serverSide = false;
-        setVerifyMode(verifyMode);
-        _context.set_default_verify_paths();
-    }
-
-    void initClientSide(const std::string &verifyFile) {
-        initClientSide(SSLVerifyMode::CERT_REQUIRED, verifyFile);
-    }
-
-    void initClientSide(SSLVerifyMode verifyMode, const std::string &verifyFile) {
-        _serverSide = false;
-        setVerifyMode(verifyMode);
-        setVerifyFile(verifyFile);
-    }
-
-    void initClientSideWithHost(const std::string &hostName) {
-        initClientSide();
-        setCheckHost(hostName);
-    }
-
-    void initClientSideWithHost(SSLVerifyMode verifyMode, const std::string &hostName) {
-        initClientSide(verifyMode);
-        setCheckHost(hostName);
-    }
-
-    void initClientSideWithHost(const std::string &verifyFile, const std::string &hostName) {
-        initClientSide(verifyFile);
-        setCheckHost(hostName);
-    }
-
-    void initClientSideWithHost(SSLVerifyMode verifyMode, const std::string &verifyFile, const std::string &hostName) {
-        initClientSide(verifyMode, verifyFile);
-        setCheckHost(hostName);
-    }
-
-    bool isClientSide() const {
-        return !_serverSide ? true : false;
-    }
-
-    bool isServerSide() const {
-        return _serverSide ? true: false;
-    }
-
-    SSLContextType &getContext() {
-        return _context;
-    }
-
-    static std::shared_ptr<SSLOption>  createServerSide(const std::string &certFile) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initServerSide(certFile);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createServerSide(const std::string &certFile, const std::string &keyFile) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initServerSide(certFile, keyFile);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createServerSideWithPassword(const std::string &certFile,
-                                                                    const std::string &password) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initServerSideWithPassword(certFile, password);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createServerSideWithPassword(const std::string &certFile,
-                                                                    const std::string &keyFile,
-                                                                    const std::string &password) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initServerSideWithPassword(certFile, keyFile, password);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSide(SSLVerifyMode verifyMode = SSLVerifyMode::CERT_REQUIRED) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSide(verifyMode);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSide(const std::string &verifyFile) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSide(verifyFile);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSide(SSLVerifyMode verifyMode, const std::string &verifyFile) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSide(verifyMode, verifyFile);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSideWithHost(const std::string &hostName) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSideWithHost(hostName);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSideWithHost(SSLVerifyMode verifyMode, const std::string &hostName) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSideWithHost(verifyMode, hostName);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSideWithHost(const std::string &verifyFile,
-                                                                const std::string &hostName) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSideWithHost(verifyFile, hostName);
-        return sslOption;
-    }
-
-    static std::shared_ptr<SSLOption>  createClientSideWithHost(SSLVerifyMode verifyMode, const std::string &verifyFile,
-                                                                const std::string &hostName) {
-        auto sslOption = std::make_shared<SSLOption>();
-        sslOption->initClientSideWithHost(verifyMode, verifyFile, hostName);
-        return sslOption;
-    }
-protected:
     void setCertFile(const std::string &certFile) {
         _context.use_certificate_chain_file(certFile);
     }
@@ -210,11 +64,32 @@ protected:
         _context.load_verify_file(verifyFile);
     }
 
+    void setDefaultVerifyPath() {
+        _context.set_default_verify_paths();
+    }
+
     void setCheckHost(const std::string &hostName) {
         _context.set_verify_callback(boost::asio::ssl::rfc2818_verification(hostName));
     }
 
-    boost::tribool _serverSide;
+    bool isClientSide() const {
+        return !_serverSide;
+    }
+
+    bool isServerSide() const {
+        return _serverSide;
+    }
+
+    SSLContextType &context() {
+        return _context;
+    }
+
+    static std::shared_ptr<SSLOption>  create(bool serverSide= false) {
+        auto sslOption = std::make_shared<SSLOption>(serverSide);
+        return sslOption;
+    }
+protected:
+    bool _serverSide;
     SSLContextType _context;
 };
 
