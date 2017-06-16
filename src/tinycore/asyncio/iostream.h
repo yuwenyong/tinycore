@@ -12,6 +12,7 @@
 #include <boost/regex.hpp>
 #include "tinycore/common/errors.h"
 #include "tinycore/utilities/messagebuffer.h"
+#include "ioloop.h"
 
 
 enum class SSLVerifyMode {
@@ -104,6 +105,7 @@ public:
     typedef boost::asio::ip::tcp::resolver ResolverType;
     typedef boost::asio::ip::tcp::endpoint EndPointType;
 
+    typedef IOLoop::CallbackType CallbackType;
     typedef std::function<void (ByteArray)> ReadCallbackType;
     typedef std::function<void (ByteArray)> StreamingCallbackType;
     typedef std::function<void ()> WriteCallbackType;
@@ -140,11 +142,7 @@ public:
     void readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
     void readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
     void write(const Byte *data, size_t length, WriteCallbackType callback=nullptr);
-
-    void setCloseCallback(CloseCallbackType callback) {
-        _closeCallback = std::move(callback);
-    }
-
+    void setCloseCallback(CloseCallbackType callback);
     void close();
 
     bool reading() const {
@@ -168,6 +166,7 @@ public:
     void onWrite(const boost::system::error_code &error, size_t transferredBytes);
     void onClose(const boost::system::error_code &error);
 protected:
+    void runCallback(CallbackType callback);
     virtual void asyncConnect(const std::string &address, unsigned short port) = 0;
     virtual void asyncRead() = 0;
     virtual void asyncWrite() = 0;

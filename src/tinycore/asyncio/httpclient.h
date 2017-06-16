@@ -420,7 +420,7 @@ class HTTPClient: public std::enable_shared_from_this<HTTPClient> {
 public:
     typedef std::function<void (const HTTPResponse&)> CallbackType;
 
-    HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={});
+    HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={}, size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE);
     ~HTTPClient();
 
     void close() {
@@ -432,17 +432,19 @@ public:
         fetch(HTTPRequest::create(url, std::forward<Args>(args)...), std::move(callback));
     }
 
-    void fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback) {
-        fetch(request, request, std::move(callback));
+    void fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback);
+
+    const StringMap& getHostnameMapping() const {
+        return _hostnameMapping;
+    }
+
+    size_t getMaxBufferSize() const {
+        return _maxBufferSize;
     }
 
     template <typename ...Args>
     static std::shared_ptr<HTTPClient> create(Args&& ...args) {
         return std::make_shared<HTTPClient>(std::forward<Args>(args)...);
-    }
-
-    const StringMap& getHostnameMapping() const {
-        return _hostnameMapping;
     }
 protected:
     void onFetchComplete(CallbackType callback, const HTTPResponse &response) {
@@ -451,6 +453,7 @@ protected:
 
     IOLoop * _ioloop;
     StringMap _hostnameMapping;
+    size_t _maxBufferSize;
 };
 
 

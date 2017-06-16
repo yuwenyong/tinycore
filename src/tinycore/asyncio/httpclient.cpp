@@ -11,9 +11,10 @@
 #include "tinycore/logging/log.h"
 
 
-HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping)
+HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping, size_t maxBufferSize)
         : _ioloop(ioloop ? ioloop : sIOLoop)
-        , _hostnameMapping(std::move(hostnameMapping)) {
+        , _hostnameMapping(std::move(hostnameMapping))
+        , _maxBufferSize(maxBufferSize) {
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPCLIENT_COUNT);
 #endif
@@ -23,6 +24,14 @@ HTTPClient::~HTTPClient() {
 #ifndef NDEBUG
     sWatcher->dec(SYS_HTTPCLIENT_COUNT);
 #endif
+}
+
+void HTTPClient::fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback) {
+    auto self = shared_from_this();
+    auto connection = _HTTPConnection::create(_ioloop, self, std::move(request),
+                                              std::bind(&HTTPClient::onFetchComplete, self, std::move(callback),
+                                                        std::placeholders::_1));
+    connection->start();
 }
 
 
@@ -51,6 +60,9 @@ void _HTTPConnection::start() {
     try {
         auto parsed = URLParse::urlSplit(_request->getURL());
         const std::string &scheme = parsed.getScheme();
+        if (scheme != "http" && scheme != "https") {
+
+        }
         std::string netloc = parsed.getNetloc();
         if (netloc.find('@') != std::string::npos) {
             std::string userPass, _;
