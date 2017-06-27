@@ -40,8 +40,7 @@ void _SignalSet::onSignal(const boost::system::error_code &error, int signalNumb
     if (!error) {
         auto iter = _callbacks.find(signalNumber);
         if (iter != _callbacks.end()) {
-            auto retCode = (iter->second)();
-            if (retCode < 0) {
+            if (!(iter->second)()) {
                 _signalSet.remove(signalNumber);
                 _callbacks.erase(iter);
             }
@@ -90,7 +89,7 @@ void _Timeout::cancel() {
 IOLoop::IOLoop()
         : _ioService()
         , _signalSet(this) {
-
+    setupInterrupter();
 }
 
 IOLoop::~IOLoop() {
@@ -124,6 +123,27 @@ void IOLoop::removeTimeout(Timeout timeout) {
     if (timeoutHandle) {
         timeoutHandle->cancel();
     }
+}
+
+
+void IOLoop::setupInterrupter() {
+    signal(SIGINT, [this](){
+        Log::info("Capture SIGINT");
+        stop();
+        return false;
+    });
+    signal(SIGTERM, [this](){
+        Log::info("Capture SIGTERM");
+        stop();
+        return false;
+    });
+#if defined(SIGQUIT)
+    signal(SIGQUIT, [this](){
+        Log::info("Capture SIGQUIT");
+        stop();
+        return false;
+    });
+#endif
 }
 
 

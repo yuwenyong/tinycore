@@ -123,20 +123,22 @@ public:
     }
 
     std::string getRemoteAddress() const {
-        const auto & end_point = _socket.remote_endpoint();
-        return end_point.address().to_string();
+        const auto & endpoint = _socket.remote_endpoint();
+        return endpoint.address().to_string();
     }
 
     unsigned short getRemotePort() const {
-        const auto & end_point = _socket.remote_endpoint();
-        return end_point.port();
+        const auto & endpoint = _socket.remote_endpoint();
+        return endpoint.port();
     }
 
-    void start() {
-        asyncRead();
-    }
+    virtual void start() = 0;
+    virtual void realConnect(const std::string &address, unsigned short port) = 0;
+    virtual void closeSocket() = 0;
+    virtual void writeToSocket() = 0;
+    virtual void readFromSocket() = 0;
 
-    void connect(const std::string &address, unsigned short port, ConnectCallbackType callback);
+    void connect(const std::string &address, unsigned short port, ConnectCallbackType callback= nullptr);
     void readUntilRegex(const std::string &regex, ReadCallbackType callback);
     void readUntil(std::string delimiter, ReadCallbackType callback);
     void readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
@@ -167,10 +169,6 @@ public:
     void onClose(const boost::system::error_code &error);
 protected:
     void runCallback(CallbackType callback);
-    virtual void asyncConnect(const std::string &address, unsigned short port) = 0;
-    virtual void asyncRead() = 0;
-    virtual void asyncWrite() = 0;
-    virtual void asyncClose() = 0;
 
     size_t readToBuffer(const boost::system::error_code &error, size_t transferredBytes);
     bool readFromBuffer();
@@ -181,6 +179,12 @@ protected:
         }
     }
 
+    void maybeAddErrorListener();
+
+    static constexpr int S_NONE = 0x00;
+    static constexpr int S_READ = 0x01;
+    static constexpr int S_WRITE = 0x04;
+
     SocketType _socket;
     IOLoop *_ioloop;
     size_t _maxBufferSize;
@@ -190,13 +194,15 @@ protected:
     boost::optional<boost::regex> _readRegex;
     boost::optional<size_t> _readBytes;
     bool _readUntilClose{false};
-    bool _closed{false};
     ReadCallbackType _readCallback;
     StreamingCallbackType _streamingCallback;
     WriteCallbackType _writeCallback;
     CloseCallbackType _closeCallback;
     ConnectCallbackType _connectCallback;
     bool _connecting{false};
+    int _state{S_NONE};
+    int _pendingCallbacks{0};
+    bool _closed{false};
 };
 
 
@@ -208,15 +214,16 @@ public:
              size_t readChunkSize = DEFAULT_READ_CHUNK_SIZE);
     virtual ~IOStream();
 
+    void start() override;
+    void realConnect(const std::string &address, unsigned short port) override;
+    void readFromSocket() override;
+    void writeToSocket() override;
+    void closeSocket() override;
+
     template <typename ...Args>
     static std::shared_ptr<IOStream> create(Args&& ...args) {
         return std::make_shared<IOStream>(std::forward<Args>(args)...);
     }
-protected:
-    void asyncConnect(const std::string &address, unsigned short port) override;
-    void asyncRead() override;
-    void asyncWrite() override;
-    void asyncClose() override;
 };
 
 
@@ -231,15 +238,17 @@ public:
                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~SSLIOStream();
 
+    void start() override;
+    void realConnect(const std::string &address, unsigned short port) override;
+    void readFromSocket() override;
+    void writeToSocket() override;
+    void closeSocket() override;
+
     template <typename ...Args>
     static std::shared_ptr<SSLIOStream> create(Args&& ...args) {
         return std::make_shared<SSLIOStream>(std::forward<Args>(args)...);
     }
 protected:
-    void asyncConnect(const std::string &address, unsigned short port) override;
-    void asyncRead() override;
-    void asyncWrite() override;
-    void asyncClose() override;
     void doHandshake();
     void doRead();
     void doWrite();
@@ -247,11 +256,10 @@ protected:
     void onHandshake(const boost::system::error_code &error);
     void onShutdown(const boost::system::error_code &error);
 
-
     std::shared_ptr<SSLOption> _sslOption;
     SSLSocketType _sslSocket;
     bool _handshaking{false};
-    bool _handshaked{false};
+    bool _handshook{false};
 };
 
 

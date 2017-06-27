@@ -8,6 +8,7 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/logging/log.h"
 #include "tinycore/utilities/objectmanager.h"
 
@@ -16,7 +17,7 @@ class IOLoop;
 
 class _SignalSet {
 public:
-    typedef std::function<int ()> CallbackType;
+    typedef std::function<bool()> CallbackType;
 
     _SignalSet(IOLoop *ioloop= nullptr);
     void signal(int signalNumber, CallbackType callback=nullptr);
@@ -69,25 +70,30 @@ public:
 
     template <typename T>
     Timeout addTimeout(T &&deadline, TimeoutCallbackType callback) {
-        auto timeoutHandle = std::make_shared<_Timeout>(this);
-        timeoutHandle->start(std::forward<T>(deadline), [callback, timeoutHandle](const boost::system::error_code &error) {
+        auto timeout = std::make_shared<_Timeout>(this);
+        callback = StackContext::wrap(std::move(callback));
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        auto func = [callback = std::move(callback), timeout = std::move(timeout)](
+                const boost::system::error_code &error) {
             if (!error) {
                 callback();
-            } else {
-#ifndef NDEBUG
-                if (error != boost::asio::error::operation_aborted) {
-                    std::string errorMessage = error.message();
-                    Log::error("ErrorCode:%d,ErrorMessage:%s", error.value(), errorMessage.c_str());
-                }
-#endif
             }
-        });
-        return Timeout(timeoutHandle);
+        };
+#else
+        auto func = std::bind([timeout](TimeoutCallbackType &callback, const boost::system::error_code &error){
+            if (!error) {
+                callback();
+            }
+        }, std::move(callback), std::placeholders::_1);
+#endif
+        timeout->start(std::forward<T>(deadline), std::move(func));
+        return Timeout(timeout);
     }
 
     void removeTimeout(Timeout timeout);
 
     void addCallback(CallbackType callback) {
+        callback = StackContext::wrap(std::move(callback));
         _ioService.post(std::move(callback));
     }
 
@@ -110,6 +116,8 @@ public:
         return _ioService;
     }
 protected:
+    void setupInterrupter();
+
     ServiceType _ioService;
     _SignalSet _signalSet;
     volatile bool _stopped{false};

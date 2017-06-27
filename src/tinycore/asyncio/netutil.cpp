@@ -36,28 +36,25 @@ void TCPServer::stop() {
     _acceptor.close();
 }
 
-void TCPServer::asyncAccept() {
-    _acceptor.async_accept(_socket, [this](const boost::system::error_code &ec) {
-        if (ec) {
-            if (ec != boost::asio::error::operation_aborted) {
-                throw boost::system::system_error(ec);
-            } else {
-                return;
-            }
-        } else {
-            try {
-                std::shared_ptr<BaseIOStream> stream;
-                if (_sslOption) {
-                    stream = SSLIOStream::create(std::move(_socket), _sslOption, _ioloop);
-                } else {
-                    stream = IOStream::create(std::move(_socket), _ioloop);
-                }
-                std::string remoteAddress = stream->getRemoteAddress();
-                handleStream(std::move(stream), std::move(remoteAddress));
-            } catch (std::exception &e) {
-                Log::error("Error in connection callback:%s", e.what());
-            }
-            asyncAccept();
+void TCPServer::onAccept(const boost::system::error_code &ec) {
+    if (ec) {
+        if (ec != boost::asio::error::operation_aborted) {
+            throw boost::system::system_error(ec);
         }
-    });
+    } else {
+        try {
+            std::shared_ptr<BaseIOStream> stream;
+            if (_sslOption) {
+                stream = SSLIOStream::create(std::move(_socket), _sslOption, _ioloop);
+            } else {
+                stream = IOStream::create(std::move(_socket), _ioloop);
+            }
+            stream->start();
+            std::string remoteAddress = stream->getRemoteAddress();
+            handleStream(std::move(stream), std::move(remoteAddress));
+        } catch (std::exception &e) {
+            Log::error("Error in connection callback:%s", e.what());
+        }
+        doAccept();
+    }
 }

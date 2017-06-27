@@ -5,6 +5,7 @@
 #include "tinycore/asyncio/httpserver.h"
 #include <boost/utility/string_ref.hpp>
 #include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/httputils/urlparse.h"
@@ -66,15 +67,16 @@ HTTPConnection::~HTTPConnection() {
 void HTTPConnection::start() {
     auto stream = fetchStream();
     ASSERT(stream);
-    stream->start();
-    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
+    auto headerCallback = StackContext::wrap<ByteArray>(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
+                                                                  std::placeholders::_1));
+    stream->readUntil("\r\n\r\n", std::move(headerCallback));
 }
 
 void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
     ASSERT(fetchRequest(), "Request closed");
     auto stream = fetchStream();
     if (stream && !stream->closed()) {
-        _writeCallback = std::move(callback);
+        _writeCallback = StackContext::wrap(std::move(callback));
         stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
     }
 }

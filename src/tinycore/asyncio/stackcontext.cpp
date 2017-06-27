@@ -6,12 +6,12 @@
 #include <boost/foreach.hpp>
 
 
-std::function<void()> StackState::wrap(std::function<void()> callback) {
-    if (!callback || _contexts.empty()) {
+std::function<void()> StackContext::wrap(std::function<void()> callback) {
+    if (!callback || _state.empty()) {
         return callback;
     }
-    ExceptionHandlers contexts = _contexts;
-    return [callback, contexts](){
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+    auto func = [state=_state, callback=std::move(callback)](){
         std::exception_ptr error;
         try {
             callback();
@@ -19,14 +19,28 @@ std::function<void()> StackState::wrap(std::function<void()> callback) {
             error = std::current_exception();
         }
         if (error) {
-            handleException(contexts, error);
+            handleException(state, error);
         }
     };
+#else
+    auto func = std::bind([](ContextState &state, std::function<void ()> &callback){
+            std::exception_ptr error;
+            try {
+                callback();
+            } catch (...) {
+                error = std::current_exception();
+            }
+            if (error) {
+                handleException(state, error);
+            }
+        }, _state, std::move(callback));
+#endif
+    return func;
 }
 
 
-void StackState::handleException(const ExceptionHandlers &contexts, std::exception_ptr error) {
-    BOOST_REVERSE_FOREACH(const ExceptionHandler &handler, contexts) {
+void StackContext::handleException(const ContextState &state, std::exception_ptr error) {
+    BOOST_REVERSE_FOREACH(const ExceptionHandler &handler, state) {
         try {
             handler(error);
             error = nullptr;
@@ -41,4 +55,4 @@ void StackState::handleException(const ExceptionHandlers &contexts, std::excepti
 }
 
 
-thread_local ExceptionHandlers StackState::_contexts;
+thread_local ContextState StackContext::_state;

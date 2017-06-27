@@ -50,7 +50,7 @@
 #  include <netdb.h>
 #endif
 
-
+#include <boost/config.hpp>
 #include <boost/date_time.hpp>
 
 

@@ -10,31 +10,31 @@
 
 
 typedef std::function<void (std::exception_ptr)> ExceptionHandler;
-typedef std::vector<ExceptionHandler> ExceptionHandlers;
+typedef std::vector<ExceptionHandler> ContextState;
 
 
-class StackState {
+class StackContext {
 public:
     friend class NullContext;
 
     static void push(ExceptionHandler exceptionHandler) {
-        _contexts.emplace_back(std::move(exceptionHandler));
+        _state.emplace_back(std::move(exceptionHandler));
     }
 
     static void pop() {
-        assert(!_contexts.empty());
-        _contexts.pop_back();
+        assert(!_state.empty());
+        _state.pop_back();
     }
 
     static std::function<void()> wrap(std::function<void()> callback);
 
     template<typename... Args>
     static std::function<void (Args...)> wrap(std::function<void (Args...)> callback) {
-        if (!callback || _contexts.empty()) {
+        if (!callback || _state.empty()) {
             return callback;
         }
-        ExceptionHandlers contexts = _contexts;
-        return [callback, contexts](Args... args){
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        auto func = [state=_state, callback=std::move(callback)](Args... args){
             std::exception_ptr error;
             try {
                 callback(std::forward<Args>(args)...);
@@ -42,25 +42,39 @@ public:
                 error = std::current_exception();
             }
             if (error) {
-                handleException(contexts, error);
+                handleException(state, error);
             }
         };
+#else
+        auto func = std::bind([](ContextState &state, std::function<void (Args...)> &callback, Args... args){
+            std::exception_ptr error;
+            try {
+                callback(std::forward<Args>(args)...);
+            } catch (...) {
+                error = std::current_exception();
+            }
+            if (error) {
+                handleException(state, error);
+            }
+        }, _state, std::move(callback));
+#endif
+        return func;
     }
 protected:
-    static void handleException(const ExceptionHandlers &contexts, std::exception_ptr error);
+    static void handleException(const ContextState &state, std::exception_ptr error);
 
-    static thread_local ExceptionHandlers _contexts;
+    static thread_local ContextState _state;
 };
 
 
 class ExceptionStackContext: public boost::noncopyable {
 public:
     ExceptionStackContext(ExceptionHandler exceptionHandler) {
-        StackState::push(std::move(exceptionHandler));
+        StackContext::push(std::move(exceptionHandler));
     }
 
     ~ExceptionStackContext() {
-        StackState::pop();
+        StackContext::pop();
     }
 };
 
@@ -68,14 +82,14 @@ public:
 class NullContext: public boost::noncopyable {
 public:
     NullContext() {
-        StackState::_contexts.swap(_oldContexts);
+        _oldState.swap(StackContext::_state);
     }
 
     ~NullContext() {
-        StackState::_contexts.swap(_oldContexts);
+        StackContext::_state.swap(_oldState);
     }
 protected:
-    ExceptionHandlers _oldContexts
+    ContextState _oldState
 };
 
 
