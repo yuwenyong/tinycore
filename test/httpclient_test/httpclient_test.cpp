@@ -60,11 +60,12 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) override {
-        Asynchronous();
-        auto self = getSelf<HangHandler>();
-        _request->getConnection()->fetchStream()->ioloop()->addTimeout(3.0f, [self](){
+        ASYNC(){
+            _request->getConnection()->fetchStream()->ioloop()->addTimeout(3.0f, [](){
 
-        });
+            });
+        }ASYNC_END
+
     }
 };
 

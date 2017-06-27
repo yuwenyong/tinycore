@@ -13,6 +13,7 @@
 #include <boost/optional.hpp>
 #include <boost/xpressive/xpressive.hpp>
 #include "tinycore/asyncio/httpserver.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
 #include "tinycore/httputils/httplib.h"
@@ -150,8 +151,8 @@ public:
     }
 
     void finish();
-    void sendError(int statusCode = 500, std::exception *error= nullptr);
-    virtual void writeError(int statusCode = 500, std::exception *error= nullptr);
+    void sendError(int statusCode = 500, std::exception_ptr error= nullptr);
+    virtual void writeError(int statusCode = 500, std::exception_ptr error= nullptr);
     void requireSetting(const std::string &name, const std::string &feature="this feature");
 
     template <typename... Args>
@@ -199,7 +200,7 @@ protected:
         return _request->getMethod() + " " + _request->getURI() + " (" + _request->getRemoteIp() + ")";
     }
 
-    void handleRequestException(std::exception *e);
+    void handleRequestException(std::exception_ptr e);
 
     Application *_application;
     std::shared_ptr<HTTPServerRequest> _request;
@@ -229,8 +230,14 @@ public:
 };
 
 #define Asynchronous() { \
-    this->_autoFinish = false; \
+    this->_autoFinish = false; \  
 }
+
+#define ASYNC() { \
+    this->_autoFinish = false; \
+    ExceptionStackContext __ctx(std::bind(&RequestHandler::handleRequestException, shared_from_this(), std::placeholders::_1)); \
+
+#define ASYNC_END }
 
 #define RemoveSlash() { \
     const std::string &path = this->_request->getPath(); \

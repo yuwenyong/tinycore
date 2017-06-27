@@ -94,11 +94,10 @@ public:
 //                                           body_=body, connectTimeout_=30.0f, headers_=headers);
 //        write("Hello world");
 //        FATAL(false, "Exit");
-        Asynchronous()
-        auto client = HTTPClient::create();
-        client->fetch("https://github.com/",
-                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
-
+        ASYNC(){
+            auto client = HTTPClient::create();
+            client->fetch("https://github.com/", std::bind(&HelloWorld::onResp, this, std::placeholders::_1));
+        }ASYNC_END
     }
 
     void onResp(const HTTPResponse &response) {
