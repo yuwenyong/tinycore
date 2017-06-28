@@ -165,8 +165,13 @@ public:
     }
 
     template <typename T>
-    std::shared_ptr<T> getSelf() const {
+    std::shared_ptr<T> getSelf() {
         return std::static_pointer_cast<T>(shared_from_this());
+    }
+
+    template <typename T>
+    std::shared_ptr<const T> getSelf() const {
+        return std::static_pointer_cast<const T>(shared_from_this());
     }
 
     static const StringSet supportedMethods;
@@ -228,10 +233,6 @@ public:
         return requestHandler;
     }
 };
-
-#define Asynchronous() { \
-    this->_autoFinish = false; \  
-}
 
 #define ASYNC() { \
     this->_autoFinish = false; \

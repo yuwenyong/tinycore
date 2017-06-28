@@ -350,7 +350,7 @@ public:
         _error = args[opts::_error | nullptr];
         if (!_error) {
             if (_code < 200 || _code >= 300) {
-                _error = std::make_exception_ptr(MakeException(HTTPError, _code));
+                _error = MakeExceptionPtr(HTTPError, _code);
             }
         }
         _requestTime = args[opts::_requestTime | boost::none];
@@ -418,7 +418,7 @@ public:
 
 class HTTPClient: public std::enable_shared_from_this<HTTPClient> {
 public:
-    typedef std::function<void (const HTTPResponse&)> CallbackType;
+    typedef std::function<void (HTTPResponse)> CallbackType;
 
     HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={}, size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE);
     ~HTTPClient();
@@ -447,10 +447,6 @@ public:
         return std::make_shared<HTTPClient>(std::forward<Args>(args)...);
     }
 protected:
-    void onFetchComplete(CallbackType callback, const HTTPResponse &response) {
-        callback(response);
-    }
-
     IOLoop * _ioloop;
     StringMap _hostnameMapping;
     size_t _maxBufferSize;
@@ -479,6 +475,16 @@ protected:
 
     void onTimeout();
     void onConnect(URLSplitResult parsed);
+
+    void runCallback(HTTPResponse response) {
+        if (_callback) {
+            CallbackType callback;
+            callback.swap(_callback);
+            callback(std::move(response));
+        }
+    }
+
+    void cleanup(std::exception_ptr error);
     void onClose();
     void onHeaders(ByteArray data);
     void onBody(ByteArray data);
@@ -495,7 +501,6 @@ protected:
     boost::optional<ByteArray> _chunks;
     std::unique_ptr<DecompressObj> _decompressor;
     Timeout _timeout;
-    Timeout _connectTimeout;
     std::weak_ptr<BaseIOStream> _stream;
 };
 

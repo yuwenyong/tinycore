@@ -26,17 +26,24 @@ void AsyncTestCase::stop() {
     _stopped = true;
 }
 
-void AsyncTestCase::wait(float timeout, ConditionCallback condition) {
+void AsyncTestCase::wait(int timeout, ConditionCallback condition) {
     if (!_stopped) {
-        if (timeout > 0.000001f) {
-            _ioloop.addTimeout(timeout, [this](){
+        if (timeout > 0) {
+            _ioloop.addTimeout(1.0f * timeout, [this, timeout](){
+                try {
+                    ThrowException(TimeoutError, String::format("Async operation timed out after %d seconds", timeout));
+                } catch (...) {
+                    _failure = std::current_exception();
+                }
                 stop();
-                _failure = true;
             });
         }
         while (true) {
             _running = true;
-            _ioloop.start();
+            do {
+                NullContext ctx;
+                _ioloop.start();
+            } while (false);
             if (_failure || !condition || condition()) {
                 break;
             }
@@ -45,7 +52,7 @@ void AsyncTestCase::wait(float timeout, ConditionCallback condition) {
     ASSERT(_stopped);
     _stopped = false;
     if (_failure) {
-        ThrowException(TimeoutError, String::format("Async operation timed out after %.2f seconds", timeout));
+        std::rethrow_exception(_failure);
     }
 }
 
@@ -70,8 +77,8 @@ void AsyncHTTPTestCase::tearDown() {
 }
 
 HTTPResponse AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request) {
-    _httpClient->fetch(std::move(request), [this](const HTTPResponse &response){
-        stop(response);
+    _httpClient->fetch(std::move(request), [this](HTTPResponse response){
+        stop(std::move(response));
     });
     return waitResult<HTTPResponse>();
 }

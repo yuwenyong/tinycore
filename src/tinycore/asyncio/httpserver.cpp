@@ -67,8 +67,8 @@ HTTPConnection::~HTTPConnection() {
 void HTTPConnection::start() {
     auto stream = fetchStream();
     ASSERT(stream);
-    auto headerCallback = StackContext::wrap<ByteArray>(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
-                                                                  std::placeholders::_1));
+    auto headerCallback = StackContext::wrap(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
+                                                       std::placeholders::_1));
     stream->readUntil("\r\n\r\n", std::move(headerCallback));
 }
 
@@ -265,8 +265,9 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     } else {
         _host = _headers->get("Host", "127.0.0.1");
     }
-    std::string scheme, netloc, fragment;
-    std::tie(scheme, netloc, _path, _query, fragment) = URLParse::urlSplit(_uri);
+    auto parsed = URLParse::urlSplit(_uri);;
+    _path = parsed.getPath();
+    _query = parsed.getQuery();
     _arguments = URLParse::parseQS(_query, false);
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);

@@ -5,6 +5,7 @@
 #include "tinycore/asyncio/httpclient.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/crypto/base64.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
@@ -27,10 +28,7 @@ HTTPClient::~HTTPClient() {
 }
 
 void HTTPClient::fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback) {
-    auto self = shared_from_this();
-    auto connection = _HTTPConnection::create(_ioloop, self, std::move(request),
-                                              std::bind(&HTTPClient::onFetchComplete, self, std::move(callback),
-                                                        std::placeholders::_1));
+    auto connection = _HTTPConnection::create(_ioloop, shared_from_this(), std::move(request), std::move(callback));
     connection->start();
 }
 
@@ -57,16 +55,18 @@ _HTTPConnection::~_HTTPConnection() {
 
 
 void _HTTPConnection::start() {
+    std::exception_ptr error;
     try {
+        ExceptionStackContext ctx(std::bind(&_HTTPConnection::cleanup, shared_from_this(), std::placeholders::_1));
         auto parsed = URLParse::urlSplit(_request->getURL());
         const std::string &scheme = parsed.getScheme();
         if (scheme != "http" && scheme != "https") {
-
+            ThrowException(ValueError, String::format("Unsupported url scheme: %s", _request->getURL().c_str()));
         }
         std::string netloc = parsed.getNetloc();
         if (netloc.find('@') != std::string::npos) {
-            std::string userPass, _;
-            std::tie(userPass, _, netloc) = String::rpartition(netloc, "@");
+            std::string userpass, _;
+            std::tie(userpass, _, netloc) = String::rpartition(netloc, "@");
         }
         const boost::regex hostPort(R"(^(.+):(\d+)$)");
         boost::smatch match;
@@ -92,53 +92,64 @@ void _HTTPConnection::start() {
         std::shared_ptr<BaseIOStream> stream;
         if (scheme == "https") {
             std::shared_ptr<SSLOption> sslOption;
-            auto caCerts = _request->getCACerts();
             if (_request->isValidateCert()) {
-                if (caCerts) {
-                    sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_REQUIRED, *caCerts);
-                } else {
-                    sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_REQUIRED);
+                sslOption->setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
+                auto hostname = parsed.getHostName();
+                if (hostname) {
+                    sslOption->setCheckHost(*hostname);
                 }
             } else {
-                if (caCerts) {
-                    sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_NONE, *caCerts);
-                } else {
-                    sslOption = SSLOption::createClientSide(SSLVerifyMode::CERT_NONE);
-                }
+                sslOption->setVerifyMode(SSLVerifyMode::CERT_NONE);
             }
-            stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop);
+            auto caCerts = _request->getCACerts();
+            if (caCerts) {
+                sslOption->setVerifyFile(*caCerts);
+            } else {
+                sslOption->setDefaultVerifyPath();
+            }
+            auto clientKey = _request->getClientKey();
+            if (clientKey) {
+                sslOption->setKeyFile(*clientKey);
+            }
+            auto clientCert = _request->getClientCert();
+            if (clientCert) {
+                sslOption->setCertFile(*clientCert);
+            }
+            stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop, _client->getMaxBufferSize());
         } else {
-            stream = IOStream::create(std::move(socket), _ioloop);
+            stream = IOStream::create(std::move(socket), _ioloop, _client->getMaxBufferSize());
         }
         _stream = stream;
-        auto self = shared_from_this();
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout > 0.000001f) {
-            _connectTimeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, self));
+            _timeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, this));
         }
-        stream->setCloseCallback([self](){
-            self->onClose();
-        });
-        stream->connect(host, port, std::bind(&_HTTPConnection::onConnect, self, std::move(parsed)));
-    } catch (std::exception &e) {
-        std::string error = e.what();
-        Log::warn("uncaught exception:%s", error.c_str());
-        if (_callback) {
-            CallbackType callback;
-            callback.swap(_callback);
-            callback(HTTPResponse(_request, 599, opts::_error=error));
-        }
+        stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        auto connectCallback = [this, parsed=std::move(parsed)](){
+            onConnect(std::move(parsed));
+        };
+#else
+        auto connectCallback = std::bind([this](URLSplitResult &parsed){
+            onConnect(std::move(parsed));
+        }, std::move(parsed));
+#endif
+        stream->connect(host, port, std::move(connectCallback));
+    } catch (...) {
+        error = std::current_exception();
+    }
+    if (error) {
+        cleanup(error);
     }
 }
 
 const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT", "DELETE"};
 
 void _HTTPConnection::onTimeout() {
-    if (_callback) {
-        CallbackType callback;
-        callback.swap(_callback);
-        callback(HTTPResponse(_request, 599, opts::_error="Timeout"));
-    }
+    _timeout.reset();
+    runCallback(HTTPResponse(_request, 599,
+                             opts::_requestTime=TimestampClock::now() - _startTime,
+                             opts::_error=MakeExceptionPtr(HTTPError, 599, "Timeout")));
     auto stream = fetchStream();
     if (stream) {
         stream->close();
@@ -146,11 +157,13 @@ void _HTTPConnection::onTimeout() {
 }
 
 void _HTTPConnection::onConnect(URLSplitResult parsed) {
-    _ioloop->removeTimeout(_timeout);
-    auto self = shared_from_this();
+    if (!_timeout.expired()) {
+        _ioloop->removeTimeout(_timeout);
+        _timeout.reset();
+    }
     float requestTimeout = _request->getRequestTimeout();
     if (requestTimeout > 0.000001f) {
-        _timeout = _ioloop->addTimeout(requestTimeout, std::bind(&_HTTPConnection::onTimeout, self));
+        _timeout = _ioloop->addTimeout(requestTimeout, std::bind(&_HTTPConnection::onTimeout, this));
     }
     const std::string &method = _request->getMethod();
     if (supportedMethods.find(method) == supportedMethods.end() && !_request->isAllowNonstandardMethods()) {
@@ -192,13 +205,16 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
     if (userAgent) {
         headers["User-Agent"] = *userAgent;
     }
-    bool hasBody = method == "POST" || method == "PUT";
     auto requestBody = _request->getBody();
-    if (hasBody) {
-        ASSERT(requestBody != nullptr);
+    if (!_request->isAllowNonstandardMethods()) {
+        if (method == "POST" || method == "PUT") {
+            ASSERT(requestBody != nullptr);
+        } else {
+            ASSERT(requestBody == nullptr);
+        }
+    }
+    if (requestBody) {
         headers["Content-Length"] = std::to_string(requestBody->size());
-    } else {
-        ASSERT(requestBody == nullptr);
     }
     if (method == "POST" && !headers.has("Content-Type")) {
         headers["Content-Type"] = "application/x-www-form-urlencoded";
@@ -227,24 +243,32 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
     auto stream = fetchStream();
     stream->start();
     stream->write((const Byte *)headerData.data(), headerData.size());
-    if (hasBody) {
+    if (requestBody) {
         stream->write(requestBody->data(), requestBody->size());
     }
-    stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, self, std::placeholders::_1));
+    stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
+}
+
+void _HTTPConnection::cleanup(std::exception_ptr error) {
+    try {
+        std::rethrow_exception(error);
+    } catch (std::exception &e) {
+        Log::warn("uncaught exception:%s", e.what());
+    } catch (...) {
+        Log::warn("unknown exception");
+    }
+    runCallback(HTTPResponse(_request, 599, opts::_error=error));
 }
 
 void _HTTPConnection::onClose() {
-//    fprintf(stderr, "_HTTPConnection::onClose\n");
-    if (_callback) {
-        CallbackType callback;
-        callback.swap(_callback);
-        callback(HTTPResponse(_request, 599, opts::_error="Connection closed"));
-    }
+    runCallback(HTTPResponse(_request, 599,
+                             opts::_requestTime=TimestampClock::now() - _startTime,
+                             opts::_error=MakeExceptionPtr(HTTPError, 599, "Connection closed")));
 }
 
 void _HTTPConnection::onHeaders(ByteArray data) {
     const char *content = (const char *)data.data();
-    const char *eol = StrNStr(content, data.size(), "\r\n");
+    const char *eol = StrNStr(content, data.size(), "\n");
     std::string firstLine, headerData;
     if (eol) {
         firstLine.assign(content, eol);
@@ -257,7 +281,6 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     if (boost::regex_match(firstLine, match, firstLinePattern)) {
         _code = std::stoi(match[1]);
     } else {
-        ASSERT(false);
         ThrowException(Exception, "Unexpected first line");
     }
     _headers = HTTPHeaders::parse(headerData);
@@ -273,21 +296,34 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     auto stream = fetchStream();
     if (_headers->get("Transfer-Encoding") == "chunked") {
         _chunks = ByteArray();
-        stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, shared_from_this(),
-                                            std::placeholders::_1));
+        stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
     } else if (_headers->has("Content-Length")) {
+        if (_headers->at("Content-Length").find(',') != std::string::npos) {
+            const std::string &contentLength = _headers->at("Content-Length");
+            StringVector pieces = String::split(contentLength, ',');
+            for (auto &piece: pieces) {
+                boost::trim(piece);
+            }
+            for (auto &piece: pieces) {
+                if (piece != pieces[0]) {
+                    ThrowException(ValueError, String::format("Multiple unequal Content-Lengths: %s",
+                                                              contentLength.c_str()));
+                }
+            }
+            (*_headers)["Content-Length"] = pieces[0];
+        }
         size_t contentLength = std::stoul(_headers->at("Content-Length"));
-        stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, shared_from_this(),
-                                                   std::placeholders::_1));
+        stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
     } else {
-        std::string error("No Content-length or chunked encoding,don't know how to read ");
-        error += _request->getURL();
-        ThrowException(Exception, error);
+        stream->readUntilClose(std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
     }
 }
 
 void _HTTPConnection::onBody(ByteArray data) {
-    _ioloop->removeTimeout(_timeout);
+    if (!_timeout.expired()) {
+        _ioloop->removeTimeout(_timeout);
+        _timeout.reset();
+    }
     if (_decompressor) {
         data = _decompressor->decompress(data);
     }
@@ -314,7 +350,11 @@ void _HTTPConnection::onBody(ByteArray data) {
         newRequest->setOriginalRequest(std::move(originalRequest));
         CallbackType callback;
         callback.swap(_callback);
-        _client->fetch(std::move(newRequest), callback);
+        _client->fetch(std::move(newRequest), std::move(callback));
+        auto stream = fetchStream();
+        if (stream) {
+            stream->close();
+        }
         return;
     }
     HTTPResponse response(originalRequest, _code.get(), opts::_headers=*_headers, opts::_body=buffer,
@@ -322,6 +362,10 @@ void _HTTPConnection::onBody(ByteArray data) {
     CallbackType callback;
     callback.swap(_callback);
     callback(response);
+    auto stream = fetchStream();
+    if (stream) {
+        stream->close();
+    }
 }
 
 void _HTTPConnection::onChunkLength(ByteArray data) {
@@ -333,8 +377,7 @@ void _HTTPConnection::onChunkLength(ByteArray data) {
         onBody(std::move(_chunks.get()));
     } else {
         auto stream = fetchStream();
-        stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, shared_from_this(),
-                                                std::placeholders::_1));
+        stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, this, std::placeholders::_1));
     }
 }
 
@@ -352,5 +395,5 @@ void _HTTPConnection::onChunkData(ByteArray data) {
     } else {
         _chunks->insert(_chunks->end(), chunk.begin(), chunk.end());
     }
-    stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, shared_from_this(), std::placeholders::_1));
+    stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
 }

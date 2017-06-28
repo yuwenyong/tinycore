@@ -112,9 +112,15 @@ public:
     static Error makeException(const char *file, int line, const char *func, Args&&... args) {
         return Error(file, line, func, std::forward<Args>(args)...);
     }
+
+    template <typename Error, typename... Args>
+    static std::exception_ptr makeExceptionPtr(const char *file, int line, const char *func, Args&&... args) {
+        return std::make_exception_ptr(Error(file, line, func, std::forward<Args>(args)...));
+    }
 };
 
 #define ThrowException(Exception, ...) ExceptionHelper::throwException<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define MakeException(Exception, ...) ExceptionHelper::makeException<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define MakeExceptionPtr(Exception, ...) ExceptionHelper::makeExceptionPtr<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 #endif //TINYCORE_ERRORS_H

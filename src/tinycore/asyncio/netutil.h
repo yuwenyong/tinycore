@@ -32,7 +32,7 @@ public:
     virtual void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) = 0;
 protected:
     void doAccept() {
-        _acceptor.async_accept(_socket, std::bind(&TCPServer::onAccept, this));
+        _acceptor.async_accept(_socket, std::bind(&TCPServer::onAccept, this, std::placeholders::_1));
     }
 
     void onAccept(const boost::system::error_code &ec);

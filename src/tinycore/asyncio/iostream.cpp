@@ -33,7 +33,7 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
 void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     _readRegex = boost::regex(regex);
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
+    _readCallback = StackContext::wrap(std::move(callback));
     if (readFromBuffer()) {
         return;
     }
@@ -46,7 +46,7 @@ void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType cal
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     _readDelimiter = std::move(delimiter);
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
+    _readCallback = StackContext::wrap(std::move(callback));
     if (readFromBuffer()) {
         return;
     }
@@ -59,8 +59,8 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     ASSERT(!_readCallback, "Already reading");
     _readBytes = numBytes;
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
-    _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
+    _readCallback = StackContext::wrap(std::move(callback));
+    _streamingCallback = StackContext::wrap(std::move(streamingCallback));
     if (readFromBuffer()) {
         return;
     }
@@ -73,7 +73,7 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, Streami
 void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     ASSERT(!_readCallback, "Already reading");
     if (closed()) {
-        callback = StackContext::wrap<ByteArray>(std::move(callback));
+        callback = StackContext::wrap(std::move(callback));
         ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
         _readBuffer.readCompleted(_readBuffer.getActiveSize());
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
@@ -89,8 +89,8 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
         return;
     }
     _readUntilClose = true;
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
-    _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
+    _readCallback = StackContext::wrap(std::move(callback));
+    _streamingCallback = StackContext::wrap(std::move(streamingCallback));
     if ((_state & S_READ) == S_NONE) {
         readFromSocket();
     }
@@ -155,7 +155,7 @@ void BaseIOStream::onConnect(const boost::system::error_code &error) {
         }
     }
     _connecting = false;
-    start();
+    maybeAddErrorListener();
 }
 
 void BaseIOStream::onRead(const boost::system::error_code &error, size_t transferredBytes) {
@@ -284,13 +284,13 @@ bool BaseIOStream::readFromBuffer() {
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + bytesToConsume);
             _readBuffer.readCompleted(bytesToConsume);
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [_streamingCallback, data=std::move(data)](){
-                _streamingCallback(std::move(data));
+            auto func = [streamingCallback=_streamingCallback, data=std::move(data)](){
+                streamingCallback(std::move(data));
             };
 #else
-            auto func = std::bind([_streamingCallback](ByteArray &data){
-                _streamingCallback(std::move(data));
-            }, std::move(data));
+            auto func = std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data){
+                streamingCallback(std::move(data));
+            }, _streamingCallback, std::move(data));
 #endif
             runCallback(std::move(func));
         }
@@ -369,13 +369,13 @@ bool BaseIOStream::readFromBuffer() {
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
             _readBuffer.readCompleted(_readBuffer.getActiveSize());
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [_streamingCallback, data=std::move(data)](){
-                _streamingCallback(std::move(data));
+            auto func = [streamingCallback=_streamingCallback, data=std::move(data)](){
+                streamingCallback(std::move(data));
             };
 #else
-            auto func = std::bind([_streamingCallback](ByteArray &data){
-                _streamingCallback(std::move(data));
-            }, std::move(data));
+            auto func = std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data){
+                streamingCallback(std::move(data));
+            }, _streamingCallback, std::move(data));
 #endif
             runCallback(std::move(func));
         }
@@ -412,10 +412,6 @@ IOStream::~IOStream() {
 #ifndef NDEBUG
     sWatcher->dec(SYS_IOSTREAM_COUNT);
 #endif
-}
-
-void IOStream::start() {
-    maybeAddErrorListener();
 }
 
 void IOStream::realConnect(const std::string &address, unsigned short port) {
@@ -468,10 +464,6 @@ SSLIOStream::~SSLIOStream() {
 #endif
 }
 
-void SSLIOStream::start() {
-    doHandshake();
-}
-
 void SSLIOStream::realConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
@@ -481,7 +473,7 @@ void SSLIOStream::realConnect(const std::string &address, unsigned short port) {
 }
 
 void SSLIOStream::readFromSocket() {
-    if (_handshook) {
+    if (_sslAccepted) {
         doRead();
     } else {
         doHandshake();
@@ -489,7 +481,7 @@ void SSLIOStream::readFromSocket() {
 }
 
 void SSLIOStream::writeToSocket() {
-    if (_handshook) {
+    if (_sslAccepted) {
         doWrite();
     } else {
         doHandshake();
@@ -497,7 +489,7 @@ void SSLIOStream::writeToSocket() {
 }
 
 void SSLIOStream::closeSocket() {
-    if (_handshook) {
+    if (_sslAccepted) {
         auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
         _sslSocket.async_shutdown(std::bind(&SSLIOStream::onShutdown, std::move(self), std::placeholders::_1));
     } else {
@@ -506,7 +498,7 @@ void SSLIOStream::closeSocket() {
 }
 
 void SSLIOStream::doHandshake() {
-    if (!_handshook && !_handshaking) {
+    if (!_sslAccepted && !_sslAccepting) {
         auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
         if (_sslOption->isServerSide()) {
 
@@ -518,7 +510,7 @@ void SSLIOStream::doHandshake() {
                                                                                         std::move(self),
                                                                                         std::placeholders::_1));
         }
-        _handshaking = true;
+        _sslAccepting = true;
         _state |= S_WRITE;
     }
 }
@@ -548,7 +540,7 @@ void SSLIOStream::doClose() {
 
 void SSLIOStream::onHandshake(const boost::system::error_code &error) {
     _state &= ~S_WRITE;
-    _handshaking = false;
+    _sslAccepting = false;
     if (error) {
         if (error != boost::asio::error::operation_aborted) {
             Log::warn("SSL error %d :%s, closing connection.", error.value(), error.message());
@@ -556,13 +548,14 @@ void SSLIOStream::onHandshake(const boost::system::error_code &error) {
         close();
         throw boost::system::system_error(error);
     } else {
-        _handshook = true;
+        _sslAccepted = true;
         if (writing()) {
             doWrite();
         }
         if (reading()) {
             doRead();
         }
+        maybeAddErrorListener();
     }
 }
 

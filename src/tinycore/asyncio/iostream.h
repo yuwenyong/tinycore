@@ -132,7 +132,10 @@ public:
         return endpoint.port();
     }
 
-    virtual void start() = 0;
+    void start() {
+        maybeAddErrorListener();
+    }
+
     virtual void realConnect(const std::string &address, unsigned short port) = 0;
     virtual void closeSocket() = 0;
     virtual void writeToSocket() = 0;
@@ -214,7 +217,6 @@ public:
              size_t readChunkSize = DEFAULT_READ_CHUNK_SIZE);
     virtual ~IOStream();
 
-    void start() override;
     void realConnect(const std::string &address, unsigned short port) override;
     void readFromSocket() override;
     void writeToSocket() override;
@@ -238,7 +240,6 @@ public:
                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~SSLIOStream();
 
-    void start() override;
     void realConnect(const std::string &address, unsigned short port) override;
     void readFromSocket() override;
     void writeToSocket() override;
@@ -258,8 +259,8 @@ protected:
 
     std::shared_ptr<SSLOption> _sslOption;
     SSLSocketType _sslSocket;
-    bool _handshaking{false};
-    bool _handshook{false};
+    bool _sslAccepting{false};
+    bool _sslAccepted{false};
 };
 
 

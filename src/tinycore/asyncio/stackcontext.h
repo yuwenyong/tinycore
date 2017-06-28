@@ -7,6 +7,7 @@
 
 #include "tinycore/common/common.h"
 #include <boost/noncopyable.hpp>
+#include <boost/scope_exit.hpp>
 
 
 typedef std::function<void (std::exception_ptr)> ExceptionHandler;
@@ -21,45 +22,23 @@ public:
         _state.emplace_back(std::move(exceptionHandler));
     }
 
+    static void push(const ContextState &state) {
+        _state.insert(_state.end(), state.begin(), state.end());
+    }
+
     static void pop() {
         assert(!_state.empty());
         _state.pop_back();
     }
 
-    static std::function<void()> wrap(std::function<void()> callback);
-
-    template<typename... Args>
-    static std::function<void (Args...)> wrap(std::function<void (Args...)> callback) {
-        if (!callback || _state.empty()) {
-            return callback;
-        }
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        auto func = [state=_state, callback=std::move(callback)](Args... args){
-            std::exception_ptr error;
-            try {
-                callback(std::forward<Args>(args)...);
-            } catch (...) {
-                error = std::current_exception();
-            }
-            if (error) {
-                handleException(state, error);
-            }
-        };
-#else
-        auto func = std::bind([](ContextState &state, std::function<void (Args...)> &callback, Args... args){
-            std::exception_ptr error;
-            try {
-                callback(std::forward<Args>(args)...);
-            } catch (...) {
-                error = std::current_exception();
-            }
-            if (error) {
-                handleException(state, error);
-            }
-        }, _state, std::move(callback));
-#endif
-        return func;
+    static void pop(size_t count) {
+        assert(_state.size() >= count);
+        _state.erase(std::prev(_state.end(), count), _state.end());
     }
+
+    static std::function<void()> wrap(std::function<void()> callback);
+    static std::function<void(ByteArray)> wrap(std::function<void(ByteArray)> callback);
+
 protected:
     static void handleException(const ContextState &state, std::exception_ptr error);
 
@@ -89,7 +68,7 @@ public:
         StackContext::_state.swap(_oldState);
     }
 protected:
-    ContextState _oldState
+    ContextState _oldState;
 };
 
 
