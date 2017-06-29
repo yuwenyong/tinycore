@@ -3,6 +3,7 @@
 //
 
 #include "tinycore/asyncio/testing.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/debugging/trace.h"
 
 

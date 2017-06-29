@@ -8,7 +8,6 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/logging/log.h"
 #include "tinycore/utilities/objectmanager.h"
 
@@ -68,34 +67,27 @@ public:
     ~IOLoop();
     void start();
 
-    template <typename T>
-    Timeout addTimeout(T &&deadline, TimeoutCallbackType callback) {
+    Timeout addTimeout(const Timestamp &deadline, TimeoutCallbackType callback) {
         auto timeout = std::make_shared<_Timeout>(this);
-        callback = StackContext::wrap(std::move(callback));
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        auto func = [callback = std::move(callback), timeout = std::move(timeout)](
-                const boost::system::error_code &error) {
-            if (!error) {
-                callback();
-            }
-        };
-#else
-        auto func = std::bind([timeout](TimeoutCallbackType &callback, const boost::system::error_code &error){
-            if (!error) {
-                callback();
-            }
-        }, std::move(callback), std::placeholders::_1);
-#endif
-        timeout->start(std::forward<T>(deadline), std::move(func));
+        timeout->start(deadline, wrapTimeoutCallback(timeout, std::move(callback)));
+        return Timeout(timeout);
+    }
+
+    Timeout addTimeout(const Duration &deadline, TimeoutCallbackType callback) {
+        auto timeout = std::make_shared<_Timeout>(this);
+        timeout->start(deadline, wrapTimeoutCallback(timeout, std::move(callback)));
+        return Timeout(timeout);
+    }
+
+    Timeout addTimeout(float deadline, TimeoutCallbackType callback) {
+        auto timeout = std::make_shared<_Timeout>(this);
+        timeout->start(deadline, wrapTimeoutCallback(timeout, std::move(callback)));
         return Timeout(timeout);
     }
 
     void removeTimeout(Timeout timeout);
 
-    void addCallback(CallbackType callback) {
-        callback = StackContext::wrap(std::move(callback));
-        _ioService.post(std::move(callback));
-    }
+    void addCallback(CallbackType callback);
 
     void signal(int signalNumber, SignalCallbackType callback= nullptr) {
         _signalSet.signal(signalNumber, std::move(callback));
@@ -116,6 +108,7 @@ public:
         return _ioService;
     }
 protected:
+    _Timeout::CallbackType wrapTimeoutCallback(std::shared_ptr<_Timeout> timeout, TimeoutCallbackType callback);
     void setupInterrupter();
 
     ServiceType _ioService;

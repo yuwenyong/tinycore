@@ -10,7 +10,6 @@
 #include <boost/optional.hpp>
 #include "tinycore/asyncio/httpclient.h"
 #include "tinycore/asyncio/ioloop.h"
-#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/asyncio/web.h"
 #include "tinycore/configuration/options.h"
 
@@ -122,15 +121,15 @@ struct TestCaseFixture {
 #define TINYCORE_TEST_CASE(cls, method, ...)    BOOST_FIXTURE_TEST_CASE(method, TestCaseFixture<cls>) { \
     std::exception_ptr error; \
     try { \
-        ExceptionStackContext ctx([&target](std::exception_ptr error) { \
-            target.handleException(error); \
+        ExceptionStackContext ctx([&](std::exception_ptr error) { \
+            testCase.handleException(std::move(error)); \
         }); \
         testCase.method(##__VA_ARGS__); \
     } catch (...) { \
         error = std::current_exception(); \
     } \
     if (error) { \
-        target.handleException(error); \
+        testCase.handleException(error); \
     } \
 } \
 

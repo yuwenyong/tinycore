@@ -28,8 +28,12 @@ HTTPClient::~HTTPClient() {
 }
 
 void HTTPClient::fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback) {
-    auto connection = _HTTPConnection::create(_ioloop, shared_from_this(), std::move(request), std::move(callback));
-    connection->start();
+    callback = StackContext::wrap(std::move(callback));
+    do {
+        NullContext ctx;
+        auto connection = _HTTPConnection::create(_ioloop, shared_from_this(), std::move(request), std::move(callback));
+        connection->start();
+    } while(false);
 }
 
 
@@ -147,9 +151,8 @@ const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT
 
 void _HTTPConnection::onTimeout() {
     _timeout.reset();
-    runCallback(HTTPResponse(_request, 599,
-                             opts::_requestTime=TimestampClock::now() - _startTime,
-                             opts::_error=MakeExceptionPtr(HTTPError, 599, "Timeout")));
+    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(HTTPError, 599, "Timeout"),
+                             TimestampClock::now() - _startTime));
     auto stream = fetchStream();
     if (stream) {
         stream->close();
@@ -257,13 +260,12 @@ void _HTTPConnection::cleanup(std::exception_ptr error) {
     } catch (...) {
         Log::warn("unknown exception");
     }
-    runCallback(HTTPResponse(_request, 599, opts::_error=error));
+    runCallback(HTTPResponse(_request, 599, error, TimestampClock::now() - _startTime));
 }
 
 void _HTTPConnection::onClose() {
-    runCallback(HTTPResponse(_request, 599,
-                             opts::_requestTime=TimestampClock::now() - _startTime,
-                             opts::_error=MakeExceptionPtr(HTTPError, 599, "Connection closed")));
+    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(HTTPError, 599, "Connection closed"),
+                             TimestampClock::now() - _startTime));
 }
 
 void _HTTPConnection::onHeaders(ByteArray data) {
@@ -272,7 +274,7 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     std::string firstLine, headerData;
     if (eol) {
         firstLine.assign(content, eol);
-        headerData.assign(eol + 2, content + data.size());
+        headerData.assign(eol + 1, content + data.size());
     } else {
         firstLine.assign(content, data.size());
     }
@@ -357,11 +359,9 @@ void _HTTPConnection::onBody(ByteArray data) {
         }
         return;
     }
-    HTTPResponse response(originalRequest, _code.get(), opts::_headers=*_headers, opts::_body=buffer,
-                          opts::_effectiveURL=_request->getURL());
-    CallbackType callback;
-    callback.swap(_callback);
-    callback(response);
+    HTTPResponse response(originalRequest, _code.get(), *_headers, std::move(buffer), _request->getURL(),
+                          TimestampClock::now() - _startTime);
+    runCallback(std::move(response));
     auto stream = fetchStream();
     if (stream) {
         stream->close();

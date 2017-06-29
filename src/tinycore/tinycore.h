@@ -6,6 +6,7 @@
 #define TINYCORE_TINYCORE_H
 
 #include "tinycore/asyncio/httpclient.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/asyncio/testing.h"
 #include "tinycore/asyncio/websocket.h"
 #include "tinycore/common/errors.h"

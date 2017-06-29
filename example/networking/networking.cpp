@@ -94,10 +94,10 @@ public:
 //                                           body_=body, connectTimeout_=30.0f, headers_=headers);
 //        write("Hello world");
 //        FATAL(false, "Exit");
-        ASYNC(){
-            auto client = HTTPClient::create();
-            client->fetch("https://github.com/", std::bind(&HelloWorld::onResp, this, std::placeholders::_1));
-        }ASYNC_END
+//        Asynchronous()
+//        auto client = HTTPClient::create();
+//        client->fetch("https://github.com/", std::bind(&HelloWorld::onResp, this, std::placeholders::_1));
+        write("Hello world");
     }
 
     void onResp(const HTTPResponse &response) {
@@ -126,20 +126,20 @@ int main(int argc, char **argv) {
                             }, "", {}, {
             {"gzip", true},
     });
-//    HTTPServer server(HTTPServerCB(application));
-//    server.listen(3080);
-    if (sIOLoop->running()) {
-        Log::info("Running");
-    } else {
-        Log::info("Stopped");
-    }
-    sIOLoop->addTimeout(1.0f, [](){
-        Log::info("First Timer");
-        sIOLoop->stop();
-    });
-    sIOLoop->addTimeout(10.0f, [](){
-        Log::info("Second Timer");
-    });
+    HTTPServer server(HTTPServerCB(application));
+    server.listen(3080);
+//    if (sIOLoop->running()) {
+//        Log::info("Running");
+//    } else {
+//        Log::info("Stopped");
+//    }
+//    sIOLoop->addTimeout(1.0f, [](){
+//        Log::info("First Timer");
+//        sIOLoop->stop();
+//    });
+//    sIOLoop->addTimeout(10.0f, [](){
+//        Log::info("Second Timer");
+//    });
     sIOLoop->start();
     Log::info("After stop");
     return 0;

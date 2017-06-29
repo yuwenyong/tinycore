@@ -7,15 +7,12 @@
 
 
 std::function<void()> StackContext::wrap(std::function<void()> callback) {
-    if (!callback || _state.empty()) {
+    if (!callback || _state.contexts.empty()) {
         return callback;
     }
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-    auto func = [state=_state, callback=std::move(callback)](){
-        StackContext::push(state);
-        BOOST_SCOPE_EXIT(&state) {
-            StackContext::pop(state.size());
-        } BOOST_SCOPE_EXIT_END
+    return [contexts = _state.contexts, callback = std::move(callback)]() {
+        StackContextSaver saver(contexts);
         std::exception_ptr error;
         try {
             callback();
@@ -23,39 +20,32 @@ std::function<void()> StackContext::wrap(std::function<void()> callback) {
             error = std::current_exception();
         }
         if (error) {
-            StackContext::handleException(state, error);
+            StackContext::handleException(contexts, error);
         }
     };
 #else
-    auto func = std::bind([](ContextState &state, std::function<void ()> &callback){
-            StackContext::push(state);
-            BOOST_SCOPE_EXIT(&state) {
-                StackContext::pop(state.size());
-            } BOOST_SCOPE_EXIT_END
-            std::exception_ptr error;
-            try {
-                callback();
-            } catch (...) {
-                error = std::current_exception();
-            }
-            if (error) {
-                StackContext::handleException(state, error);
-            }
-        }, _state, std::move(callback));
+    return std::bind([](ExceptionHandlers &contexts, std::function<void()> &callback) {
+        StackContextSaver saver(contexts);
+        std::exception_ptr error;
+        try {
+            callback();
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            StackContext::handleException(contexts, error);
+        }
+    }, _state.contexts, std::move(callback));
 #endif
-    return func;
 }
 
 std::function<void(ByteArray)> StackContext::wrap(std::function<void(ByteArray)> callback) {
-    if (!callback || _state.empty()) {
+    if (!callback || _state.contexts.empty()) {
         return callback;
     }
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-    auto func = [state=_state, callback=std::move(callback)](ByteArray arg){
-        StackContext::push(state);
-        BOOST_SCOPE_EXIT(&state) {
-            StackContext::pop(state.size());
-        } BOOST_SCOPE_EXIT_END
+    return [contexts = _state.contexts, callback = std::move(callback)](ByteArray arg) {
+        StackContextSaver saver(contexts);
         std::exception_ptr error;
         try {
             callback(std::move(arg));
@@ -63,33 +53,62 @@ std::function<void(ByteArray)> StackContext::wrap(std::function<void(ByteArray)>
             error = std::current_exception();
         }
         if (error) {
-            StackContext::handleException(state, error);
+            StackContext::handleException(contexts, error);
         }
     };
 #else
-    auto func = std::bind([](ContextState &state, std::function<void (ByteArray)> &callback, ByteArray arg){
-            StackContext::push(state);
-            BOOST_SCOPE_EXIT(&state) {
-                StackContext::pop(state.size());
-            } BOOST_SCOPE_EXIT_END
-            std::exception_ptr error;
-            try {
-                callback(std::move(arg));
-            } catch (...) {
-                error = std::current_exception();
-            }
-            if (error) {
-                StackContext::handleException(state, error);
-            }
-        }, _state, std::move(callback), std::placeholders::_1);
+    return std::bind([](ExceptionHandlers &contexts, std::function<void(ByteArray)> &callback, ByteArray arg) {
+        StackContextSaver saver(contexts);
+        std::exception_ptr error;
+        try {
+            callback(std::move(arg));
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            StackContext::handleException(contexts, error);
+        }
+    }, _state, std::move(callback), std::placeholders::_1);
 #endif
-    return func;
 }
 
-void StackContext::handleException(const ContextState &state, std::exception_ptr error) {
-    BOOST_REVERSE_FOREACH(const ExceptionHandler &handler, state) {
+std::function<void(HTTPResponse)> StackContext::wrap(std::function<void(HTTPResponse)> callback) {
+    if (!callback || _state.contexts.empty()) {
+        return callback;
+    }
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+    return [contexts = _state.contexts, callback = std::move(callback)](HTTPResponse arg) {
+        StackContextSaver saver(contexts);
+        std::exception_ptr error;
         try {
-            handler(error);
+            callback(std::move(arg));
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            StackContext::handleException(contexts, error);
+        }
+    };
+#else
+    return std::bind([](ExceptionHandlers &contexts, std::function<void(HTTPResponse)> &callback, HTTPResponse arg) {
+        StackContextSaver saver(contexts);
+        std::exception_ptr error;
+        try {
+            callback(std::move(arg));
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            StackContext::handleException(contexts, error);
+        }
+    }, _state, std::move(callback), std::placeholders::_1);
+#endif
+}
+
+void StackContext::handleException(const ExceptionHandlers &contexts, std::exception_ptr error) {
+    BOOST_REVERSE_FOREACH(const ExceptionHandler &context, contexts) {
+        try {
+            context(error);
             error = nullptr;
             break;
         } catch (...) {
@@ -101,4 +120,4 @@ void StackContext::handleException(const ContextState &state, std::exception_ptr
     }
 }
 
-thread_local ContextState StackContext::_state;
+thread_local _State StackContext::_state;

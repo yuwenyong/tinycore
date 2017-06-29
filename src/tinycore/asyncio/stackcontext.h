@@ -6,69 +6,67 @@
 #define TINYCORE_STACKCONTEXT_H
 
 #include "tinycore/common/common.h"
-#include <boost/noncopyable.hpp>
-#include <boost/scope_exit.hpp>
+#include "tinycore/asyncio/httpclient.h"
 
 
-typedef std::function<void (std::exception_ptr)> ExceptionHandler;
-typedef std::vector<ExceptionHandler> ContextState;
+using ExceptionHandler = std::function<void (std::exception_ptr)>;
+using ExceptionHandlers = std::vector<ExceptionHandler>;
 
+
+class _State {
+public:
+    ExceptionHandlers contexts;
+};
 
 class StackContext {
 public:
-    friend class NullContext;
-
-    static void push(ExceptionHandler exceptionHandler) {
-        _state.emplace_back(std::move(exceptionHandler));
-    }
-
-    static void push(const ContextState &state) {
-        _state.insert(_state.end(), state.begin(), state.end());
-    }
-
-    static void pop() {
-        assert(!_state.empty());
-        _state.pop_back();
-    }
-
-    static void pop(size_t count) {
-        assert(_state.size() >= count);
-        _state.erase(std::prev(_state.end(), count), _state.end());
-    }
-
     static std::function<void()> wrap(std::function<void()> callback);
     static std::function<void(ByteArray)> wrap(std::function<void(ByteArray)> callback);
+    static std::function<void(HTTPResponse)> wrap(std::function<void(HTTPResponse)> callback);
+    static void handleException(const ExceptionHandlers &contexts, std::exception_ptr error);
 
-protected:
-    static void handleException(const ContextState &state, std::exception_ptr error);
-
-    static thread_local ContextState _state;
+    static thread_local _State _state;
 };
 
 
-class ExceptionStackContext: public boost::noncopyable {
+class StackContextSaver {
+public:
+    StackContextSaver(ExceptionHandlers contexts)
+            : _oldContexts(std::move(contexts)) {
+        _oldContexts.swap(StackContext::_state.contexts);
+    }
+
+    ~StackContextSaver() {
+        StackContext::_state.contexts.swap(_oldContexts);
+    }
+protected:
+    ExceptionHandlers _oldContexts;
+};
+
+
+class ExceptionStackContext {
 public:
     ExceptionStackContext(ExceptionHandler exceptionHandler) {
-        StackContext::push(std::move(exceptionHandler));
+        StackContext::_state.contexts.emplace_back(std::move(exceptionHandler));
     }
 
     ~ExceptionStackContext() {
-        StackContext::pop();
+        StackContext::_state.contexts.pop_back();
     }
 };
 
 
-class NullContext: public boost::noncopyable {
+class NullContext {
 public:
     NullContext() {
-        _oldState.swap(StackContext::_state);
+        _oldContexts.swap(StackContext::_state.contexts);
     }
 
     ~NullContext() {
-        StackContext::_state.swap(_oldState);
+        StackContext::_state.contexts.swap(_oldContexts);
     }
 protected:
-    ContextState _oldState;
+    ExceptionHandlers _oldContexts;
 };
 
 

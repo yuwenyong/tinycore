@@ -338,22 +338,33 @@ protected:
 };
 
 
-class HTTPResponseImpl {
+class HTTPResponse {
 public:
-    template <typename ArgumentPack>
-    HTTPResponseImpl(ArgumentPack const& args) {
-        _request = args[opts::_request];
-        _code = args[opts::_code];
-        _headers = args[opts::_headers | HTTPHeaders()];
-        _body = args[opts::_body | boost::none];
-        _effectiveURL = args[opts::_effectiveURL | _request->getURL()];
-        _error = args[opts::_error | nullptr];
+    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, HTTPHeaders headers, ByteArray body,
+                 std::string effectiveURL, Duration requestTime)
+            : _request(std::move(request))
+            , _code(code)
+            , _headers(std::move(headers))
+            , _body(std::move(body))
+            , _effectiveURL(std::move(effectiveURL))
+            , _requestTime(std::move(requestTime)) {
         if (!_error) {
             if (_code < 200 || _code >= 300) {
                 _error = MakeExceptionPtr(HTTPError, _code);
             }
         }
-        _requestTime = args[opts::_requestTime | boost::none];
+    }
+
+    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, std::exception_ptr error, Duration requestTime)
+            : _request(std::move(request))
+            , _code(code)
+            , _error(std::move(error))
+            , _requestTime(std::move(requestTime)) {
+        if (!_error) {
+            if (_code < 200 || _code >= 300) {
+                _error = MakeExceptionPtr(HTTPError, _code);
+            }
+        }
     }
 
     std::shared_ptr<HTTPRequest> getRequest() const {
@@ -380,8 +391,8 @@ public:
         return _error;
     }
 
-    const Duration* getRequestTime() const {
-        return _requestTime.get_ptr();
+    const Duration& getRequestTime() const {
+        return _requestTime;
     }
 
     void rethrow() {
@@ -396,23 +407,7 @@ protected:
     boost::optional<ByteArray> _body;
     std::string _effectiveURL;
     std::exception_ptr _error;
-    boost::optional<Duration> _requestTime;
-};
-
-
-class HTTPResponse: public HTTPResponseImpl {
-public:
-    BOOST_PARAMETER_CONSTRUCTOR(HTTPResponse, (HTTPResponseImpl), opts::tag, (
-            required
-                    (request, (std::shared_ptr<HTTPRequest>))
-                    (code, (int))
-    )(
-            optional
-                    (headers, (HTTPHeaders))
-                    (body, (ByteArray))
-                    (effectiveURL, (std::string))
-                    (error, (std::exception_ptr))
-    ))
+    Duration _requestTime;
 };
 
 

@@ -13,7 +13,6 @@
 #include <boost/optional.hpp>
 #include <boost/xpressive/xpressive.hpp>
 #include "tinycore/asyncio/httpserver.h"
-#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/compress/gzip.h"
 #include "tinycore/httputils/httplib.h"
@@ -234,13 +233,14 @@ public:
     }
 };
 
-#define ASYNC() { \
-    this->_autoFinish = false; \
-    ExceptionStackContext __ctx(std::bind(&RequestHandler::handleRequestException, shared_from_this(), std::placeholders::_1)); \
 
-#define ASYNC_END }
+#define Asynchronous()  this->_autoFinish = false; \
+    ExceptionStackContext __ctx([this, self = shared_from_this()](std::exception_ptr error) { \
+        handleRequestException(std::move(error)); \
+    });
+    
 
-#define RemoveSlash() { \
+#define RemoveSlash()   { \
     const std::string &path = this->_request->getPath(); \
     if (boost::ends_with(path, "/")) { \
         const std::string &method = this->_request->getMethod(); \
@@ -260,7 +260,7 @@ public:
     } \
 }
 
-#define AddSlash() { \
+#define AddSlash()  { \
     const std::string &path = this->_request->getPath(); \
     if (!boost::ends_with(path, "/")) { \
         const std::string &method = this->_request->getMethod(); \

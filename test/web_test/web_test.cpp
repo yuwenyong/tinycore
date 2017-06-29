@@ -64,9 +64,8 @@ protected:
 
 
 void ConnectionCloseHandler::onGet(StringVector args) {
-    ASYNC() {
-        _test->onHandlerWaiting();
-    }ASYNC_END
+    Asynchronous()
+    _test->onHandlerWaiting();
 }
 
 void ConnectionCloseHandler::onConnectionClose() {
