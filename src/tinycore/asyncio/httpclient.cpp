@@ -95,7 +95,7 @@ void _HTTPConnection::start() {
         BaseIOStream::SocketType socket(_ioloop->getService());
         std::shared_ptr<BaseIOStream> stream;
         if (scheme == "https") {
-            std::shared_ptr<SSLOption> sslOption;
+            auto sslOption = SSLOption::create(false);
             if (_request->isValidateCert()) {
                 sslOption->setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
                 auto hostname = parsed.getHostName();

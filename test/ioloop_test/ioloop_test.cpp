@@ -23,14 +23,18 @@ public:
         BOOST_CHECK(_called);
     }
 
+    void testAddTimeoutTimedelta() {
+        _ioloop.addTimeout(std::chrono::microseconds(1), [this]() {
+            stop();
+        });
+        wait();
+    }
 protected:
     Timestamp _startTime;
     bool _called{false};
 };
 
 
-BOOST_GLOBAL_FIXTURE(GlobalFixture);
-
-BOOST_FIXTURE_TEST_CASE(TestIOLoop, TestCaseFixture<IOLoopTest>) {
-    testCase.testAddCallbackWakeup();
-}
+TINYCORE_TEST_INIT()
+TINYCORE_TEST_CASE(IOLoopTest, testAddCallbackWakeup)
+TINYCORE_TEST_CASE(IOLoopTest, testAddTimeoutTimedelta)

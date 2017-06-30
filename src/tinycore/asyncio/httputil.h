@@ -14,7 +14,7 @@
 class HTTPHeaders {
 public:
     typedef std::map<std::string, StringVector> HeadersContainerType;
-    typedef std::function<void (const std::string&, const std::string &)> CallbackType;
+    typedef std::function<void (const std::string&, const std::string&)> CallbackType;
 
     class HTTPHeadersSetter {
     public:

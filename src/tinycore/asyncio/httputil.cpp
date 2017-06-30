@@ -100,6 +100,8 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
     if (boost::starts_with(boundary, "\"") && boost::ends_with(boundary, "\"")) {
         if (boundary.length() >= 2) {
             boundary = boundary.substr(1, boundary.length() - 2);
+        } else {
+            boundary.clear();
         }
     }
     size_t footerLength;
@@ -118,11 +120,8 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
     HTTPHeaders headers;
     StringMap dispParams;
     decltype(dispParams.begin()) nameIter, fileNameIter;
-    for (; true; beg = cur + sep.size()) {
+    for (; beg < end; beg = cur + sep.size()) {
         cur = std::search(beg, end, (const Byte *)sep.data(), (const Byte *)sep.data() + sep.size());
-        if (cur == end) {
-            break;
-        }
         if (cur == beg) {
             continue;
         }

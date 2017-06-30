@@ -27,7 +27,7 @@ public:
     typedef boost::asio::ssl::context SSLContextType;
 
     SSLOption(bool serverSide)
-            : _serverSide(true)
+            : _serverSide(serverSide)
             , _context(boost::asio::ssl::context::sslv23) {
         boost::system::error_code ec;
         _context.set_options(boost::asio::ssl::context::no_sslv3, ec);

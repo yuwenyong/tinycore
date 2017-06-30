@@ -13,8 +13,12 @@ public:
     using RequestHandler::RequestHandler;
 
     void initialize(ArgsType &args) override {
-        _expectedProtocol = boost::any_cast<std::string>(args["protocol"]);
-        std::cerr << _expectedProtocol << std::endl;
+        if (args.find("protocol") != args.end()) {
+            _expectedProtocol = boost::any_cast<std::string>(args["protocol"]);
+        } else {
+            _expectedProtocol = "http";
+        }
+
     }
 
     void onGet(StringVector args) override {
@@ -83,7 +87,65 @@ public:
     }
 };
 
+
+class HTTPConnectionTest: public AsyncHTTPTestCase {
+public:
+    Application::HandlersType getHandlers() const {
+        Application::HandlersType handlers = {
+                url<HelloWorldRequestHandler>("/hello"),
+        };
+        return handlers;
+    }
+
+    std::unique_ptr<Application> getApp() const override {
+        return make_unique<Application>(getHandlers());
+    }
+
+    void test100Continue() {
+        BaseIOStream::SocketType socket(_ioloop.getService());
+        auto stream = IOStream::create(std::move(socket), &_ioloop);
+        stream->connect("localhost", getHTTPPort(), [this]() {
+            stop();
+        });
+        wait();
+        const char *request = "POST /hello HTTP/1.1\r\nContent-Length: 1024\r\nExpect: 100-continue\r\n\r\n";
+        stream->write((const Byte *)request, strlen(request), [this]() {
+            stop();
+        });
+        wait();
+        stream->readUntil("\r\n\r\n", [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        ByteArray received = waitResult<ByteArray>();
+        std::string data((const char*)received.data(), received.size());
+        BOOST_CHECK(boost::starts_with(data, "HTTP/1.1 100 "));
+        std::string send(1024, 'a');
+        stream->write((const Byte *)send.data(), send.size());
+        stream->readUntil("\r\n", [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        received = waitResult<ByteArray>();
+        std::string firstLine((const char*)received.data(), received.size());
+        BOOST_CHECK(boost::starts_with(firstLine, "HTTP/1.1 200"));
+        stream->readUntil("\r\n\r\n", [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        received = waitResult<ByteArray>();
+        std::string headerData((const char*)received.data(), received.size());
+        auto headers = HTTPHeaders::parse(headerData);
+        size_t contentLength = std::stoul(headers->at("Content-Length"));
+        stream->readBytes(contentLength, [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        received = waitResult<ByteArray>();
+        std::string body((const char*)received.data(), received.size());
+        BOOST_CHECK_EQUAL(body, "Got 1024 bytes in POST");
+    }
+};
+
+
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(SSLTest, testSSL)
 TINYCORE_TEST_CASE(SSLTest, testLargePost)
 TINYCORE_TEST_CASE(SSLTest, testNonSSLRequest)
+TINYCORE_TEST_CASE(HTTPConnectionTest, test100Continue)
