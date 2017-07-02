@@ -184,7 +184,54 @@ public:
         BOOST_CHECK_EQUAL(data, targetData);
         server->close();
         client->close();
-        Log::error("SUCCESS");
+    }
+
+    void testStreamingUntilClose() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        std::vector<ByteArray> chunks, targetChunks;
+        client->readUntilClose([this, &chunks](ByteArray data) {
+            chunks.emplace_back(std::move(data));
+            stop();
+        }, [this, &chunks](ByteArray data) {
+            chunks.emplace_back(std::move(data));
+            stop();
+        });
+        const char *data1 = "1234", *data2 = "5678";
+        server->write((const Byte *)data1, strlen(data1));
+        wait();
+        server->write((const Byte *)data2, strlen(data2));
+        wait();
+        server->close();
+        wait();
+        targetChunks.emplace_back((const Byte *)data1, (const Byte *)data1 + strlen(data1));
+        targetChunks.emplace_back((const Byte *)data2, (const Byte *)data2 + strlen(data2));
+        targetChunks.emplace_back();
+        BOOST_CHECK_EQUAL(chunks, targetChunks);
+        client->close();
+    }
+
+    void testDelayedCloseCallback() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        client->setCloseCallback([this]() {
+            stop();
+        });
+        const char *data1 = "12";
+        server->write((const Byte *)data1, strlen(data1));
+        std::vector<ByteArray> chunks, targetChunks;
+        client->readBytes(1, [&](ByteArray data) {
+            chunks.emplace_back(std::move(data));
+            client->readBytes(1, [&](ByteArray data) {
+                chunks.emplace_back(std::move(data));
+            });
+            server->close();
+        });
+        wait();
+        targetChunks.emplace_back(1, (Byte)'1');
+        targetChunks.emplace_back(1, (Byte)'2');
+        BOOST_CHECK_EQUAL(chunks, targetChunks);
+        client->close();
     }
 };
 
@@ -195,3 +242,5 @@ TINYCORE_TEST_CASE(IOStreamTest, testConnectionRefused)
 TINYCORE_TEST_CASE(IOStreamTest, testConnectionClosed)
 TINYCORE_TEST_CASE(IOStreamTest, testReadUntilClose)
 TINYCORE_TEST_CASE(IOStreamTest, testStreamingCallback)
+TINYCORE_TEST_CASE(IOStreamTest, testStreamingUntilClose)
+TINYCORE_TEST_CASE(IOStreamTest, testDelayedCloseCallback)

@@ -10,21 +10,17 @@
 class TestingTest: public AsyncTestCase {
 public:
     void testExceptionInCallback() {
-        _ioloop.addCallback([](){
+        _ioloop.addCallback([]() {
             ThrowException(Exception, "TestException");
         });
         try {
             wait();
             BOOST_CHECK(false);
         } catch (std::exception &e) {
-
         }
     }
 };
 
 
-BOOST_GLOBAL_FIXTURE(GlobalFixture);
-
-BOOST_FIXTURE_TEST_CASE(TestTesting, TestCaseFixture<TestingTest>) {
-    testCase.testExceptionInCallback();
-}
+TINYCORE_TEST_INIT()
+TINYCORE_TEST_CASE(TestingTest, testExceptionInCallback)

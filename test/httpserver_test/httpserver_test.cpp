@@ -18,7 +18,6 @@ public:
         } else {
             _expectedProtocol = "http";
         }
-
     }
 
     void onGet(StringVector args) override {

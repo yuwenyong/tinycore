@@ -316,10 +316,10 @@ void BaseCookie::parseString(const std::string &str, const boost::regex &patt) {
 }
 
 
-BaseCookie::EncodeResultType SimpleCookie::valueEncode(const std::string &val) {
+BaseCookie::DecodeResultType SimpleCookie::valueDecode(const std::string &val) {
     return std::make_tuple(CookieUtil::unquote(val), val);
 }
 
-BaseCookie::DecodeResultType SimpleCookie::valueDecode(const std::string &val) {
+BaseCookie::EncodeResultType SimpleCookie::valueEncode(const std::string &val) {
     return std::make_tuple(val, CookieUtil::quote(val));
 }

@@ -7,6 +7,113 @@
 #include "tinycore/tinycore.h"
 
 
+BOOST_TEST_DONT_PRINT_LOG_VALUE(StringVector)
+
+
+class SetCookieHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        setCookie("str", "asdf");
+        setCookie("unicode", "qwer");
+        setCookie("bytes", "zxcv");
+    }
+};
+
+
+class GetCookieHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        write(getCookie("foo"));
+    }
+};
+
+
+class SetCookieDomainHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        setCookie("unicode_args", "blah", "foo.com", nullptr, "/foo");
+    }
+};
+
+
+class SetCookieSpecialCharHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        setCookie("equals", "a=b");
+        setCookie("semicolon", "a;b");
+        setCookie("quote", "a\"b");
+    }
+};
+
+
+class CookieTest: public AsyncHTTPTestCase {
+public:
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<SetCookieHandler>("/set"),
+                url<GetCookieHandler>("/get"),
+                url<SetCookieDomainHandler>("/set_domain"),
+                url<SetCookieSpecialCharHandler>("/special_char"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testSetCookie() {
+        HTTPResponse response = fetch("/set");
+        StringVector cookies{"str=asdf; Path=/", "unicode=qwer; Path=/", "bytes=zxcv; Path=/"};
+        BOOST_CHECK_EQUAL(response.getHeaders().getList("Set-Cookie"), cookies);
+    }
+
+    void testGetCookie() {
+        HTTPHeaders headers{{"Cookie", "foo=bar"}};
+        HTTPResponse response = fetch("/get", ARG_headers=headers);
+        const ByteArray *responseBody = response.getBody();
+        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)responseBody->data(), responseBody->size());
+        BOOST_CHECK_EQUAL(body, "bar");
+    }
+
+    void testSetCookieDomain() {
+        HTTPResponse response = fetch("/set_domain");
+        StringVector cookies{"unicode_args=blah; Domain=foo.com; Path=/foo"};
+        BOOST_CHECK_EQUAL(response.getHeaders().getList("Set-Cookie"), cookies);
+    }
+
+    void testCookieSpecialChar() {
+//        HTTPResponse response = fetch("/special_char");
+//        auto headers = response.getHeaders().getList("Set-Cookie");
+//        for (auto &cookie: response.getHeaders().getList("Set-Cookie")) {
+//            std::cerr << cookie << std::endl;
+//        }
+//        BOOST_CHECK_EQUAL(headers.size(), 3);
+//        BOOST_CHECK_EQUAL(headers[0], R"(equals="a=b"; Path=/)");
+//        BOOST_CHECK_EQUAL(headers[1], R"(semicolon="a\073b"; Path=/)");
+//        BOOST_CHECK_EQUAL(headers[2], R"(quote="a\"b"; Path=/)");
+        StringMap data = {{R"(foo=a=b)", "a=b"},
+                          {R"(foo="a=b")", "a=b"},
+                          {R"(foo="a;b")", "a;b"},
+                          {R"(foo="a\073b")", "a;b"},
+                          {R"(foo="a\"b")", "a\"b"}};
+        for (auto &kv: data) {
+            Log::info("trying %s", kv.first.c_str());
+            HTTPHeaders requestHeaders{{"Cookie", kv.first}};
+            HTTPResponse response = fetch("/get", ARG_headers=requestHeaders);
+            const ByteArray *responseBody = response.getBody();
+            BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+            std::string body((const char*)responseBody->data(), responseBody->size());
+            BOOST_CHECK_EQUAL(body, kv.second);
+        }
+    }
+};
+
 class ConnectionCloseTest;
 
 class ConnectionCloseHandler: public RequestHandler {
@@ -154,13 +261,12 @@ public:
     }
 };
 
-BOOST_GLOBAL_FIXTURE(GlobalFixture);
+TINYCORE_TEST_INIT()
+//TINYCORE_TEST_CASE(CookieTest, testSetCookie)
+//TINYCORE_TEST_CASE(CookieTest, testGetCookie)
+//TINYCORE_TEST_CASE(CookieTest, testSetCookieDomain)
+TINYCORE_TEST_CASE(CookieTest, testCookieSpecialChar)
+//TINYCORE_TEST_CASE(ConnectionCloseTest, testConnectionClose)
+//TINYCORE_TEST_CASE(RequestEncodingTest, testQuestionMark)
 
-//BOOST_FIXTURE_TEST_CASE(TestConnectionClose, TestCaseFixture<ConnectionCloseTest>) {
-//    testCase.testConnectionClose();
-//}
-
-BOOST_FIXTURE_TEST_CASE(TestRequestEncoding, TestCaseFixture<RequestEncodingTest>) {
-    testCase.testQuestionMark();
-}
 

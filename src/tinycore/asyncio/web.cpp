@@ -160,7 +160,7 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
     newCookie[name] = value;
     Morsel &morsel = newCookie.at(name);
     if (domain) {
-        morsel["domain"] = value;
+        morsel["domain"] = domain;
     }
     DateTime temp;
     if (expiresDays && !expires) {
@@ -521,7 +521,7 @@ const char* HTTPError::what() const noexcept {
         _what += "\n\t";
         _what += "HTTP ";
         _what += std::to_string(_statusCode);
-        _what += " ";
+        _what += ": ";
         ASSERT(HTTPResponses.find(_statusCode) != HTTPResponses.end());
         _what += HTTPResponses.at(_statusCode);
         std::string what = std::runtime_error::what();

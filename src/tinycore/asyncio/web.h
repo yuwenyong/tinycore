@@ -346,7 +346,7 @@ public:
 
     }
 
-    HTTPError(const char *file, int line, const char *func, int statusCode,const std::string &message)
+    HTTPError(const char *file, int line, const char *func, int statusCode, const std::string &message)
             : Exception(file, line, func, message)
             , _statusCode(statusCode) {
 

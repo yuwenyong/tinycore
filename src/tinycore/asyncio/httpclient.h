@@ -12,7 +12,6 @@
 #include "tinycore/asyncio/httputil.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/iostream.h"
-#include "tinycore/asyncio/web.h"
 #include "tinycore/compress/zlib.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
@@ -284,6 +283,33 @@ protected:
 };
 
 
+class TC_COMMON_API _HTTPError: public Exception {
+public:
+    _HTTPError(const char *file, int line, const char *func, int code)
+            : _HTTPError(file, line, func, code, HTTPResponses.at(code)) {
+
+    }
+
+    _HTTPError(const char *file, int line, const char *func, int code, const std::string &message)
+            : Exception(file, line, func, message)
+            , _code(code) {
+
+    }
+
+    const char *what() const noexcept override;
+
+    const char *getTypeName() const override {
+        return "HTTPError";
+    }
+
+    int getCode() const {
+        return _code;
+    }
+protected:
+    int _code;
+};
+
+
 class HTTPRequest: public HTTPRequestImpl {
 public:
     BOOST_PARAMETER_CONSTRUCTOR(HTTPRequest, (HTTPRequestImpl), opts::tag, (
@@ -340,6 +366,8 @@ protected:
 
 class HTTPResponse {
 public:
+    HTTPResponse() = default; 
+    
     HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, HTTPHeaders headers, ByteArray body,
                  std::string effectiveURL, Duration requestTime)
             : _request(std::move(request))
@@ -350,7 +378,7 @@ public:
             , _requestTime(std::move(requestTime)) {
         if (!_error) {
             if (_code < 200 || _code >= 300) {
-                _error = MakeExceptionPtr(HTTPError, _code);
+                _error = MakeExceptionPtr(_HTTPError, _code);
             }
         }
     }
@@ -362,7 +390,7 @@ public:
             , _requestTime(std::move(requestTime)) {
         if (!_error) {
             if (_code < 200 || _code >= 300) {
-                _error = MakeExceptionPtr(HTTPError, _code);
+                _error = MakeExceptionPtr(_HTTPError, _code);
             }
         }
     }
@@ -402,7 +430,7 @@ public:
     }
 protected:
     std::shared_ptr<HTTPRequest> _request;
-    int _code;
+    int _code{200};
     HTTPHeaders _headers;
     boost::optional<ByteArray> _body;
     std::string _effectiveURL;

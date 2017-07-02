@@ -12,6 +12,25 @@
 #include "tinycore/logging/log.h"
 
 
+const char* _HTTPError::what() const noexcept {
+    if (_what.empty()) {
+        _what += _file;
+        _what += ':';
+        _what += std::to_string(_line);
+        _what += " in ";
+        _what += _func;
+        _what += ' ';
+        _what += getTypeName();
+        _what += "\n\t";
+        _what += "HTTP ";
+        _what += std::to_string(_code);
+        _what += ": ";
+        _what += std::runtime_error::what();
+    }
+    return _what.c_str();
+}
+
+
 HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping, size_t maxBufferSize)
         : _ioloop(ioloop ? ioloop : sIOLoop)
         , _hostnameMapping(std::move(hostnameMapping))
@@ -151,7 +170,7 @@ const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT
 
 void _HTTPConnection::onTimeout() {
     _timeout.reset();
-    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(HTTPError, 599, "Timeout"),
+    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(_HTTPError, 599, "Timeout"),
                              TimestampClock::now() - _startTime));
     auto stream = fetchStream();
     if (stream) {
@@ -264,7 +283,7 @@ void _HTTPConnection::cleanup(std::exception_ptr error) {
 }
 
 void _HTTPConnection::onClose() {
-    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(HTTPError, 599, "Connection closed"),
+    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(_HTTPError, 599, "Connection closed"),
                              TimestampClock::now() - _startTime));
 }
 

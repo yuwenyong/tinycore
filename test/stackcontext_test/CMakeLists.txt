@@ -1,0 +1,4 @@
+
+add_executable(stackcontext_test stackcontext_test.cpp)
+add_dependencies(stackcontext_test tinycore)
+target_link_libraries(stackcontext_test tinycore)
