@@ -66,16 +66,38 @@ public:
         return _statusCode;
     }
 
-    template <typename T>
-    void setHeader(std::string name, T &&value) {
-        std::string converted = convertHeaderValue(std::forward<T>(value));
-        _headers[std::move(name)] = std::move(converted);
+    void setHeader(std::string name, const std::string &value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
+    }
+
+    void setHeader(std::string name, const char *value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
+    }
+
+    void setHeader(std::string name, const DateTime &value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
     }
 
     template <typename T>
-    void addHeader(std::string name, T &&value) {
-        std::string converted = convertHeaderValue(std::forward<T>(value));
-        _listHeaders.emplace_back(std::move(name), std::move(value));
+    void setHeader(std::string name, T value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
+    }
+
+    void addHeader(std::string name, const std::string &value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    void addHeader(std::string name, const char *value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    void addHeader(std::string name, const DateTime &value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    template <typename T>
+    void addHeader(std::string name, T value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
     }
 
     std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;

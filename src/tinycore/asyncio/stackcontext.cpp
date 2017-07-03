@@ -7,102 +7,24 @@
 
 
 std::function<void()> StackContext::wrap(std::function<void()> callback) {
-    if (!callback || _state.contexts.empty()) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<>)) {
         return callback;
     }
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-    return [contexts = _state.contexts, callback = std::move(callback)]() {
-        StackContextSaver saver(contexts);
-        std::exception_ptr error;
-        try {
-            callback();
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            StackContext::handleException(contexts, error);
-        }
-    };
-#else
-    return std::bind([](ExceptionHandlers &contexts, std::function<void()> &callback) {
-        StackContextSaver saver(contexts);
-        std::exception_ptr error;
-        try {
-            callback();
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            StackContext::handleException(contexts, error);
-        }
-    }, _state.contexts, std::move(callback));
-#endif
+    return _StackContextWrapper<>(_state.contexts, std::move(callback));
 }
 
 std::function<void(ByteArray)> StackContext::wrap(std::function<void(ByteArray)> callback) {
-    if (!callback || _state.contexts.empty()) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<ByteArray>)) {
         return callback;
     }
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-    return [contexts = _state.contexts, callback = std::move(callback)](ByteArray arg) {
-        StackContextSaver saver(contexts);
-        std::exception_ptr error;
-        try {
-            callback(std::move(arg));
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            StackContext::handleException(contexts, error);
-        }
-    };
-#else
-    return std::bind([](ExceptionHandlers &contexts, std::function<void(ByteArray)> &callback, ByteArray arg) {
-        StackContextSaver saver(contexts);
-        std::exception_ptr error;
-        try {
-            callback(std::move(arg));
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            StackContext::handleException(contexts, error);
-        }
-    }, _state, std::move(callback), std::placeholders::_1);
-#endif
+    return _StackContextWrapper<ByteArray>(_state.contexts, std::move(callback));
 }
 
 std::function<void(HTTPResponse)> StackContext::wrap(std::function<void(HTTPResponse)> callback) {
-    if (!callback || _state.contexts.empty()) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<HTTPResponse>)) {
         return callback;
     }
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-    return [contexts = _state.contexts, callback = std::move(callback)](HTTPResponse arg) {
-        StackContextSaver saver(contexts);
-        std::exception_ptr error;
-        try {
-            callback(std::move(arg));
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            StackContext::handleException(contexts, error);
-        }
-    };
-#else
-    return std::bind([](ExceptionHandlers &contexts, std::function<void(HTTPResponse)> &callback, HTTPResponse arg) {
-        StackContextSaver saver(contexts);
-        std::exception_ptr error;
-        try {
-            callback(std::move(arg));
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            StackContext::handleException(contexts, error);
-        }
-    }, _state, std::move(callback), std::placeholders::_1);
-#endif
+    return _StackContextWrapper<HTTPResponse>(_state.contexts, std::move(callback));
 }
 
 void StackContext::handleException(const ExceptionHandlers &contexts, std::exception_ptr error) {

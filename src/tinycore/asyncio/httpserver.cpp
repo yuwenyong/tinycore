@@ -67,9 +67,9 @@ HTTPConnection::~HTTPConnection() {
 void HTTPConnection::start() {
     auto stream = fetchStream();
     ASSERT(stream);
-    auto headerCallback = StackContext::wrap(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
-                                                       std::placeholders::_1));
-    stream->readUntil("\r\n\r\n", std::move(headerCallback));
+    _headerCallback = StackContext::wrap(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
+                                                   std::placeholders::_1));
+    stream->readUntil("\r\n\r\n", _headerCallback);
 }
 
 void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
@@ -124,13 +124,17 @@ void HTTPConnection::finishRequest() {
     }
     _request.reset();
     _requestFinished = false;
-    auto stream = fetchStream();
-    ASSERT(stream);
     if (disconnect) {
-        stream->close();
+        close();
         return;
     }
-    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
+    try {
+        auto stream = fetchStream();
+        ASSERT(stream);
+        stream->readUntil("\r\n\r\n", _headerCallback);
+    } catch (IOError &e) {
+        close();
+    }
 }
 
 void HTTPConnection::onHeaders(ByteArray data) {
@@ -170,8 +174,7 @@ void HTTPConnection::onHeaders(ByteArray data) {
                 const char *continueLine = "HTTP/1.1 100 (Continue)\r\n\r\n";
                 stream->write((const Byte *)continueLine, strlen(continueLine));
             }
-            stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, shared_from_this(),
-                                                       std::placeholders::_1));
+            stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, this, std::placeholders::_1));
             return;
         }
         _request->setConnection(shared_from_this());

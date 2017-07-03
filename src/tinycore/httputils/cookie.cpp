@@ -38,21 +38,22 @@ std::string CookieUtil::unquote(const std::string &s) {
     StringVector res;
     ssize_t i = 0, j, k, n = str.length();
     boost::cmatch omatch, qmatch;
+    bool omatched, qmatched;
     while (0 <= i && i < n) {
-        boost::regex_search(str.c_str() + i, str.c_str() + n, omatch, octalPatt);
-        boost::regex_search(str.c_str() + i, str.c_str() + n, qmatch, quotePatt);
-        if (omatch.empty() && qmatch.empty()) {
+        omatched = boost::regex_search(str.c_str() + i, str.c_str() + n, omatch, octalPatt);
+        qmatched = boost::regex_search(str.c_str() + i, str.c_str() + n, qmatch, quotePatt);
+        if (!omatched && !qmatched) {
             res.emplace_back(str.substr(i));
             break;
         }
         j = k = -1;
-        if (!omatch.empty()) {
+        if (omatched) {
             j = i + omatch.position((boost::cmatch::size_type)0);
         }
-        if (!qmatch.empty()) {
+        if (qmatched) {
             k = i + qmatch.position((boost::cmatch::size_type)0);
         }
-        if (!qmatch.empty() && (omatch.empty() || k < j)) {
+        if (qmatched && (!omatched || k < j)) {
             res.emplace_back(str.substr(i, k - i));
             res.emplace_back(1, str[k + 1]);
             i = k + 2;

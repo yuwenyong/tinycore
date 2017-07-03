@@ -43,6 +43,7 @@ class HTTPConnection : public std::enable_shared_from_this<HTTPConnection> {
 public:
     typedef HTTPServer::RequestCallbackType RequestCallbackType;
     typedef std::function<void ()> WriteCallbackType;
+    typedef std::function<void (ByteArray)> HeaderCallbackType;
 
     HTTPConnection(const HTTPConnection &) = delete;
 
@@ -54,6 +55,13 @@ public:
                    bool xheaders = false);
 
     ~HTTPConnection();
+
+    void close() {
+        _headerCallback = nullptr;
+        auto stream = fetchStream();
+        ASSERT(stream);
+        stream->close();
+    }
 
     void start();
 
@@ -99,6 +107,7 @@ protected:
     std::shared_ptr<HTTPServerRequest> _request;
     bool _requestFinished{false};
     WriteCallbackType _writeCallback;
+    HeaderCallbackType _headerCallback;
 };
 
 

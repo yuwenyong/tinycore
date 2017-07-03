@@ -356,8 +356,8 @@ void RequestHandler::handleRequestException(std::exception_ptr error) {
         std::rethrow_exception(error);
     } catch (HTTPError &e) {
         std::string summary = requestSummary();
-        Log::warn("%d %s: %s", _statusCode, summary.c_str(), e.what());
         int statusCode = e.getStatusCode();
+        Log::warn("%d %s: %s", statusCode, summary.c_str(), e.what());
         if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
             Log::error("Bad HTTP status code: %d", statusCode);
             sendError(500, error);

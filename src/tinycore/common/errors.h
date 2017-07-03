@@ -69,8 +69,8 @@ DECLARE_EXCEPTION(IndexError, Exception);
 DECLARE_EXCEPTION(TypeError, Exception);
 DECLARE_EXCEPTION(ValueError, Exception);
 DECLARE_EXCEPTION(IllegalArguments, Exception);
-DECLARE_EXCEPTION(Environment, Exception);
-DECLARE_EXCEPTION(IOError, Environment);
+DECLARE_EXCEPTION(EnvironmentError, Exception);
+DECLARE_EXCEPTION(IOError, EnvironmentError);
 DECLARE_EXCEPTION(EOFError, Exception);
 DECLARE_EXCEPTION(ParsingError, Exception);
 DECLARE_EXCEPTION(DuplicateKey, Exception);
@@ -78,6 +78,7 @@ DECLARE_EXCEPTION(NotFound, Exception);
 DECLARE_EXCEPTION(MemoryError, Exception);
 DECLARE_EXCEPTION(NotImplementedError, Exception);
 DECLARE_EXCEPTION(TimeoutError, Exception);
+DECLARE_EXCEPTION(ZeroDivisionError, Exception);
 
 
 class TC_COMMON_API AssertionError: public Exception {

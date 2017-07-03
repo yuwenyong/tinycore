@@ -18,6 +18,7 @@ public:
     ExceptionHandlers contexts;
 };
 
+
 class StackContext {
 public:
     static std::function<void()> wrap(std::function<void()> callback);
@@ -41,6 +42,37 @@ public:
     }
 protected:
     ExceptionHandlers _oldContexts;
+};
+
+
+template <typename... Args>
+class _StackContextWrapper {
+public:
+    _StackContextWrapper(ExceptionHandlers contexts, std::function<void(Args...)> callback)
+            : _contexts(std::move(contexts))
+            , _callback(std::move(callback)) {
+
+    }
+
+    void operator()(Args&&... args) {
+        StackContextSaver saver(_contexts);
+        if (_contexts.empty()) {
+            _callback(std::forward<Args>(args)...);
+            return;
+        }
+        std::exception_ptr error;
+        try {
+            _callback(std::forward<Args>(args)...);
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            StackContext::handleException(_contexts, error);
+        }
+    }
+protected:
+    ExceptionHandlers _contexts;
+    std::function<void(Args...)> _callback;
 };
 
 
