@@ -69,8 +69,8 @@ DECLARE_EXCEPTION(IndexError, Exception);
 DECLARE_EXCEPTION(TypeError, Exception);
 DECLARE_EXCEPTION(ValueError, Exception);
 DECLARE_EXCEPTION(IllegalArguments, Exception);
-DECLARE_EXCEPTION(Environment, Exception);
-DECLARE_EXCEPTION(IOError, Environment);
+DECLARE_EXCEPTION(EnvironmentError, Exception);
+DECLARE_EXCEPTION(IOError, EnvironmentError);
 DECLARE_EXCEPTION(EOFError, Exception);
 DECLARE_EXCEPTION(ParsingError, Exception);
 DECLARE_EXCEPTION(DuplicateKey, Exception);
@@ -78,6 +78,7 @@ DECLARE_EXCEPTION(NotFound, Exception);
 DECLARE_EXCEPTION(MemoryError, Exception);
 DECLARE_EXCEPTION(NotImplementedError, Exception);
 DECLARE_EXCEPTION(TimeoutError, Exception);
+DECLARE_EXCEPTION(ZeroDivisionError, Exception);
 
 
 class TC_COMMON_API AssertionError: public Exception {
@@ -112,9 +113,15 @@ public:
     static Error makeException(const char *file, int line, const char *func, Args&&... args) {
         return Error(file, line, func, std::forward<Args>(args)...);
     }
+
+    template <typename Error, typename... Args>
+    static std::exception_ptr makeExceptionPtr(const char *file, int line, const char *func, Args&&... args) {
+        return std::make_exception_ptr(Error(file, line, func, std::forward<Args>(args)...));
+    }
 };
 
 #define ThrowException(Exception, ...) ExceptionHelper::throwException<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define MakeException(Exception, ...) ExceptionHelper::makeException<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define MakeExceptionPtr(Exception, ...) ExceptionHelper::makeExceptionPtr<Exception>(__FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 #endif //TINYCORE_ERRORS_H

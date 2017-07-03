@@ -66,16 +66,38 @@ public:
         return _statusCode;
     }
 
-    template <typename T>
-    void setHeader(std::string name, T &&value) {
-        std::string converted = convertHeaderValue(std::forward<T>(value));
-        _headers[std::move(name)] = std::move(converted);
+    void setHeader(std::string name, const std::string &value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
+    }
+
+    void setHeader(std::string name, const char *value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
+    }
+
+    void setHeader(std::string name, const DateTime &value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
     }
 
     template <typename T>
-    void addHeader(std::string name, T &&value) {
-        std::string converted = convertHeaderValue(std::forward<T>(value));
-        _listHeaders.emplace_back(std::move(name), std::move(value));
+    void setHeader(std::string name, T value) {
+        _headers[std::move(name)] = convertHeaderValue(value);
+    }
+
+    void addHeader(std::string name, const std::string &value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    void addHeader(std::string name, const char *value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    void addHeader(std::string name, const DateTime &value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    template <typename T>
+    void addHeader(std::string name, T value) {
+        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
     }
 
     std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
@@ -150,8 +172,8 @@ public:
     }
 
     void finish();
-    void sendError(int statusCode = 500, std::exception *error= nullptr);
-    virtual void writeError(int statusCode = 500, std::exception *error= nullptr);
+    void sendError(int statusCode = 500, std::exception_ptr error= nullptr);
+    virtual void writeError(int statusCode = 500, std::exception_ptr error= nullptr);
     void requireSetting(const std::string &name, const std::string &feature="this feature");
 
     template <typename... Args>
@@ -164,8 +186,13 @@ public:
     }
 
     template <typename T>
-    std::shared_ptr<T> getSelf() const {
+    std::shared_ptr<T> getSelf() {
         return std::static_pointer_cast<T>(shared_from_this());
+    }
+
+    template <typename T>
+    std::shared_ptr<const T> getSelf() const {
+        return std::static_pointer_cast<const T>(shared_from_this());
     }
 
     static const StringSet supportedMethods;
@@ -199,7 +226,7 @@ protected:
         return _request->getMethod() + " " + _request->getURI() + " (" + _request->getRemoteIp() + ")";
     }
 
-    void handleRequestException(std::exception *e);
+    void handleRequestException(std::exception_ptr e);
 
     Application *_application;
     std::shared_ptr<HTTPServerRequest> _request;
@@ -228,11 +255,14 @@ public:
     }
 };
 
-#define Asynchronous() { \
-    this->_autoFinish = false; \
-}
 
-#define RemoveSlash() { \
+#define Asynchronous()  this->_autoFinish = false; \
+    ExceptionStackContext __ctx([this, self = shared_from_this()](std::exception_ptr error) { \
+        handleRequestException(std::move(error)); \
+    });
+    
+
+#define RemoveSlash()   { \
     const std::string &path = this->_request->getPath(); \
     if (boost::ends_with(path, "/")) { \
         const std::string &method = this->_request->getMethod(); \
@@ -252,7 +282,7 @@ public:
     } \
 }
 
-#define AddSlash() { \
+#define AddSlash()  { \
     const std::string &path = this->_request->getPath(); \
     if (!boost::ends_with(path, "/")) { \
         const std::string &method = this->_request->getMethod(); \
@@ -338,7 +368,7 @@ public:
 
     }
 
-    HTTPError(const char *file, int line, const char *func, int statusCode,const std::string &message)
+    HTTPError(const char *file, int line, const char *func, int statusCode, const std::string &message)
             : Exception(file, line, func, message)
             , _statusCode(statusCode) {
 

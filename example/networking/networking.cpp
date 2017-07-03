@@ -86,61 +86,73 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) {
-//        StringMap formArgs = {{"name", "not sb"}, };
-//        std::string formString = URLParse::urlEncode(formArgs);
-//        ByteArray body(formString.data(), formString.data() + formString.size());
-//        HTTPHeaders headers;
-//        auto request = HTTPRequest::create("http://localhost:3030/", followRedirects_=false, method_="POST",
-//                                           body_=body, connectTimeout_=30.0f, headers_=headers);
-//        write("Hello world");
-//        FATAL(false, "Exit");
         Asynchronous()
-        auto client = HTTPClient::create();
-        client->fetch("https://github.com/",
-                      std::bind(&HelloWorld::onResp, getSelf<HelloWorld>(), std::placeholders::_1));
-
+        Log::info("onGet");
+        HTTPClient::create()->fetch("http://www.csdn.net/", std::bind(&HelloWorld::onStep1, this,
+                                                                      std::placeholders::_1));
     }
 
-    void onResp(const HTTPResponse &response) {
-        const ByteArray *body = response.getBody();
-        if (body) {
-            std::string message((const char *)body->data(), body->size());
-            Log::info("HTTP code:%d", response.getCode());
-            Log::info("Message:%s", message.c_str());
-        } else {
-            Log::error("No body found");
-        }
-
-        write("Hello world");
-        finish();
+    void onStep1(HTTPResponse response) {
+        Log::info("onStep1");
+        HTTPClient::create()->fetch("http://www.csdn.net/", std::bind(&HelloWorld::onStep2, this,
+                                                                      std::placeholders::_1));
     }
+
+    void onStep2(HTTPResponse response) {
+        Log::info("onStep2");
+        auto name = getArgument("name");
+        finish(String::format("Your name is %s", name.c_str()));
+    }
+};
+
+
+template <typename... Args>
+class WP {
+public:
+    WP(std::function<int (Args...)> foo): _foo(std::move(foo)) {}
+
+    int operator()(Args&&... args) {
+        return _foo(std::forward<Args>(args)...);
+    }
+
+protected:
+    std::function<int (Args...)> _foo;
 };
 
 
 int main(int argc, char **argv) {
 //    sConfigMgr->setString("Appender.Console", "Console,1,7");
     ParseCommandLine(argc, argv);
+
+//    std::function<int (int, int)> foo = [](int a, int b) {
+//        return a + b;
+//    };
+//    std::cerr << foo.target_type().name() << std::endl;
+//    if (foo.target_type() == typeid(WP<>)) {
+//        std::cerr << "Cast success" << std::endl;
+//    } else {
+//        std::cerr << "Cast fail" << std::endl;
+//    }
+//    foo = WP<int, int>(std::move(foo));
+//    std::cerr << foo.target_type().name() << std::endl;
+//    if (foo.target_type() == typeid(WP<int, int>)) {
+//        std::cerr << "Cast success" << std::endl;
+//    } else {
+//        std::cerr << "Cast fail" << std::endl;
+//    }
+//
+//    std::function<int (int, int)> bar = foo;
+//    if (bar.target_type() == typeid(WP<int, int>)) {
+//        std::cerr << "Cast success" << std::endl;
+//    } else {
+//        std::cerr << "Cast fail" << std::endl;
+//    }
+
     Application application({
                                     url<HelloWorld>("/"),
-                                    url<Book>(R"(/books/(\w+)/)"),
-                                    url<ChatUser>("/chat"),
-                            }, "", {}, {
-            {"gzip", true},
-    });
-//    HTTPServer server(HTTPServerCB(application));
-//    server.listen(3080);
-    if (sIOLoop->running()) {
-        Log::info("Running");
-    } else {
-        Log::info("Stopped");
-    }
-    sIOLoop->addTimeout(1.0f, [](){
-        Log::info("First Timer");
-        sIOLoop->stop();
-    });
-    sIOLoop->addTimeout(10.0f, [](){
-        Log::info("Second Timer");
-    });
+                            });
+    HTTPServer server(HTTPServerCB(application));
+    server.listen(3080);
     sIOLoop->start();
     Log::info("After stop");
     return 0;

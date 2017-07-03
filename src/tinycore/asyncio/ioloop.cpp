@@ -3,6 +3,7 @@
 //
 
 #include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
 
@@ -40,8 +41,7 @@ void _SignalSet::onSignal(const boost::system::error_code &error, int signalNumb
     if (!error) {
         auto iter = _callbacks.find(signalNumber);
         if (iter != _callbacks.end()) {
-            auto retCode = (iter->second)();
-            if (retCode < 0) {
+            if (!(iter->second)()) {
                 _signalSet.remove(signalNumber);
                 _callbacks.erase(iter);
             }
@@ -90,7 +90,7 @@ void _Timeout::cancel() {
 IOLoop::IOLoop()
         : _ioService()
         , _signalSet(this) {
-
+    setupInterrupter();
 }
 
 IOLoop::~IOLoop() {
@@ -120,10 +120,53 @@ void IOLoop::start() {
 }
 
 void IOLoop::removeTimeout(Timeout timeout) {
-    auto timeoutHandle = timeout.lock();
-    if (timeoutHandle) {
-        timeoutHandle->cancel();
+    auto timeout_ = timeout.lock();
+    if (timeout_) {
+        timeout_->cancel();
     }
+}
+
+void IOLoop::addCallback(CallbackType callback) {
+    callback = StackContext::wrap(std::move(callback));
+    _ioService.post(std::move(callback));
+}
+
+_Timeout::CallbackType IOLoop::wrapTimeoutCallback(std::shared_ptr<_Timeout> timeout, TimeoutCallbackType callback) {
+    callback = StackContext::wrap(std::move(callback));
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+    return [callback = std::move(callback), timeout = std::move(timeout)](
+            const boost::system::error_code &error) {
+        if (!error) {
+            callback();
+        }
+    };
+#else
+    return std::bind([timeout](TimeoutCallbackType &callback, const boost::system::error_code &error) {
+        if (!error) {
+            callback();
+        }
+    }, std::move(callback), std::placeholders::_1);
+#endif
+}
+
+void IOLoop::setupInterrupter() {
+    signal(SIGINT, [this](){
+        Log::info("Capture SIGINT");
+        stop();
+        return false;
+    });
+    signal(SIGTERM, [this](){
+        Log::info("Capture SIGTERM");
+        stop();
+        return false;
+    });
+#if defined(SIGQUIT)
+    signal(SIGQUIT, [this](){
+        Log::info("Capture SIGQUIT");
+        stop();
+        return false;
+    });
+#endif
 }
 
 

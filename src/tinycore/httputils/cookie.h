@@ -171,8 +171,8 @@ public:
     using BaseCookie::BaseCookie;
 
     SimpleCookie() = default;
-    DecodeResultType valueDecode(const std::string &val);
-    EncodeResultType valueEncode(const std::string &val);
+    DecodeResultType valueDecode(const std::string &val) override;
+    EncodeResultType valueEncode(const std::string &val) override;
 };
 
 #endif //TINYCORE_COOKIE_H

@@ -6,29 +6,31 @@
 #include <boost/foreach.hpp>
 
 
-std::function<void()> StackState::wrap(std::function<void()> callback) {
-    if (!callback || _contexts.empty()) {
+std::function<void()> StackContext::wrap(std::function<void()> callback) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<>)) {
         return callback;
     }
-    ExceptionHandlers contexts = _contexts;
-    return [callback, contexts](){
-        std::exception_ptr error;
-        try {
-            callback();
-        } catch (...) {
-            error = std::current_exception();
-        }
-        if (error) {
-            handleException(contexts, error);
-        }
-    };
+    return _StackContextWrapper<>(_state.contexts, std::move(callback));
 }
 
+std::function<void(ByteArray)> StackContext::wrap(std::function<void(ByteArray)> callback) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<ByteArray>)) {
+        return callback;
+    }
+    return _StackContextWrapper<ByteArray>(_state.contexts, std::move(callback));
+}
 
-void StackState::handleException(const ExceptionHandlers &contexts, std::exception_ptr error) {
-    BOOST_REVERSE_FOREACH(const ExceptionHandler &handler, contexts) {
+std::function<void(HTTPResponse)> StackContext::wrap(std::function<void(HTTPResponse)> callback) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<HTTPResponse>)) {
+        return callback;
+    }
+    return _StackContextWrapper<HTTPResponse>(_state.contexts, std::move(callback));
+}
+
+void StackContext::handleException(const ExceptionHandlers &contexts, std::exception_ptr error) {
+    BOOST_REVERSE_FOREACH(const ExceptionHandler &context, contexts) {
         try {
-            handler(error);
+            context(error);
             error = nullptr;
             break;
         } catch (...) {
@@ -40,5 +42,4 @@ void StackState::handleException(const ExceptionHandlers &contexts, std::excepti
     }
 }
 
-
-thread_local ExceptionHandlers StackState::_contexts;
+thread_local _State StackContext::_state;

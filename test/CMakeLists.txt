@@ -1,8 +1,10 @@
+
 include_directories(${CMAKE_SOURCE_DIR}/src/)
 add_subdirectory(httpclient_test)
 add_subdirectory(httpserver_test)
 add_subdirectory(httputil_test)
 add_subdirectory(ioloop_test)
 add_subdirectory(iostream_test)
+add_subdirectory(stackcontext_test)
 add_subdirectory(testing_test)
 add_subdirectory(web_test)

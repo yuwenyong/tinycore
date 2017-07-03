@@ -127,23 +127,23 @@ void Options::setupWatcherHook() {
 }
 
 void Options::setupInterrupter() {
-    if (!sConfigMgr->getBool("disableInterrupter", false)) {
-        sIOLoop->signal(SIGINT, [this](){
-            Log::info("Capture SIGINT");
-            sIOLoop->stop();
-            return -1;
-        });
-        sIOLoop->signal(SIGTERM, [this](){
-            Log::info("Capture SIGTERM");
-            sIOLoop->stop();
-            return -1;
-        });
-#if defined(SIGQUIT)
-        sIOLoop->signal(SIGQUIT, [this](){
-            Log::info("Capture SIGQUIT");
-            sIOLoop->stop();
-            return -1;
-        });
-#endif
-    }
+//    if (!sConfigMgr->getBool("disableInterrupter", false)) {
+//        sIOLoop->signal(SIGINT, [this](){
+//            Log::info("Capture SIGINT");
+//            sIOLoop->stop();
+//            return -1;
+//        });
+//        sIOLoop->signal(SIGTERM, [this](){
+//            Log::info("Capture SIGTERM");
+//            sIOLoop->stop();
+//            return -1;
+//        });
+//#if defined(SIGQUIT)
+//        sIOLoop->signal(SIGQUIT, [this](){
+//            Log::info("Capture SIGQUIT");
+//            sIOLoop->stop();
+//            return -1;
+//        });
+//#endif
+//    }
 }

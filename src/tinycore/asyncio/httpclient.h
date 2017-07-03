@@ -12,7 +12,6 @@
 #include "tinycore/asyncio/httputil.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/iostream.h"
-#include "tinycore/asyncio/web.h"
 #include "tinycore/compress/zlib.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
@@ -284,6 +283,33 @@ protected:
 };
 
 
+class TC_COMMON_API _HTTPError: public Exception {
+public:
+    _HTTPError(const char *file, int line, const char *func, int code)
+            : _HTTPError(file, line, func, code, HTTPResponses.at(code)) {
+
+    }
+
+    _HTTPError(const char *file, int line, const char *func, int code, const std::string &message)
+            : Exception(file, line, func, message)
+            , _code(code) {
+
+    }
+
+    const char *what() const noexcept override;
+
+    const char *getTypeName() const override {
+        return "HTTPError";
+    }
+
+    int getCode() const {
+        return _code;
+    }
+protected:
+    int _code;
+};
+
+
 class HTTPRequest: public HTTPRequestImpl {
 public:
     BOOST_PARAMETER_CONSTRUCTOR(HTTPRequest, (HTTPRequestImpl), opts::tag, (
@@ -338,22 +364,35 @@ protected:
 };
 
 
-class HTTPResponseImpl {
+class HTTPResponse {
 public:
-    template <typename ArgumentPack>
-    HTTPResponseImpl(ArgumentPack const& args) {
-        _request = args[opts::_request];
-        _code = args[opts::_code];
-        _headers = args[opts::_headers | HTTPHeaders()];
-        _body = args[opts::_body | boost::none];
-        _effectiveURL = args[opts::_effectiveURL | _request->getURL()];
-        _error = args[opts::_error | nullptr];
+    HTTPResponse() = default; 
+    
+    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, HTTPHeaders headers, ByteArray body,
+                 std::string effectiveURL, Duration requestTime)
+            : _request(std::move(request))
+            , _code(code)
+            , _headers(std::move(headers))
+            , _body(std::move(body))
+            , _effectiveURL(std::move(effectiveURL))
+            , _requestTime(std::move(requestTime)) {
         if (!_error) {
             if (_code < 200 || _code >= 300) {
-                _error = std::make_exception_ptr(MakeException(HTTPError, _code));
+                _error = MakeExceptionPtr(_HTTPError, _code);
             }
         }
-        _requestTime = args[opts::_requestTime | boost::none];
+    }
+
+    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, std::exception_ptr error, Duration requestTime)
+            : _request(std::move(request))
+            , _code(code)
+            , _error(std::move(error))
+            , _requestTime(std::move(requestTime)) {
+        if (!_error) {
+            if (_code < 200 || _code >= 300) {
+                _error = MakeExceptionPtr(_HTTPError, _code);
+            }
+        }
     }
 
     std::shared_ptr<HTTPRequest> getRequest() const {
@@ -380,8 +419,8 @@ public:
         return _error;
     }
 
-    const Duration* getRequestTime() const {
-        return _requestTime.get_ptr();
+    const Duration& getRequestTime() const {
+        return _requestTime;
     }
 
     void rethrow() {
@@ -391,34 +430,18 @@ public:
     }
 protected:
     std::shared_ptr<HTTPRequest> _request;
-    int _code;
+    int _code{200};
     HTTPHeaders _headers;
     boost::optional<ByteArray> _body;
     std::string _effectiveURL;
     std::exception_ptr _error;
-    boost::optional<Duration> _requestTime;
-};
-
-
-class HTTPResponse: public HTTPResponseImpl {
-public:
-    BOOST_PARAMETER_CONSTRUCTOR(HTTPResponse, (HTTPResponseImpl), opts::tag, (
-            required
-                    (request, (std::shared_ptr<HTTPRequest>))
-                    (code, (int))
-    )(
-            optional
-                    (headers, (HTTPHeaders))
-                    (body, (ByteArray))
-                    (effectiveURL, (std::string))
-                    (error, (std::exception_ptr))
-    ))
+    Duration _requestTime;
 };
 
 
 class HTTPClient: public std::enable_shared_from_this<HTTPClient> {
 public:
-    typedef std::function<void (const HTTPResponse&)> CallbackType;
+    typedef std::function<void (HTTPResponse)> CallbackType;
 
     HTTPClient(IOLoop *ioloop=nullptr, StringMap hostnameMapping={}, size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE);
     ~HTTPClient();
@@ -447,10 +470,6 @@ public:
         return std::make_shared<HTTPClient>(std::forward<Args>(args)...);
     }
 protected:
-    void onFetchComplete(CallbackType callback, const HTTPResponse &response) {
-        callback(response);
-    }
-
     IOLoop * _ioloop;
     StringMap _hostnameMapping;
     size_t _maxBufferSize;
@@ -479,6 +498,16 @@ protected:
 
     void onTimeout();
     void onConnect(URLSplitResult parsed);
+
+    void runCallback(HTTPResponse response) {
+        if (_callback) {
+            CallbackType callback;
+            callback.swap(_callback);
+            callback(std::move(response));
+        }
+    }
+
+    void cleanup(std::exception_ptr error);
     void onClose();
     void onHeaders(ByteArray data);
     void onBody(ByteArray data);
@@ -495,7 +524,6 @@ protected:
     boost::optional<ByteArray> _chunks;
     std::unique_ptr<DecompressObj> _decompressor;
     Timeout _timeout;
-    Timeout _connectTimeout;
     std::weak_ptr<BaseIOStream> _stream;
 };
 

@@ -16,7 +16,7 @@ class IOLoop;
 
 class _SignalSet {
 public:
-    typedef std::function<int ()> CallbackType;
+    typedef std::function<bool()> CallbackType;
 
     _SignalSet(IOLoop *ioloop= nullptr);
     void signal(int signalNumber, CallbackType callback=nullptr);
@@ -67,29 +67,27 @@ public:
     ~IOLoop();
     void start();
 
-    template <typename T>
-    Timeout addTimeout(T &&deadline, TimeoutCallbackType callback) {
-        auto timeoutHandle = std::make_shared<_Timeout>(this);
-        timeoutHandle->start(std::forward<T>(deadline), [callback, timeoutHandle](const boost::system::error_code &error) {
-            if (!error) {
-                callback();
-            } else {
-#ifndef NDEBUG
-                if (error != boost::asio::error::operation_aborted) {
-                    std::string errorMessage = error.message();
-                    Log::error("ErrorCode:%d,ErrorMessage:%s", error.value(), errorMessage.c_str());
-                }
-#endif
-            }
-        });
-        return Timeout(timeoutHandle);
+    Timeout addTimeout(const Timestamp &deadline, TimeoutCallbackType callback) {
+        auto timeout = std::make_shared<_Timeout>(this);
+        timeout->start(deadline, wrapTimeoutCallback(timeout, std::move(callback)));
+        return Timeout(timeout);
+    }
+
+    Timeout addTimeout(const Duration &deadline, TimeoutCallbackType callback) {
+        auto timeout = std::make_shared<_Timeout>(this);
+        timeout->start(deadline, wrapTimeoutCallback(timeout, std::move(callback)));
+        return Timeout(timeout);
+    }
+
+    Timeout addTimeout(float deadline, TimeoutCallbackType callback) {
+        auto timeout = std::make_shared<_Timeout>(this);
+        timeout->start(deadline, wrapTimeoutCallback(timeout, std::move(callback)));
+        return Timeout(timeout);
     }
 
     void removeTimeout(Timeout timeout);
 
-    void addCallback(CallbackType callback) {
-        _ioService.post(std::move(callback));
-    }
+    void addCallback(CallbackType callback);
 
     void signal(int signalNumber, SignalCallbackType callback= nullptr) {
         _signalSet.signal(signalNumber, std::move(callback));
@@ -110,6 +108,9 @@ public:
         return _ioService;
     }
 protected:
+    _Timeout::CallbackType wrapTimeoutCallback(std::shared_ptr<_Timeout> timeout, TimeoutCallbackType callback);
+    void setupInterrupter();
+
     ServiceType _ioService;
     _SignalSet _signalSet;
     volatile bool _stopped{false};

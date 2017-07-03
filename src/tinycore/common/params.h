@@ -5,6 +5,9 @@
 #ifndef TINYCORE_PARAMS_H
 #define TINYCORE_PARAMS_H
 
+#ifdef BOOST_PARAMETER_MAX_ARITY
+#undef BOOST_PARAMETER_MAX_ARITY
+#endif
 #define BOOST_PARAMETER_MAX_ARITY 25
 #include <boost/parameter.hpp>
 
@@ -36,11 +39,6 @@ BOOST_PARAMETER_NAME(validateCert)
 BOOST_PARAMETER_NAME(caCerts)
 BOOST_PARAMETER_NAME(clientKey)
 BOOST_PARAMETER_NAME(clientCert)
-BOOST_PARAMETER_NAME(request)
-BOOST_PARAMETER_NAME(code)
-BOOST_PARAMETER_NAME(effectiveURL)
-BOOST_PARAMETER_NAME(error)
-BOOST_PARAMETER_NAME(requestTime)
 }
 
 
@@ -69,11 +67,6 @@ BOOST_PARAMETER_NAME(requestTime)
 #define ARG_caCerts opts::_caCerts
 #define ARG_clientKey opts::_clientKey
 #define ARG_clientCert opts::_clientCert
-#define ARG_request opts::_request
-#define ARG_code opts::_code
-#define ARG_effectiveURL opts::_effectiveURL
-#define ARG_error opts::_error
-#define ARG_requestTime opts::_requestTime
 
 
 #endif //TINYCORE_PARAMS_H

@@ -14,6 +14,9 @@
 #define _NOT_SUPPORTED(func) void func() { ThrowException(Exception, #func " not supported for Web Sockets"); }
 
 
+class WebSocketProtocol;
+
+
 class TC_COMMON_API WebSocketHandler: public RequestHandler {
 public:
     friend class WebSocketProtocol;
@@ -25,21 +28,13 @@ public:
         onOpen(_openArgs);
     }
 
-    void writeMessage(const Byte *message, size_t length) {
-        _wsConnection->writeMessage(message, length, true);
-    }
+    void writeMessage(const Byte *message, size_t length);
 
-    void writeMessage(const char *message) {
-        _wsConnection->writeMessage((const Byte *)message, strlen(message), false);
-    }
+    void writeMessage(const char *message);
 
-    void writeMessage(const std::string &message) {
-        _wsConnection->writeMessage((const Byte *)message.data(), message.size(), false);
-    }
+    void writeMessage(const std::string &message);
 
-    void writeMessage(const ByteArray &message) {
-        _wsConnection->writeMessage(message.data(), message.size(), true);
-    }
+    void writeMessage(const ByteArray &message);
 
     void writeMessage(const SimpleJSONType &message) {
         writeMessage(String::fromJSON(message));
@@ -55,18 +50,10 @@ public:
     virtual void onMessage(const ByteArray data) = 0;
     virtual void onClose();
 
-    void close() {
-        _wsConnection->close();
-    }
+    void close();
     void onConnectionClose() override;
-
-    void setClientTerminated(bool clientTerminated) {
-        _wsConnection->setClientTerminated(clientTerminated);
-    }
-
-    bool getClientTerminated() const {
-        return _wsConnection->getClientTerminated();
-    }
+    void setClientTerminated(bool clientTerminated);
+    bool getClientTerminated() const;
 protected:
     void execute(TransformsType &transforms, StringVector args) override;
 
@@ -97,6 +84,8 @@ public:
             , _stream(handler->_stream) {
 
     }
+
+    virtual ~WebSocketProtocol() {}
 
     std::shared_ptr<WebSocketHandler> fetchHandler() const {
         return _handler.lock();

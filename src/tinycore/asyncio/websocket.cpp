@@ -26,6 +26,22 @@ WebSocketHandler::~WebSocketHandler() {
 #endif
 }
 
+void WebSocketHandler::writeMessage(const Byte *message, size_t length) {
+    _wsConnection->writeMessage(message, length, true);
+}
+
+void WebSocketHandler::writeMessage(const char *message) {
+    _wsConnection->writeMessage((const Byte *)message, strlen(message), false);
+}
+
+void WebSocketHandler::writeMessage(const std::string &message) {
+    _wsConnection->writeMessage((const Byte *)message.data(), message.size(), false);
+}
+
+void WebSocketHandler::writeMessage(const ByteArray &message) {
+    _wsConnection->writeMessage(message.data(), message.size(), true);
+}
+
 void WebSocketHandler::onOpen(const StringVector &args) {
 
 }
@@ -34,12 +50,23 @@ void WebSocketHandler::onClose() {
 
 }
 
+void WebSocketHandler::close() {
+    _wsConnection->close();
+}
 
 void WebSocketHandler::onConnectionClose() {
     if (_wsConnection) {
         setClientTerminated(true);
         onClose();
     }
+}
+
+void WebSocketHandler::setClientTerminated(bool clientTerminated) {
+    _wsConnection->setClientTerminated(clientTerminated);
+}
+
+bool WebSocketHandler::getClientTerminated() const {
+    return _wsConnection->getClientTerminated();
 }
 
 void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {

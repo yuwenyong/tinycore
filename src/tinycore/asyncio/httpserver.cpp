@@ -5,6 +5,7 @@
 #include "tinycore/asyncio/httpserver.h"
 #include <boost/utility/string_ref.hpp>
 #include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/httputils/urlparse.h"
@@ -66,15 +67,16 @@ HTTPConnection::~HTTPConnection() {
 void HTTPConnection::start() {
     auto stream = fetchStream();
     ASSERT(stream);
-    stream->start();
-    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
+    _headerCallback = StackContext::wrap(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
+                                                   std::placeholders::_1));
+    stream->readUntil("\r\n\r\n", _headerCallback);
 }
 
 void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
     ASSERT(fetchRequest(), "Request closed");
     auto stream = fetchStream();
     if (stream && !stream->closed()) {
-        _writeCallback = std::move(callback);
+        _writeCallback = StackContext::wrap(std::move(callback));
         stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
     }
 }
@@ -122,13 +124,17 @@ void HTTPConnection::finishRequest() {
     }
     _request.reset();
     _requestFinished = false;
-    auto stream = fetchStream();
-    ASSERT(stream);
     if (disconnect) {
-        stream->close();
+        close();
         return;
     }
-    stream->readUntil("\r\n\r\n", std::bind(&HTTPConnection::onHeaders, shared_from_this(), std::placeholders::_1));
+    try {
+        auto stream = fetchStream();
+        ASSERT(stream);
+        stream->readUntil("\r\n\r\n", _headerCallback);
+    } catch (IOError &e) {
+        close();
+    }
 }
 
 void HTTPConnection::onHeaders(ByteArray data) {
@@ -168,8 +174,7 @@ void HTTPConnection::onHeaders(ByteArray data) {
                 const char *continueLine = "HTTP/1.1 100 (Continue)\r\n\r\n";
                 stream->write((const Byte *)continueLine, strlen(continueLine));
             }
-            stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, shared_from_this(),
-                                                       std::placeholders::_1));
+            stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, this, std::placeholders::_1));
             return;
         }
         _request->setConnection(shared_from_this());
@@ -263,8 +268,9 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     } else {
         _host = _headers->get("Host", "127.0.0.1");
     }
-    std::string scheme, netloc, fragment;
-    std::tie(scheme, netloc, _path, _query, fragment) = URLParse::urlSplit(_uri);
+    auto parsed = URLParse::urlSplit(_uri);;
+    _path = parsed.getPath();
+    _query = parsed.getQuery();
     _arguments = URLParse::parseQS(_query, false);
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);

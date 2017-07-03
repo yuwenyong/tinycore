@@ -13,8 +13,9 @@
 
 class HTTPHeaders {
 public:
+    typedef std::pair<std::string, std::string> NameValueType;
     typedef std::map<std::string, StringVector> HeadersContainerType;
-    typedef std::function<void (const std::string&, const std::string &)> CallbackType;
+    typedef std::function<void (const std::string&, const std::string&)> CallbackType;
 
     class HTTPHeadersSetter {
     public:
@@ -38,6 +39,10 @@ public:
     };
 
     HTTPHeaders() {}
+
+    explicit HTTPHeaders(std::initializer_list<NameValueType> nameValues) {
+        update(nameValues);
+    }
 
     explicit HTTPHeaders(const StringMap &nameValues) {
         update(nameValues);
@@ -72,6 +77,12 @@ public:
 
     void erase(const std::string &name);
     std::string get(const std::string &name, const std::string &defaultValue="") const;
+
+    void update(std::initializer_list<NameValueType> nameValues) {
+        for(auto &nameValue: nameValues) {
+            (*this)[nameValue.first] = nameValue.second;
+        }
+    }
 
     void update(const StringMap &nameValues) {
         for(auto &nameValue: nameValues) {

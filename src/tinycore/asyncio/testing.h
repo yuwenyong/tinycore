@@ -32,6 +32,12 @@ public:
     virtual ~AsyncTestCase();
     virtual void setUp();
     virtual void tearDown();
+
+    void handleException(std::exception_ptr error) {
+        _failure = error;
+        stop();
+    }
+
     void stop();
 
     template <typename T>
@@ -40,10 +46,10 @@ public:
         stop();
     }
 
-    void wait(float timeout=5.0f, ConditionCallback condition= nullptr);
+    void wait(int timeout=5, ConditionCallback condition= nullptr);
 
     template <typename T>
-    T waitResult(float timeout=5.0f, ConditionCallback condition= nullptr) {
+    T waitResult(int timeout=5, ConditionCallback condition= nullptr) {
         wait(timeout, std::move(condition));
         boost::any result(std::move(_stopArgs));
         return boost::any_cast<T>(result);
@@ -52,7 +58,7 @@ protected:
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
-    bool _failure{false};
+    std::exception_ptr _failure;
     boost::any _stopArgs;
 };
 
@@ -108,6 +114,24 @@ struct TestCaseFixture {
     }
     T testCase;
 };
+
+
+#define TINYCORE_TEST_INIT()    BOOST_GLOBAL_FIXTURE(GlobalFixture);
+
+#define TINYCORE_TEST_CASE(cls, method, ...)    BOOST_FIXTURE_TEST_CASE(method, TestCaseFixture<cls>) { \
+    std::exception_ptr error; \
+    try { \
+        ExceptionStackContext ctx([&](std::exception_ptr error) { \
+            testCase.handleException(std::move(error)); \
+        }); \
+        testCase.method(##__VA_ARGS__); \
+    } catch (...) { \
+        error = std::current_exception(); \
+    } \
+    if (error) { \
+        testCase.handleException(error); \
+    } \
+} \
 
 
 #endif //TINYCORE_TESTING_H

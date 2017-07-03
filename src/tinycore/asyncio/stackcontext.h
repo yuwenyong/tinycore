@@ -6,76 +6,99 @@
 #define TINYCORE_STACKCONTEXT_H
 
 #include "tinycore/common/common.h"
-#include <boost/noncopyable.hpp>
+#include "tinycore/asyncio/httpclient.h"
 
 
-typedef std::function<void (std::exception_ptr)> ExceptionHandler;
-typedef std::vector<ExceptionHandler> ExceptionHandlers;
+using ExceptionHandler = std::function<void (std::exception_ptr)>;
+using ExceptionHandlers = std::vector<ExceptionHandler>;
 
 
-class StackState {
+class _State {
 public:
-    friend class NullContext;
-
-    static void push(ExceptionHandler exceptionHandler) {
-        _contexts.emplace_back(std::move(exceptionHandler));
-    }
-
-    static void pop() {
-        assert(!_contexts.empty());
-        _contexts.pop_back();
-    }
-
-    static std::function<void()> wrap(std::function<void()> callback);
-
-    template<typename... Args>
-    static std::function<void (Args...)> wrap(std::function<void (Args...)> callback) {
-        if (!callback || _contexts.empty()) {
-            return callback;
-        }
-        ExceptionHandlers contexts = _contexts;
-        return [callback, contexts](Args... args){
-            std::exception_ptr error;
-            try {
-                callback(std::forward<Args>(args)...);
-            } catch (...) {
-                error = std::current_exception();
-            }
-            if (error) {
-                handleException(contexts, error);
-            }
-        };
-    }
-protected:
-    static void handleException(const ExceptionHandlers &contexts, std::exception_ptr error);
-
-    static thread_local ExceptionHandlers _contexts;
+    ExceptionHandlers contexts;
 };
 
 
-class ExceptionStackContext: public boost::noncopyable {
+class StackContext {
+public:
+    static std::function<void()> wrap(std::function<void()> callback);
+    static std::function<void(ByteArray)> wrap(std::function<void(ByteArray)> callback);
+    static std::function<void(HTTPResponse)> wrap(std::function<void(HTTPResponse)> callback);
+    static void handleException(const ExceptionHandlers &contexts, std::exception_ptr error);
+
+    static thread_local _State _state;
+};
+
+
+class StackContextSaver {
+public:
+    StackContextSaver(ExceptionHandlers contexts)
+            : _oldContexts(std::move(contexts)) {
+        _oldContexts.swap(StackContext::_state.contexts);
+    }
+
+    ~StackContextSaver() {
+        StackContext::_state.contexts.swap(_oldContexts);
+    }
+protected:
+    ExceptionHandlers _oldContexts;
+};
+
+
+template <typename... Args>
+class _StackContextWrapper {
+public:
+    _StackContextWrapper(ExceptionHandlers contexts, std::function<void(Args...)> callback)
+            : _contexts(std::move(contexts))
+            , _callback(std::move(callback)) {
+
+    }
+
+    void operator()(Args&&... args) {
+        StackContextSaver saver(_contexts);
+        if (_contexts.empty()) {
+            _callback(std::forward<Args>(args)...);
+            return;
+        }
+        std::exception_ptr error;
+        try {
+            _callback(std::forward<Args>(args)...);
+        } catch (...) {
+            error = std::current_exception();
+        }
+        if (error) {
+            StackContext::handleException(_contexts, error);
+        }
+    }
+protected:
+    ExceptionHandlers _contexts;
+    std::function<void(Args...)> _callback;
+};
+
+
+class ExceptionStackContext {
 public:
     ExceptionStackContext(ExceptionHandler exceptionHandler) {
-        StackState::push(std::move(exceptionHandler));
+        StackContext::_state.contexts.emplace_back(std::move(exceptionHandler));
     }
 
     ~ExceptionStackContext() {
-        StackState::pop();
+        StackContext::_state.contexts.pop_back();
     }
 };
 
 
-class NullContext: public boost::noncopyable {
+class NullContext {
 public:
     NullContext() {
-        StackState::_contexts.swap(_oldContexts);
+        _oldContexts.swap(StackContext::_state.contexts);
     }
 
     ~NullContext() {
-        StackState::_contexts.swap(_oldContexts);
+        StackContext::_state.contexts.swap(_oldContexts);
     }
 protected:
-    ExceptionHandlers _oldContexts
+    ExceptionHandlers _oldContexts;
 };
 
 

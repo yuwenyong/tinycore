@@ -7,6 +7,7 @@
 #include <boost/algorithm/string.hpp>
 #include "tinycore/tinycore.h"
 
+BOOST_TEST_DONT_PRINT_LOG_VALUE(std::chrono::milliseconds)
 
 class HelloWorldHandler: public RequestHandler {
 public:
@@ -55,20 +56,6 @@ public:
 };
 
 
-class HangHandler: public RequestHandler {
-public:
-    using RequestHandler::RequestHandler;
-
-    void onGet(StringVector args) override {
-        Asynchronous();
-        auto self = getSelf<HangHandler>();
-        _request->getConnection()->fetchStream()->ioloop()->addTimeout(3.0f, [self](){
-
-        });
-    }
-};
-
-
 class CountDownHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
@@ -95,6 +82,31 @@ public:
 };
 
 
+class HangHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        Asynchronous()
+        _request->getConnection()->fetchStream()->ioloop()->addTimeout(3.0f, [](){
+
+        });
+
+    }
+};
+
+
+class ContentLengthHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        setHeader("Content-Length", getArgument("value"));
+        write("ok");
+    }
+};
+
+
 class HTTPClientTestCase: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
@@ -103,7 +115,7 @@ public:
                 url<PostHandler>("/post"),
                 url<ChunkHandler>("/chunk"),
                 url<AuthHandler>("/auth"),
-                url<HangHandler>("/hang"),
+//                url<HangHandler>("/hang"),
                 url<CountDownHandler>(R"(/countdown/([0-9]+))", "countdown"),
                 url<EchoPostHandler>("/echopost"),
         };
@@ -125,6 +137,8 @@ public:
             BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
             std::string body((const char*)buffer->data(), buffer->size());
             BOOST_CHECK_EQUAL(body, "Hello world!");
+            auto &requestTime = response.getRequestTime();
+            BOOST_CHECK_EQUAL(std::chrono::duration_cast<std::chrono::seconds>(requestTime).count(), 0);
         } while (false);
         do {
             HTTPResponse response = fetch("/hello?name=Ben");
@@ -137,7 +151,7 @@ public:
 
     void testStreamingCallback() {
         ByteArray chunks;
-        HTTPResponse response = fetch("/hello", streamCallback_=[&chunks](ByteArray chunk){
+        HTTPResponse response = fetch("/hello", ARG_streamingCallback=[&chunks](ByteArray chunk){
             chunks.insert(chunks.end(), chunk.begin(), chunk.end());
         });
         do {
@@ -154,7 +168,7 @@ public:
     void testPost() {
         std::string body("arg1=foo&arg2=bar");
         ByteArray requestBody(body.begin(), body.end());
-        HTTPResponse response = fetch("/post", method_="POST", body_=requestBody);
+        HTTPResponse response = fetch("/post", ARG_method="POST", ARG_body=requestBody);
         BOOST_CHECK_EQUAL(response.getCode(), 200);
         const ByteArray *responseBody = response.getBody();
         BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
@@ -162,7 +176,7 @@ public:
         BOOST_CHECK_EQUAL(body, "Post arg1: foo, arg2: bar");
     }
 
-    void testChunk() {
+    void testChunked() {
         do {
             HTTPResponse response = fetch("/chunk");
             const ByteArray *responseBody = response.getBody();
@@ -172,7 +186,7 @@ public:
         } while (false);
         do {
             std::vector<ByteArray> chunks;
-            HTTPResponse response = fetch("/chunk", streamCallback_=[&chunks](ByteArray chunk){
+            HTTPResponse response = fetch("/chunk", ARG_streamingCallback=[&chunks](ByteArray chunk){
                 chunks.emplace_back(std::move(chunk));
             });
             std::string chunk;
@@ -187,45 +201,49 @@ public:
         } while (false);
     }
 
+    void testChunkedClose() {
+
+        class _Server: public TCPServer {
+        public:
+            using TCPServer::TCPServer;
+
+            void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) override {
+                const char *data = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\n1\r\n1\r\n2\r\n0\r\n\r\n";
+                stream->write((const Byte *)data, strlen(data), [stream](){
+                    stream->close();
+                });
+            }
+        };
+
+        auto port = getUnusedPort();
+        _Server server(&_ioloop, nullptr);
+        server.listen(port);
+        _httpClient->fetch(String::format("http://127.0.0.1:%u/", port), [this](HTTPResponse response){
+            stop(std::move(response));
+        });
+        HTTPResponse response = waitResult<HTTPResponse>();
+        response.rethrow();
+        const ByteArray *buffer = response.getBody();
+        BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)buffer->data(), buffer->size());
+        BOOST_CHECK_EQUAL(body, "12");
+    }
+
     void testBasicAuth() {
-        HTTPResponse response = fetch("/auth", authUserName_="Aladdin", authPassword_="open sesame");
+        HTTPResponse response = fetch("/auth", ARG_authUserName="Aladdin", ARG_authPassword="open sesame");
         const ByteArray *responseBody = response.getBody();
         BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
         std::string body((const char*)responseBody->data(), responseBody->size());
         BOOST_CHECK_EQUAL(body, "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
     }
 
-    void testGzip() {
-        HTTPHeaders headers;
-        headers["Accept-Encoding"] = "gzip";
-        HTTPResponse response = fetch("/chunk", useGzip_=false, headers_=std::move(headers));
-        BOOST_CHECK_EQUAL(response.getHeaders().at("Content-Encoding"), "gzip");
-        const ByteArray *responseBody = response.getBody();
-        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
-        std::string body((const char*)responseBody->data(), responseBody->size());
-        BOOST_CHECK_NE(body, "asdfqwer");
-        BOOST_CHECK_EQUAL(body.size(), 34);
-        GzipFile file;
-        std::shared_ptr<std::stringstream> stream = std::make_shared<std::stringstream>();
-        stream->write(body.data(), body.size());
-        file.initWithInputStream(stream);
-        body = file.readToString();
-        BOOST_CHECK_EQUAL(body, "asdfqwer");
-    }
-
     void testConnectTimeout() {
         // todo
     }
 
-    void testRequestTimeout() {
-        HTTPResponse response = fetch("/hang", ARG_requestTimeout=0.1f);
-        BOOST_REQUIRE_EQUAL(response.getCode(), 599);
-        BOOST_CHECK_EQUAL(*response.getError(), "Timeout");
-    }
-
     void testFollowRedirect() {
         do {
-            HTTPResponse response = fetch("/countdown/2", followRedirects_=false);
+            HTTPResponse response = fetch("/countdown/2", ARG_followRedirects=false);
             BOOST_CHECK_EQUAL(response.getCode(), 302);
             BOOST_CHECK(boost::ends_with(response.getHeaders().at("Location"), "/countdown/1"));
         } while(false);
@@ -238,14 +256,6 @@ public:
             std::string body((const char*)responseBody->data(), responseBody->size());
             BOOST_CHECK_EQUAL(body, "Zero");
         } while(false);
-    }
-
-    void testMaxRedirects() {
-        HTTPResponse response = fetch("/countdown/5", maxRedirects_=3);
-        BOOST_CHECK_EQUAL(response.getCode(), 302);
-        BOOST_CHECK(boost::ends_with(response.getRequest()->getURL(), "/countdown/5"));
-        BOOST_CHECK(boost::ends_with(response.getEffectiveURL(), "/countdown/2"));
-        BOOST_CHECK(boost::ends_with(response.getHeaders().at("Location"), "/countdown/1"));
     }
 
     void testCredentialsInURL() {
@@ -263,10 +273,74 @@ public:
     void testBodyEncoding() {
         // todo
     }
+};
+
+
+class SimpleHTTPClientTestCase: public AsyncHTTPTestCase {
+public:
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<ChunkHandler>("/chunk"),
+                url<CountDownHandler>(R"(/countdown/([0-9]+))", "countdown"),
+                url<HangHandler>("/hang"),
+                url<HelloWorldHandler>("/hello"),
+                url<ContentLengthHandler>("/content_length")
+        };
+        std::string defaultHost;
+        Application::TransformsType transforms;
+        Application::SettingsType settings = {
+                {"gzip", true},
+        };
+        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms),
+                                        std::move(settings));
+    }
+
+    void testGzip() {
+        HTTPHeaders headers;
+        headers["Accept-Encoding"] = "gzip";
+        HTTPResponse response = fetch("/chunk", ARG_useGzip=false, ARG_headers=std::move(headers));
+        BOOST_CHECK_EQUAL(response.getHeaders().at("Content-Encoding"), "gzip");
+        const ByteArray *responseBody = response.getBody();
+        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char*)responseBody->data(), responseBody->size());
+        BOOST_CHECK_NE(body, "asdfqwer");
+        BOOST_CHECK_EQUAL(body.size(), 34);
+        GzipFile file;
+        std::shared_ptr<std::stringstream> stream = std::make_shared<std::stringstream>();
+        stream->write(body.data(), body.size());
+        file.initWithInputStream(stream);
+        body = file.readToString();
+        BOOST_CHECK_EQUAL(body, "asdfqwer");
+    }
+
+
+    void testMaxRedirects() {
+        HTTPResponse response = fetch("/countdown/5", ARG_maxRedirects=3);
+        BOOST_CHECK_EQUAL(response.getCode(), 302);
+        BOOST_CHECK(boost::ends_with(response.getRequest()->getURL(), "/countdown/5"));
+        BOOST_CHECK(boost::ends_with(response.getEffectiveURL(), "/countdown/2"));
+        BOOST_CHECK(boost::ends_with(response.getHeaders().at("Location"), "/countdown/1"));
+    }
+
+
+    void testRequestTimeout() {
+        HTTPResponse response = fetch("/hang", ARG_requestTimeout=0.1f);
+        BOOST_REQUIRE_EQUAL(response.getCode(), 599);
+        auto requestTime = std::chrono::duration_cast<std::chrono::milliseconds>(response.getRequestTime());
+        BOOST_CHECK_LE(std::chrono::milliseconds(99), requestTime);
+        BOOST_CHECK_LE(requestTime, std::chrono::milliseconds(110));
+        try {
+            response.rethrow();
+            BOOST_CHECK(false);
+        } catch (std::exception &e) {
+            std::string error{e.what()};
+            BOOST_CHECK(boost::ends_with(error, "HTTP 599: Timeout"));
+        }
+    }
 
     void testIPV6() {
         std::string url = boost::replace_all_copy(getURL("/hello"), "localhost", "[::1]");
-        _httpClient->fetch(url, [this](const HTTPResponse &response){
+        _httpClient->fetch(url, [this](HTTPResponse response) {
             stop(response);
         });
         HTTPResponse response = waitResult<HTTPResponse>();
@@ -275,58 +349,46 @@ public:
         std::string body((const char*)responseBody->data(), responseBody->size());
         BOOST_CHECK_EQUAL(body, "Hello world!");
     }
+
+    void testMultiContentLengthAccepted() {
+        HTTPResponse response;
+        const ByteArray *responseBody = nullptr;
+        std::string body;
+
+        response = fetch("/content_length?value=2,2");
+        responseBody = response.getBody();
+        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+        body.assign((const char*)responseBody->data(), responseBody->size());
+        BOOST_CHECK_EQUAL(body, "ok");
+
+        response = fetch("/content_length?value=2,%202,2");
+        responseBody = response.getBody();
+        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+        body.assign((const char*)responseBody->data(), responseBody->size());
+        BOOST_CHECK_EQUAL(body, "ok");
+
+        response = fetch("/content_length?value=2,4");
+        BOOST_CHECK_EQUAL(response.getCode(), 599);
+
+        response = fetch("/content_length?value=2,%202,3");
+        BOOST_CHECK_EQUAL(response.getCode(), 599);
+    }
 };
 
-BOOST_GLOBAL_FIXTURE(GlobalFixture);
 
-BOOST_FIXTURE_TEST_CASE(TestHelloWorld, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testHelloWorld();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestStreamingCallback, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testStreamingCallback();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestPost, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testPost();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestChunk, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testChunk();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestBasicAuth, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testBasicAuth();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestGzip, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testGzip();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestConnectTimeout, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testConnectTimeout();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestRequestTimeout, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testRequestTimeout();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestFollowRedirect, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testFollowRedirect();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestMaxRedirects, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testMaxRedirects();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestCredentialsInURL, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testCredentialsInURL();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestBodyEncoding, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testBodyEncoding();
-}
-
-BOOST_FIXTURE_TEST_CASE(TestIPV6, TestCaseFixture<HTTPClientTestCase>) {
-    testCase.testIPV6();
-}
+TINYCORE_TEST_INIT()
+TINYCORE_TEST_CASE(HTTPClientTestCase, testHelloWorld)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testStreamingCallback)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testPost)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testChunked)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testChunkedClose)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testBasicAuth)
+//TINYCORE_TEST_CASE(HTTPClientTestCase, testConnectTimeout)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testFollowRedirect)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testCredentialsInURL)
+//TINYCORE_TEST_CASE(HTTPClientTestCase, testBodyEncoding)
+TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testGzip)
+TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testMaxRedirects)
+TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testRequestTimeout)
+TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testIPV6)
+TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testMultiContentLengthAccepted)

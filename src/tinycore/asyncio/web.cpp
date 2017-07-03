@@ -160,7 +160,7 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
     newCookie[name] = value;
     Morsel &morsel = newCookie.at(name);
     if (domain) {
-        morsel["domain"] = value;
+        morsel["domain"] = domain;
     }
     DateTime temp;
     if (expiresDays && !expires) {
@@ -246,7 +246,7 @@ void RequestHandler::finish() {
     _finished = true;
 }
 
-void RequestHandler::sendError(int statusCode, std::exception *error) {
+void RequestHandler::sendError(int statusCode, std::exception_ptr error) {
     if (_headersWritten) {
         Log::error("Cannot send error response after headers written");
         if (!_finished) {
@@ -266,7 +266,7 @@ void RequestHandler::sendError(int statusCode, std::exception *error) {
     }
 }
 
-void RequestHandler::writeError(int statusCode, std::exception *error) {
+void RequestHandler::writeError(int statusCode, std::exception_ptr error) {
     const std::string &message = HTTPResponses.at(statusCode);
     finish(String::format("<html><title>%d: %s</title><body>%d: %s</body></html>", statusCode, message.c_str(),
                           statusCode, message.c_str()));
@@ -293,6 +293,7 @@ const StringSet RequestHandler::supportedMethods = {
 
 void RequestHandler::execute(TransformsType &transforms, StringVector args) {
     _transforms.transfer(_transforms.end(), transforms);
+    std::exception_ptr error;
     try {
         const std::string &method = _request->getMethod();
         if (supportedMethods.find(method) == supportedMethods.end()) {
@@ -318,8 +319,11 @@ void RequestHandler::execute(TransformsType &transforms, StringVector args) {
                 finish();
             }
         }
-    } catch (std::exception &e) {
-        handleRequestException(&e);
+    } catch (...) {
+        error = std::current_exception();
+    }
+    if (error) {
+        handleRequestException(error);
     }
 }
 
@@ -347,22 +351,28 @@ void RequestHandler::log() {
     _application->logRequest(this);
 }
 
-void RequestHandler::handleRequestException(std::exception *e) {
-    HTTPError *error = dynamic_cast<HTTPError *>(e);
-    if (error) {
+void RequestHandler::handleRequestException(std::exception_ptr error) {
+    try {
+        std::rethrow_exception(error);
+    } catch (HTTPError &e) {
         std::string summary = requestSummary();
-        Log::warn("%d %s: %s", _statusCode, summary.c_str(), error->what());
-        int statusCode = error->getStatusCode();
+        int statusCode = e.getStatusCode();
+        Log::warn("%d %s: %s", statusCode, summary.c_str(), e.what());
         if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
             Log::error("Bad HTTP status code: %d", statusCode);
             sendError(500, error);
         } else {
             sendError(statusCode, error);
         }
-    } else {
+    } catch (std::exception &e) {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
-        Log::error("Uncaught exception %s\n%s\n%s", error->what(), summary.c_str(), requestInfo.c_str());
+        Log::error("Uncaught exception %s\n%s\n%s", e.what(), summary.c_str(), requestInfo.c_str());
+        sendError(500, error);
+    } catch (...) {
+        std::string summary = requestSummary();
+        std::string requestInfo = _request->dump();
+        Log::error("Unknown exception\n%s\n%s", summary.c_str(), requestInfo.c_str());
         sendError(500, error);
     }
 }
@@ -511,7 +521,7 @@ const char* HTTPError::what() const noexcept {
         _what += "\n\t";
         _what += "HTTP ";
         _what += std::to_string(_statusCode);
-        _what += " ";
+        _what += ": ";
         ASSERT(HTTPResponses.find(_statusCode) != HTTPResponses.end());
         _what += HTTPResponses.at(_statusCode);
         std::string what = std::runtime_error::what();
