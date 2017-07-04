@@ -99,7 +99,7 @@ void HTTPConnection::onWriteComplete() {
         callback.swap(_writeCallback);
         callback();
     }
-    if (_requestFinished) {
+    if (_requestFinished && !stream->writing()) {
         finishRequest();
     }
 }
@@ -235,7 +235,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
                                      std::string remoteIp,
                                      std::string protocol,
                                      std::string host,
-                                     RequestFilesType files)
+                                     HTTPFileListMap files)
         : _method(std::move(method))
         , _uri(std::move(uri))
         , _version(std::move(version))
@@ -268,9 +268,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     } else {
         _host = _headers->get("Host", "127.0.0.1");
     }
-    auto parsed = URLParse::urlSplit(_uri);;
-    _path = parsed.getPath();
-    _query = parsed.getQuery();
+    std::tie(std::ignore, std::ignore, _path, _query, std::ignore) = URLParse::urlSplit(_uri);;
     _arguments = URLParse::parseQS(_query, false);
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);

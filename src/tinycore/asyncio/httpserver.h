@@ -113,8 +113,6 @@ protected:
 
 class HTTPServerRequest {
 public:
-    typedef HTTPUtil::RequestFilesType RequestFilesType;
-    typedef HTTPUtil::QueryArgumentsType QueryArgumentsType;
     typedef HTTPConnection::WriteCallbackType WriteCallbackType;
     typedef boost::optional<SimpleCookie> CookiesType;
 
@@ -131,7 +129,7 @@ public:
                       std::string remoteIp = {},
                       std::string protocol = {},
                       std::string host = {},
-                      RequestFilesType files = {});
+                      HTTPFileListMap files = {});
 
     ~HTTPServerRequest();
 
@@ -199,7 +197,7 @@ public:
         return _host;
     }
 
-    const RequestFilesType& getFiles() const {
+    const HTTPFileListMap& getFiles() const {
         return _files;
     }
 
@@ -219,11 +217,11 @@ public:
         return _query;
     }
 
-    QueryArgumentsType& arguments() {
+    QueryArgListMap& arguments() {
         return _arguments;
     }
 
-    const QueryArgumentsType& getArguments() const {
+    const QueryArgListMap& getArguments() const {
         return _arguments;
     }
 
@@ -237,7 +235,7 @@ public:
         }
     }
 
-    RequestFilesType& files() {
+    HTTPFileListMap& files() {
         return _files;
     }
 
@@ -260,13 +258,13 @@ protected:
     std::string _remoteIp;
     std::string _protocol;
     std::string _host;
-    RequestFilesType _files;
+    HTTPFileListMap _files;
     std::shared_ptr<HTTPConnection> _connection;
     Timestamp _startTime;
     Timestamp _finishTime;
     std::string _path;
     std::string _query;
-    QueryArgumentsType _arguments;
+    QueryArgListMap _arguments;
     mutable CookiesType _cookies;
 };
 

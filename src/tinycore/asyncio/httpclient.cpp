@@ -213,7 +213,7 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
     std::string userName, password;
     if (parsed.getUserName()) {
         userName = *parsed.getUserName();
-        password = parsed.getPassword();
+        password = *parsed.getPassword();
     } else if (_request->getAuthUserName()) {
         userName = *_request->getAuthUserName();
         password = _request->getAuthPassword();
