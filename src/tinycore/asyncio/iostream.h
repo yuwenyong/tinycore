@@ -104,6 +104,7 @@ public:
     typedef boost::asio::ip::tcp::socket SocketType;
     typedef boost::asio::ip::tcp::resolver ResolverType;
     typedef boost::asio::ip::tcp::endpoint EndPointType;
+    typedef ResolverType::iterator ResolverIterator;
 
     typedef IOLoop::CallbackType CallbackType;
     typedef std::function<void (ByteArray)> ReadCallbackType;
@@ -111,6 +112,51 @@ public:
     typedef std::function<void ()> WriteCallbackType;
     typedef std::function<void ()> CloseCallbackType;
     typedef std::function<void ()> ConnectCallbackType;
+
+    template <typename... Args>
+    class Wrapper {
+    public:
+        Wrapper(std::shared_ptr<BaseIOStream> stream, std::function<void(Args...)> callback)
+                : _stream(std::move(stream))
+                , _callback(std::move(callback)) {
+
+        }
+
+        Wrapper(Wrapper &&rhs)
+                : _stream(std::move(rhs._stream))
+                , _callback(std::move(rhs._callback)) {
+            rhs._callback = nullptr;
+        }
+
+        Wrapper(const Wrapper &rhs);
+
+        Wrapper& operator=(Wrapper &&rhs) {
+            _stream = std::move(rhs._stream);
+            _callback = std::move(rhs._callback);
+            rhs._callback = nullptr;
+        }
+
+        Wrapper& operator=(const Wrapper &rhs);
+
+        ~Wrapper() {
+            if (_callback) {
+                _stream->clearCallbacks();
+            }
+        }
+
+        void operator()(Args... args) {
+            std::function<void(Args...)> callback = std::move(_callback);
+            _callback = nullptr;
+            callback(args...);
+        }
+    protected:
+        std::shared_ptr<BaseIOStream> _stream;
+        std::function<void(Args...)> _callback;
+    };
+
+    using Wrapper1 = Wrapper<>;
+    using Wrapper2 = Wrapper<const boost::system::error_code &>;
+    using Wrapper3 = Wrapper<const boost::system::error_code &, size_t>;
 
     BaseIOStream(SocketType &&socket,
                  IOLoop * ioloop,
@@ -134,6 +180,14 @@ public:
 
     void start() {
         maybeAddErrorListener();
+    }
+
+    void clearCallbacks() {
+        _readCallback = nullptr;
+        _streamingCallback = nullptr;
+        _writeCallback = nullptr;
+        _closeCallback = nullptr;
+        _connectCallback = nullptr;
     }
 
     virtual void realConnect(const std::string &address, unsigned short port) = 0;

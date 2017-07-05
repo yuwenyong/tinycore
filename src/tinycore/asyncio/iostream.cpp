@@ -224,10 +224,9 @@ void BaseIOStream::onClose(const boost::system::error_code &error) {
 
 void BaseIOStream::runCallback(CallbackType callback) {
     NullContext ctx;
-    auto self = shared_from_this();
     ++_pendingCallbacks;
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-    auto func = [this, self=std::move(self), callback=std::move(callback)](){
+    auto op = std::make_shared<Wrapper1>(shared_from_this(), [this, callback=std::move(callback)](){
         --_pendingCallbacks;
         try {
             callback();
@@ -237,9 +236,9 @@ void BaseIOStream::runCallback(CallbackType callback) {
             throw;
         }
         maybeAddErrorListener();
-    };
+    });
 #else
-    auto func = std::bind([this, self](CallbackType &callback) {
+    auto op = std::make_shared<Wrapper1>(shared_from_this(), std::bind([this](CallbackType &callback) {
         --_pendingCallbacks;
         try {
             callback();
@@ -249,9 +248,9 @@ void BaseIOStream::runCallback(CallbackType callback) {
             throw;
         }
         maybeAddErrorListener();
-    }, std::move(callback));
+    }, std::move(callback)));
 #endif
-    _ioloop->addCallback(std::move(func));
+    _ioloop->addCallback(std::bind(&Wrapper1::operator(), std::move(op)));
 }
 
 size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t transferredBytes) {
@@ -417,25 +416,32 @@ IOStream::~IOStream() {
 void IOStream::realConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
+    auto op = std::make_shared<Wrapper2>(shared_from_this(), [this](const boost::system::error_code &ec) {
+        onConnect(ec);
+    });
     boost::asio::async_connect(_socket, resolver.resolve(query),
-                               std::bind(&BaseIOStream::onConnect, shared_from_this(), std::placeholders::_1));
+                               std::bind(&Wrapper2::operator(), std::move(op), std::placeholders::_1));
     _state |= S_WRITE;
 }
 
 void IOStream::readFromSocket() {
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
+    Wrapper3 op(shared_from_this(), [this](const boost::system::error_code &ec, size_t transferredBytes) {
+        onRead(ec, transferredBytes);
+    });
     _socket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
-                            std::bind(&BaseIOStream::onRead, shared_from_this(), std::placeholders::_1,
-                                      std::placeholders::_2));
+                            std::move(op));
     _state |= S_READ;
 }
 
+
 void IOStream::writeToSocket() {
     MessageBuffer &buffer = _writeQueue.front();
-    _socket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
-                             std::bind(&BaseIOStream::onWrite, shared_from_this(), std::placeholders::_1,
-                                       std::placeholders::_2));
+    Wrapper3 op(shared_from_this(), [this](const boost::system::error_code &ec, size_t transferredBytes) {
+        onWrite(ec, transferredBytes);
+    });
+    _socket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()), std::move(op));
     _state |= S_WRITE;
 }
 
@@ -467,8 +473,11 @@ SSLIOStream::~SSLIOStream() {
 void SSLIOStream::realConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
+    auto op = std::make_shared<Wrapper2>(shared_from_this(), [this](const boost::system::error_code &ec) {
+        onConnect(ec);
+    });
     boost::asio::async_connect(_sslSocket.lowest_layer(), resolver.resolve(query),
-                               std::bind(&BaseIOStream::onConnect, shared_from_this(), std::placeholders::_1));
+                               std::bind(&Wrapper2::operator(), std::move(op), std::placeholders::_1));
     _state |= S_WRITE;
 }
 
@@ -491,7 +500,10 @@ void SSLIOStream::writeToSocket() {
 void SSLIOStream::closeSocket() {
     if (_sslAccepted) {
         auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
-        _sslSocket.async_shutdown(std::bind(&SSLIOStream::onShutdown, std::move(self), std::placeholders::_1));
+        Wrapper2 op(shared_from_this(), [this](const boost::system::error_code &ec) {
+            onShutdown(ec);
+        });
+        _sslSocket.async_shutdown(std::move(op));
     } else {
         doClose();
     }
@@ -499,16 +511,14 @@ void SSLIOStream::closeSocket() {
 
 void SSLIOStream::doHandshake() {
     if (!_sslAccepted && !_sslAccepting) {
-        auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
+        Wrapper2 op(shared_from_this(), [this](const boost::system::error_code &ec) {
+            onHandshake(ec);
+        });
         if (_sslOption->isServerSide()) {
+            _sslSocket.async_handshake(boost::asio::ssl::stream_base::server, std::move(op));
 
-            _sslSocket.async_handshake(boost::asio::ssl::stream_base::server, std::bind(&SSLIOStream::onHandshake,
-                                                                                        std::move(self),
-                                                                                        std::placeholders::_1));
         } else {
-            _sslSocket.async_handshake(boost::asio::ssl::stream_base::client, std::bind(&SSLIOStream::onHandshake,
-                                                                                        std::move(self),
-                                                                                        std::placeholders::_1));
+            _sslSocket.async_handshake(boost::asio::ssl::stream_base::client, std::move(op));
         }
         _sslAccepting = true;
         _state |= S_WRITE;
@@ -518,17 +528,20 @@ void SSLIOStream::doHandshake() {
 void SSLIOStream::doRead() {
     _readBuffer.normalize();
     _readBuffer.ensureFreeSpace();
+    Wrapper3 op(shared_from_this(), [this](const boost::system::error_code &ec, size_t transferredBytes) {
+        onRead(ec, transferredBytes);
+    });
     _sslSocket.async_read_some(boost::asio::buffer(_readBuffer.getWritePointer(), _readBuffer.getRemainingSpace()),
-                               std::bind(&BaseIOStream::onRead, shared_from_this(), std::placeholders::_1,
-                                         std::placeholders::_2));
+                               std::move(op));
     _state |= S_READ;
 }
 
 void SSLIOStream::doWrite() {
     MessageBuffer& buffer = _writeQueue.front();
-    _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
-                                std::bind(&BaseIOStream::onWrite, shared_from_this(), std::placeholders::_1,
-                                          std::placeholders::_2));
+    Wrapper3 op(shared_from_this(), [this](const boost::system::error_code &ec, size_t transferredBytes) {
+        onWrite(ec, transferredBytes);
+    });
+    _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()), std::move(op));
     _state |= S_WRITE;
 }
 
