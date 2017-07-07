@@ -6,7 +6,6 @@
 #define TINYCORE_STACKCONTEXT_H
 
 #include "tinycore/common/common.h"
-#include "tinycore/asyncio/httpclient.h"
 
 
 using ExceptionHandler = std::function<void (std::exception_ptr)>;
@@ -21,9 +20,11 @@ public:
 
 class StackContext {
 public:
-    static std::function<void()> wrap(std::function<void()> callback);
-    static std::function<void(ByteArray)> wrap(std::function<void(ByteArray)> callback);
-    static std::function<void(HTTPResponse)> wrap(std::function<void(HTTPResponse)> callback);
+    static std::function<void()> wrap(std::function<void()> &&callback);
+
+    template <typename... Args>
+    static std::function<void(Args...)> wrap(std::function<void(Args...)> &&callback);
+
     static void handleException(const ExceptionHandlers &contexts, std::exception_ptr error);
 
     static thread_local _State _state;
@@ -48,7 +49,7 @@ protected:
 template <typename... Args>
 class _StackContextWrapper {
 public:
-    _StackContextWrapper(ExceptionHandlers contexts, std::function<void(Args...)> callback)
+    _StackContextWrapper(ExceptionHandlers contexts, std::function<void(Args...)> &&callback)
             : _contexts(std::move(contexts))
             , _callback(std::move(callback)) {
 
@@ -74,6 +75,15 @@ protected:
     ExceptionHandlers _contexts;
     std::function<void(Args...)> _callback;
 };
+
+
+template <typename... Args>
+std::function<void(Args...)> StackContext::wrap(std::function<void(Args...)> &&callback) {
+    if (!callback || callback.target_type() == typeid(_StackContextWrapper<Args...>)) {
+        return callback;
+    }
+    return _StackContextWrapper<Args...>(_state.contexts, std::move(callback));
+}
 
 
 class ExceptionStackContext {

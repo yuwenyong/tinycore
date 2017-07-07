@@ -33,7 +33,7 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
 void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     _readRegex = boost::regex(regex);
-    _readCallback = StackContext::wrap(std::move(callback));
+    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
     if (readFromBuffer()) {
         return;
     }
@@ -46,7 +46,7 @@ void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType cal
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
     ASSERT(!_readCallback, "Already reading");
     _readDelimiter = std::move(delimiter);
-    _readCallback = StackContext::wrap(std::move(callback));
+    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
     if (readFromBuffer()) {
         return;
     }
@@ -59,8 +59,8 @@ void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     ASSERT(!_readCallback, "Already reading");
     _readBytes = numBytes;
-    _readCallback = StackContext::wrap(std::move(callback));
-    _streamingCallback = StackContext::wrap(std::move(streamingCallback));
+    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
+    _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     if (readFromBuffer()) {
         return;
     }
@@ -73,7 +73,7 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, Streami
 void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     ASSERT(!_readCallback, "Already reading");
     if (closed()) {
-        callback = StackContext::wrap(std::move(callback));
+        callback = StackContext::wrap<ByteArray>(std::move(callback));
         ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
         _readBuffer.readCompleted(_readBuffer.getActiveSize());
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
@@ -89,8 +89,8 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
         return;
     }
     _readUntilClose = true;
-    _readCallback = StackContext::wrap(std::move(callback));
-    _streamingCallback = StackContext::wrap(std::move(streamingCallback));
+    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
+    _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     if ((_state & S_READ) == S_NONE) {
         readFromSocket();
     }
@@ -215,10 +215,15 @@ void BaseIOStream::onClose(const boost::system::error_code &error) {
     if (error) {
         Log::warn("Close error %d :%s", error.value(), error.message());
     }
-    if (_closeCallback && _pendingCallbacks == 0) {
-        CloseCallbackType callback;
-        callback.swap(_closeCallback);
-        runCallback(std::move(callback));
+    if (_closeCallback) {
+        if (_pendingCallbacks == 0) {
+            CloseCallbackType callback;
+            callback.swap(_closeCallback);
+            runCallback(std::move(callback));
+            clearCallbacks();
+        }
+    } else {
+        clearCallbacks();
     }
 }
 
@@ -390,6 +395,7 @@ void BaseIOStream::maybeAddErrorListener() {
                 callback.swap(_closeCallback);
                 runCallback(std::move(callback));
             }
+            clearCallbacks();
         } else {
             readFromSocket();
         }

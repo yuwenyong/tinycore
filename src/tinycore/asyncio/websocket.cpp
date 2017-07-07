@@ -76,11 +76,10 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
         _wsConnection = make_unique<WebSocketProtocol8>(getSelf<WebSocketHandler>());
         _wsConnection->acceptConnection();
     } else if (!webSocketVersion.empty()) {
-        auto stream = fetchStream();
         const char *error = "HTTP/1.1 426 Upgrade Required\r\n"
                 "Sec-WebSocket-Version: 8\r\n\r\n";
-        stream->write((const Byte *)error, strlen(error));
-        stream->close();
+        _stream->write((const Byte *)error, strlen(error));
+        _stream->close();
     } else {
         _wsConnection = make_unique<WebSocketProtocol76>(getSelf<WebSocketHandler>());
         _wsConnection->acceptConnection();

@@ -47,7 +47,7 @@ HTTPClient::~HTTPClient() {
 }
 
 void HTTPClient::fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback) {
-    callback = StackContext::wrap(std::move(callback));
+    callback = StackContext::wrap<HTTPResponse>(std::move(callback));
     do {
         NullContext ctx;
         auto connection = _HTTPConnection::create(_ioloop, shared_from_this(), std::move(request), std::move(callback));
@@ -112,7 +112,6 @@ void _HTTPConnection::start() {
             host = iter->second;
         }
         BaseIOStream::SocketType socket(_ioloop->getService());
-        std::shared_ptr<BaseIOStream> stream;
         if (scheme == "https") {
             auto sslOption = SSLOption::create(false);
             if (_request->isValidateCert()) {
@@ -138,16 +137,16 @@ void _HTTPConnection::start() {
             if (clientCert) {
                 sslOption->setCertFile(*clientCert);
             }
-            stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop, _client->getMaxBufferSize());
+            _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop,
+                                          _client->getMaxBufferSize());
         } else {
-            stream = IOStream::create(std::move(socket), _ioloop, _client->getMaxBufferSize());
+            _stream = IOStream::create(std::move(socket), _ioloop, _client->getMaxBufferSize());
         }
-        _stream = stream;
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout > 0.000001f) {
             _timeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, this));
         }
-        stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
+        _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
         auto connectCallback = [this, parsed=std::move(parsed)](){
             onConnect(std::move(parsed));
@@ -157,7 +156,7 @@ void _HTTPConnection::start() {
             onConnect(std::move(parsed));
         }, std::move(parsed));
 #endif
-        stream->connect(host, port, std::move(connectCallback));
+        _stream->connect(host, port, std::move(connectCallback));
     } catch (...) {
         error = std::current_exception();
     }
@@ -172,10 +171,7 @@ void _HTTPConnection::onTimeout() {
     _timeout.reset();
     runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(_HTTPError, 599, "Timeout"),
                              TimestampClock::now() - _startTime));
-    auto stream = fetchStream();
-    if (stream) {
-        stream->close();
-    }
+    _stream->close();
 }
 
 void _HTTPConnection::onConnect(URLSplitResult parsed) {
@@ -262,13 +258,11 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
     });
     std::string headerData = boost::join(requestLines, "\r\n");
     headerData += "\r\n\r\n";
-    auto stream = fetchStream();
-    stream->start();
-    stream->write((const Byte *)headerData.data(), headerData.size());
+    _stream->write((const Byte *)headerData.data(), headerData.size());
     if (requestBody) {
-        stream->write(requestBody->data(), requestBody->size());
+        _stream->write(requestBody->data(), requestBody->size());
     }
-    stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
+    _stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
 }
 
 void _HTTPConnection::cleanup(std::exception_ptr error) {
@@ -314,10 +308,9 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     if (_request->isUseGzip() && _headers->get("Content-Encoding") == "gzip") {
         _decompressor = make_unique<DecompressObj>(16 + Zlib::maxWBits);
     }
-    auto stream = fetchStream();
     if (_headers->get("Transfer-Encoding") == "chunked") {
         _chunks = ByteArray();
-        stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
+        _stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
     } else if (_headers->has("Content-Length")) {
         if (_headers->at("Content-Length").find(',') != std::string::npos) {
             const std::string &contentLength = _headers->at("Content-Length");
@@ -334,9 +327,9 @@ void _HTTPConnection::onHeaders(ByteArray data) {
             (*_headers)["Content-Length"] = pieces[0];
         }
         size_t contentLength = std::stoul(_headers->at("Content-Length"));
-        stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
+        _stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
     } else {
-        stream->readUntilClose(std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
+        _stream->readUntilClose(std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
     }
 }
 
@@ -372,19 +365,13 @@ void _HTTPConnection::onBody(ByteArray data) {
         CallbackType callback;
         callback.swap(_callback);
         _client->fetch(std::move(newRequest), std::move(callback));
-        auto stream = fetchStream();
-        if (stream) {
-            stream->close();
-        }
+        _stream->close();
         return;
     }
     HTTPResponse response(originalRequest, _code.get(), *_headers, std::move(buffer), _request->getURL(),
                           TimestampClock::now() - _startTime);
     runCallback(std::move(response));
-    auto stream = fetchStream();
-    if (stream) {
-        stream->close();
-    }
+    _stream->close();
 }
 
 void _HTTPConnection::onChunkLength(ByteArray data) {
@@ -395,14 +382,12 @@ void _HTTPConnection::onChunkLength(ByteArray data) {
         _decompressor.reset();
         onBody(std::move(_chunks.get()));
     } else {
-        auto stream = fetchStream();
-        stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, this, std::placeholders::_1));
+        _stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, this, std::placeholders::_1));
     }
 }
 
 void _HTTPConnection::onChunkData(ByteArray data) {
     ASSERT(strncmp((const char *)data.data() + data.size() - 2, "\r\n", 2) == 0);
-    auto stream = fetchStream();
     data.erase(std::prev(data.end(), 2), data.end());
     ByteArray chunk(std::move(data));
     if (_decompressor) {
@@ -414,5 +399,5 @@ void _HTTPConnection::onChunkData(ByteArray data) {
     } else {
         _chunks->insert(_chunks->end(), chunk.begin(), chunk.end());
     }
-    stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
+    _stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
 }

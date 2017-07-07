@@ -88,7 +88,7 @@ public:
 
     void onGet(StringVector args) override {
         Asynchronous()
-        _request->getConnection()->fetchStream()->ioloop()->addTimeout(3.0f, [](){
+        _request->getConnection()->getStream()->ioloop()->addTimeout(3.0f, [](){
 
         });
 

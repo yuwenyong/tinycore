@@ -119,7 +119,6 @@ public:
         Wrapper(std::shared_ptr<BaseIOStream> stream, std::function<void(Args...)> callback)
                 : _stream(std::move(stream))
                 , _callback(std::move(callback)) {
-
         }
 
         Wrapper(Wrapper &&rhs)

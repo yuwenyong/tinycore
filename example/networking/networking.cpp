@@ -120,6 +120,54 @@ protected:
 };
 
 
+class MyConnection: public std::enable_shared_from_this<MyConnection> {
+public:
+    MyConnection(std::shared_ptr<BaseIOStream> stream)
+            : _stream(std::move(stream)) {
+
+    }
+
+    void start() {
+        _stream->setCloseCallback(std::bind(&MyConnection::onClose, shared_from_this()));
+        _stream->readBytes(1, std::bind(&MyConnection::onLength, shared_from_this(), std::placeholders::_1));
+    }
+
+    void onLength(ByteArray data) {
+        Byte length = data[0];
+        if (length == 0xFF) {
+            _stream->readBytes(4, std::bind(&MyConnection::onLengthExt, shared_from_this(), std::placeholders::_1));
+        } else {
+            _stream->readBytes(length, std::bind(&MyConnection::onPacket, shared_from_this(), std::placeholders::_1));
+        }
+    }
+
+    void onLengthExt(ByteArray data) {
+        unsigned int length = *(unsigned int *)data.data();
+        _stream->readBytes(length, std::bind(&MyConnection::onPacket, shared_from_this(), std::placeholders::_1));
+    }
+
+    void onPacket(ByteArray data) {
+        // unpack packet,then cached,let logic thread handle it
+        _stream->readBytes(1, std::bind(&MyConnection::onLength, shared_from_this(), std::placeholders::_1));
+    }
+
+    void onClose() {
+
+    }
+protected:
+    std::shared_ptr<BaseIOStream> _stream;
+};
+
+class MyServer: public TCPServer {
+public:
+    using TCPServer::TCPServer;
+
+    void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) override {
+        std::make_shared<MyConnection>(std::move(stream))->start();
+    }
+};
+
+
 int main(int argc, char **argv) {
 //    sConfigMgr->setString("Appender.Console", "Console,1,7");
     ParseCommandLine(argc, argv);
