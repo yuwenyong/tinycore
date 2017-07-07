@@ -57,11 +57,7 @@ public:
 protected:
     void execute(TransformsType &transforms, StringVector args) override;
 
-    std::shared_ptr<BaseIOStream> fetchStream() const {
-        return _stream.lock();
-    }
-
-    std::weak_ptr<BaseIOStream> _stream;
+    std::shared_ptr<BaseIOStream> _stream;
     StringVector _openArgs;
     std::unique_ptr<WebSocketProtocol> _wsConnection;
 public:

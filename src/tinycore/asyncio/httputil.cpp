@@ -95,8 +95,8 @@ std::string HTTPHeaders::normalizeName(const std::string &name) {
 }
 
 
-void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgumentsType &arguments,
-                                      RequestFilesType &files) {
+void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgListMap &arguments,
+                                      HTTPFileListMap &files) {
     if (boost::starts_with(boundary, "\"") && boost::ends_with(boundary, "\"")) {
         if (boundary.length() >= 2) {
             boundary = boundary.substr(1, boundary.length() - 2);

@@ -492,11 +492,8 @@ public:
 
     static const StringSet supportedMethods;
 protected:
-    std::shared_ptr<BaseIOStream> fetchStream() const {
-        return _stream.lock();
-    }
-
     void onTimeout();
+
     void onConnect(URLSplitResult parsed);
 
     void runCallback(HTTPResponse response) {
@@ -524,7 +521,7 @@ protected:
     boost::optional<ByteArray> _chunks;
     std::unique_ptr<DecompressObj> _decompressor;
     Timeout _timeout;
-    std::weak_ptr<BaseIOStream> _stream;
+    std::shared_ptr<BaseIOStream> _stream;
 };
 
 #endif //TINYCORE_HTTPCLIENT_H

@@ -26,11 +26,8 @@ RequestHandler::~RequestHandler() {
 }
 
 void RequestHandler::start(ArgsType &args) {
-    auto stream = _request->getConnection()->fetchStream();
-    auto self = shared_from_this();
-    stream->setCloseCallback([self](){
-        self->onConnectionClose();
-    });
+    _request->getConnection()->getStream()->setCloseCallback(std::bind(&RequestHandler::onConnectionClose,
+                                                                       shared_from_this()));
     initialize(args);
 }
 
@@ -239,7 +236,7 @@ void RequestHandler::finish() {
             setHeader("Content-Length", _writeBuffer.size());
         }
     }
-    _request->getConnection()->fetchStream()->setCloseCallback(nullptr);
+    _request->getConnection()->getStream()->setCloseCallback(nullptr);
     flush(true);
     _request->finish();
     log();

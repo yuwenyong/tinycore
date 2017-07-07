@@ -146,11 +146,11 @@ protected:
 };
 
 
+using HTTPFileListMap = std::map<std::string, std::vector<HTTPFile>>;
+
+
 class HTTPUtil {
 public:
-    typedef std::map<std::string, std::vector<HTTPFile>> RequestFilesType;
-    typedef URLParse::QueryArguments QueryArgumentsType;
-
     template <typename ArgsType>
     static std::string urlConcat(std::string url, const ArgsType &args) {
         if (args.empty()) {
@@ -167,8 +167,8 @@ public:
         return url;
     }
 
-    static void parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgumentsType &arguments,
-                                       RequestFilesType &files);
+    static void parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgListMap &arguments,
+                                       HTTPFileListMap &files);
 
 protected:
     static StringVector parseParam(std::string s);

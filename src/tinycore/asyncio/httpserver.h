@@ -45,22 +45,61 @@ public:
     typedef std::function<void ()> WriteCallbackType;
     typedef std::function<void (ByteArray)> HeaderCallbackType;
 
+    template <typename... Args>
+    class Wrapper {
+    public:
+        Wrapper(std::shared_ptr<HTTPConnection> connection, std::function<void(Args...)> callback)
+                : _connection(std::move(connection))
+                , _callback(std::move(callback)) {
+
+        }
+
+        Wrapper(Wrapper &&rhs)
+                : _connection(std::move(rhs._connection))
+                , _callback(std::move(rhs._callback)) {
+            rhs._callback = nullptr;
+        }
+
+        Wrapper& operator=(Wrapper &&rhs) {
+            _connection = std::move(rhs._connection);
+            _callback = std::move(rhs._callback);
+            rhs._callback = nullptr;
+        }
+
+        ~Wrapper() {
+            if (_callback) {
+                _connection->clearCallbacks();
+            }
+        }
+
+        void operator()(Args... args) {
+            std::function<void(Args...)> callback = std::move(_callback);
+            _callback = nullptr;
+            callback(args...);
+        }
+    protected:
+        std::shared_ptr<HTTPConnection> _connection;
+        std::function<void(Args...)> _callback;
+    };
+
     HTTPConnection(const HTTPConnection &) = delete;
 
     HTTPConnection &operator=(const HTTPConnection &) = delete;
 
     HTTPConnection(std::shared_ptr<BaseIOStream> stream, std::string address,
-                   const RequestCallbackType &requestCallback,
+                   RequestCallbackType &requestCallback,
                    bool noKeepAlive = false,
                    bool xheaders = false);
 
     ~HTTPConnection();
 
+    void clearCallbacks() {
+        _writeCallback = nullptr;
+    }
+
     void close() {
-        _headerCallback = nullptr;
-        auto stream = fetchStream();
-        ASSERT(stream);
-        stream->close();
+        clearCallbacks();
+        _stream->close();
     }
 
     void start();
@@ -73,16 +112,12 @@ public:
         return _xheaders;
     }
 
-    std::weak_ptr<BaseIOStream> getStream() const {
+    std::shared_ptr<BaseIOStream> getStream() const {
         return _stream;
     }
 
-    std::shared_ptr<BaseIOStream> fetchStream() const {
-        return _stream.lock();
-    }
-
-    std::shared_ptr<HTTPServerRequest> fetchRequest() const {
-        return _requestObserver.lock();
+    std::shared_ptr<HTTPServerRequest> getRequest() const {
+        return _request;
     }
 
     template <typename ...Args>
@@ -98,13 +133,13 @@ protected:
 
     void onRequestBody(ByteArray data);
 
-    std::weak_ptr<BaseIOStream> _stream;
+    std::shared_ptr<BaseIOStream> _stream;
     std::string _address;
-    const RequestCallbackType &_requestCallback;
+    RequestCallbackType &_requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
-    std::weak_ptr<HTTPServerRequest> _requestObserver;
     std::shared_ptr<HTTPServerRequest> _request;
+    std::weak_ptr<HTTPServerRequest> _requestObserver;
     bool _requestFinished{false};
     WriteCallbackType _writeCallback;
     HeaderCallbackType _headerCallback;
@@ -113,8 +148,6 @@ protected:
 
 class HTTPServerRequest {
 public:
-    typedef HTTPUtil::RequestFilesType RequestFilesType;
-    typedef HTTPUtil::QueryArgumentsType QueryArgumentsType;
     typedef HTTPConnection::WriteCallbackType WriteCallbackType;
     typedef boost::optional<SimpleCookie> CookiesType;
 
@@ -131,7 +164,7 @@ public:
                       std::string remoteIp = {},
                       std::string protocol = {},
                       std::string host = {},
-                      RequestFilesType files = {});
+                      HTTPFileListMap files = {});
 
     ~HTTPServerRequest();
 
@@ -199,7 +232,7 @@ public:
         return _host;
     }
 
-    const RequestFilesType& getFiles() const {
+    const HTTPFileListMap& getFiles() const {
         return _files;
     }
 
@@ -219,11 +252,11 @@ public:
         return _query;
     }
 
-    QueryArgumentsType& arguments() {
+    QueryArgListMap& arguments() {
         return _arguments;
     }
 
-    const QueryArgumentsType& getArguments() const {
+    const QueryArgListMap& getArguments() const {
         return _arguments;
     }
 
@@ -237,7 +270,7 @@ public:
         }
     }
 
-    RequestFilesType& files() {
+    HTTPFileListMap& files() {
         return _files;
     }
 
@@ -260,13 +293,13 @@ protected:
     std::string _remoteIp;
     std::string _protocol;
     std::string _host;
-    RequestFilesType _files;
+    HTTPFileListMap _files;
     std::shared_ptr<HTTPConnection> _connection;
     Timestamp _startTime;
     Timestamp _finishTime;
     std::string _path;
     std::string _query;
-    QueryArgumentsType _arguments;
+    QueryArgListMap _arguments;
     mutable CookiesType _cookies;
 };
 

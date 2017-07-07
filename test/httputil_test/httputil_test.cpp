@@ -56,8 +56,8 @@ BOOST_AUTO_TEST_CASE(TestURLConcatNoParams) {
 
 BOOST_AUTO_TEST_CASE(TestFileUpload) {
     const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
-    HTTPUtil::QueryArgumentsType args;
-    HTTPUtil::RequestFilesType files;
+    QueryArgListMap args;
+    HTTPFileListMap files;
     HTTPUtil::parseMultipartFormData("1234", ByteArray((const Byte *)data, (const Byte *)data + strlen(data)), args,
                                      files);
     auto &file = files["files"][0];
@@ -68,8 +68,8 @@ BOOST_AUTO_TEST_CASE(TestFileUpload) {
 
 BOOST_AUTO_TEST_CASE(TestUnquotedNames) {
     const char *data = "--1234\r\nContent-Disposition: form-data; name=files; filename=ab.txt\r\n\r\nFoo\r\n--1234--";
-    HTTPUtil::QueryArgumentsType args;
-    HTTPUtil::RequestFilesType files;
+    QueryArgListMap args;
+    HTTPFileListMap files;
     HTTPUtil::parseMultipartFormData("1234", ByteArray((const Byte *)data, (const Byte *)data + strlen(data)), args,
                                      files);
     auto &file = files["files"][0];
@@ -93,8 +93,8 @@ BOOST_AUTO_TEST_CASE(TestSpecialFilenames) {
         std::string name = boost::replace_all_copy(boost::replace_all_copy(filename, "\\", "\\\\"), "\"", "\\\"");
         auto data = String::format("--1234\r\nContent-Disposition: form-data;"\
         " name=\"files\"; filename=\"%s\"\r\n\r\nFoo\r\n--1234--", name.c_str());
-        HTTPUtil::QueryArgumentsType args;
-        HTTPUtil::RequestFilesType files;
+        QueryArgListMap args;
+        HTTPFileListMap files;
         HTTPUtil::parseMultipartFormData("1234", ByteArray((const Byte *)data.data(),
                                                            (const Byte *)data.data() + data.size()), args, files);
         auto &file = files["files"][0];

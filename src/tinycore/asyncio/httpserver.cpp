@@ -45,10 +45,10 @@ public:
 
 HTTPConnection::HTTPConnection(std::shared_ptr<BaseIOStream> stream,
                                std::string address,
-                               const RequestCallbackType &requestCallback,
+                               RequestCallbackType &requestCallback,
                                bool noKeepAlive,
                                bool xheaders)
-        : _stream(stream)
+        : _stream(std::move(stream))
         , _address(std::move(address))
         , _requestCallback(requestCallback)
         , _noKeepAlive(noKeepAlive)
@@ -65,47 +65,50 @@ HTTPConnection::~HTTPConnection() {
 }
 
 void HTTPConnection::start() {
-    auto stream = fetchStream();
-    ASSERT(stream);
-    _headerCallback = StackContext::wrap(std::bind(&HTTPConnection::onHeaders, shared_from_this(),
-                                                   std::placeholders::_1));
-    stream->readUntil("\r\n\r\n", _headerCallback);
+    BaseIOStream::ReadCallbackType callback = std::bind(&HTTPConnection::onHeaders, this, std::placeholders::_1);
+    _headerCallback = StackContext::wrap<ByteArray>(std::move(callback));
+    NullContext ctx;
+    _stream->readUntil("\r\n\r\n", [this, self=shared_from_this()](ByteArray data) {
+        _headerCallback(std::move(data));
+    });
 }
 
 void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
-    ASSERT(fetchRequest(), "Request closed");
-    auto stream = fetchStream();
-    if (stream && !stream->closed()) {
+    ASSERT(!_requestObserver.expired(), "Request closed");
+    if (!_stream->closed()) {
         _writeCallback = StackContext::wrap(std::move(callback));
-        stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
+        if (_writeCallback) {
+            auto wrapper = std::make_shared<Wrapper<>>(shared_from_this(), [this]() {
+               onWriteComplete();
+            });
+            _stream->write(chunk, length, std::bind(&Wrapper<>::operator(), std::move(wrapper)));
+        } else {
+            _stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
+        }
     }
 }
 
 void HTTPConnection::finish() {
-    ASSERT(fetchRequest(), "Request closed");
+    ASSERT(!_requestObserver.expired(), "Request closed");
+    _request = _requestObserver.lock();
     _requestFinished = true;
-    auto stream = fetchStream();
-    _request = fetchRequest();
-    if (stream && !stream->writing()) {
+    if (_stream->writing()) {
         finishRequest();
     }
 }
 
 void HTTPConnection::onWriteComplete() {
-    auto stream = fetchStream();
-    ASSERT(stream);
     if (_writeCallback) {
-        WriteCallbackType callback;
-        callback.swap(_writeCallback);
+        WriteCallbackType callback(std::move(_writeCallback));
+        _writeCallback = nullptr;
         callback();
     }
-    if (_requestFinished) {
+    if (_requestFinished && !_stream->writing()) {
         finishRequest();
     }
 }
 
 void HTTPConnection::finishRequest() {
-    ASSERT(_request);
     bool disconnect;
     if (_noKeepAlive) {
         disconnect = true;
@@ -129,17 +132,16 @@ void HTTPConnection::finishRequest() {
         return;
     }
     try {
-        auto stream = fetchStream();
-        ASSERT(stream);
-        stream->readUntil("\r\n\r\n", _headerCallback);
+        NullContext ctx;
+        _stream->readUntil("\r\n\r\n", [this, self=shared_from_this()](ByteArray data) {
+            _headerCallback(std::move(data));
+        });
     } catch (IOError &e) {
         close();
     }
 }
 
 void HTTPConnection::onHeaders(ByteArray data) {
-    auto stream = fetchStream();
-    ASSERT(stream);
     try {
         const char *eol = StrNStr((char *)data.data(), data.size(), "\r\n");
         std::string startLine, rest;
@@ -167,28 +169,27 @@ void HTTPConnection::onHeaders(ByteArray data) {
         std::string contentLengthValue = requestHeaders->get("Content-Length");
         if (!contentLengthValue.empty()) {
             size_t contentLength = (size_t) std::stoi(contentLengthValue);
-            if (contentLength > stream->getMaxBufferSize()) {
+            if (contentLength > _stream->getMaxBufferSize()) {
                 throw _BadRequestException("Content-Length too long");
             }
             if (requestHeaders->get("Expect") == "100-continue") {
                 const char *continueLine = "HTTP/1.1 100 (Continue)\r\n\r\n";
-                stream->write((const Byte *)continueLine, strlen(continueLine));
+                _stream->write((const Byte *)continueLine, strlen(continueLine));
             }
-            stream->readBytes(contentLength, std::bind(&HTTPConnection::onRequestBody, this, std::placeholders::_1));
+            _stream->readBytes(contentLength, [this, self=shared_from_this()](ByteArray data) {
+                onRequestBody(std::move(data));
+            });
             return;
         }
         _request->setConnection(shared_from_this());
         _requestCallback(std::move(_request));
     } catch (_BadRequestException &e) {
         Log::info("Malformed HTTP request from %s: %s", _address.c_str(), e.what());
-        stream->close();
+        _stream->close();
     }
 }
 
 void HTTPConnection::onRequestBody(ByteArray data) {
-    auto stream = fetchStream();
-    ASSERT(stream);
-    ASSERT(_request);
     _request->setBody(std::move(data));
     auto headers = _request->getHTTPHeaders();
     std::string contentType = headers->get("Content-Type");
@@ -235,7 +236,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
                                      std::string remoteIp,
                                      std::string protocol,
                                      std::string host,
-                                     RequestFilesType files)
+                                     HTTPFileListMap files)
         : _method(std::move(method))
         , _uri(std::move(uri))
         , _version(std::move(version))
@@ -257,7 +258,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
         _remoteIp = std::move(remoteIp);
         if (!protocol.empty()) {
             _protocol = std::move(protocol);
-        } else if (connection && std::dynamic_pointer_cast<SSLIOStream>(connection->fetchStream())) {
+        } else if (connection && std::dynamic_pointer_cast<SSLIOStream>(connection->getStream())) {
             _protocol = "https";
         } else {
             _protocol = "http";
@@ -268,9 +269,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     } else {
         _host = _headers->get("Host", "127.0.0.1");
     }
-    auto parsed = URLParse::urlSplit(_uri);;
-    _path = parsed.getPath();
-    _query = parsed.getQuery();
+    std::tie(std::ignore, std::ignore, _path, _query, std::ignore) = URLParse::urlSplit(_uri);;
     _arguments = URLParse::parseQS(_query, false);
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);
@@ -318,35 +317,6 @@ float HTTPServerRequest::requestTime() const {
     }
     return elapse.count() / 1000 + elapse.count() % 1000 / 1000.0f;
 }
-
-//void HTTPServerRequest::addArgument(const std::string &name, std::string value) {
-//    auto iter = _arguments.find(name);
-//    if (iter != _arguments.end()) {
-//        iter->second.emplace_back(std::move(value));
-//    } else {
-//        _arguments[name].emplace_back(std::move(value));
-//    }
-//}
-//
-//void HTTPServerRequest::addArguments(const std::string &name, StringVector values) {
-//    auto iter = _arguments.find(name);
-//    if (iter != _arguments.end()) {
-//        for (auto &value: values) {
-//            iter->second.emplace_back(std::move(value));
-//        }
-//    } else {
-//        _arguments.emplace(std::move(name), std::move(values));
-//    }
-//}
-//
-//void HTTPServerRequest::addFile(const std::string &name, HTTPFile file) {
-//    auto iter = _files.find(name);
-//    if (iter != _files.end()) {
-//        iter->second.emplace_back(std::move(file));
-//    } else {
-//        _files[name].emplace_back(std::move(file));
-//    }
-//}
 
 std::string HTTPServerRequest::dump() const {
     StringVector argsList;

@@ -6,25 +6,11 @@
 #include <boost/foreach.hpp>
 
 
-std::function<void()> StackContext::wrap(std::function<void()> callback) {
+std::function<void()> StackContext::wrap(std::function<void()> &&callback) {
     if (!callback || callback.target_type() == typeid(_StackContextWrapper<>)) {
         return callback;
     }
     return _StackContextWrapper<>(_state.contexts, std::move(callback));
-}
-
-std::function<void(ByteArray)> StackContext::wrap(std::function<void(ByteArray)> callback) {
-    if (!callback || callback.target_type() == typeid(_StackContextWrapper<ByteArray>)) {
-        return callback;
-    }
-    return _StackContextWrapper<ByteArray>(_state.contexts, std::move(callback));
-}
-
-std::function<void(HTTPResponse)> StackContext::wrap(std::function<void(HTTPResponse)> callback) {
-    if (!callback || callback.target_type() == typeid(_StackContextWrapper<HTTPResponse>)) {
-        return callback;
-    }
-    return _StackContextWrapper<HTTPResponse>(_state.contexts, std::move(callback));
 }
 
 void StackContext::handleException(const ExceptionHandlers &contexts, std::exception_ptr error) {
