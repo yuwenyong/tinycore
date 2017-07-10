@@ -53,6 +53,7 @@ public:
     virtual void onOptions(StringVector args);
 
     virtual void prepare();
+    virtual void onFinish();
     virtual void onConnectionClose();
     void clear();
     virtual void setDefaultHeaders();
@@ -130,7 +131,7 @@ public:
         });
     }
 
-    void redirect(const std::string &url, bool permanent=false);
+    void redirect(const std::string &url, bool permanent=false, boost::optional<int> status=boost::none);
 
     void write(const Byte *chunk, size_t length) {
         ASSERT(!_finished);

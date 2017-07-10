@@ -24,10 +24,6 @@ public:
     WebSocketHandler(Application *application, std::shared_ptr<HTTPServerRequest> request);
     ~WebSocketHandler();
 
-    void open() {
-        onOpen(_openArgs);
-    }
-
     void writeMessage(const Byte *message, size_t length);
 
     void writeMessage(const char *message);
@@ -46,11 +42,23 @@ public:
     }
 #endif
 
+    virtual boost::optional<std::string> selectSubProtocol(const StringVector &subProtocols) const;
+
+    void open() {
+        onOpen(_openArgs);
+    }
+
     virtual void onOpen(const StringVector &args);
     virtual void onMessage(const ByteArray data) = 0;
     virtual void onClose();
 
     void close();
+    virtual bool allowDraft76() const;
+
+    std::string getWebSocketScheme() const {
+        return _request->getProtocol() == "https" ? "wss" : "ws";
+    }
+
     void onConnectionClose() override;
     void setClientTerminated(bool clientTerminated);
     bool getClientTerminated() const;
@@ -74,22 +82,14 @@ public:
 
 class TC_COMMON_API WebSocketProtocol {
 public:
-    WebSocketProtocol(std::shared_ptr<WebSocketHandler> handler)
+    WebSocketProtocol(WebSocketHandler *handler)
             : _handler(handler)
-            , _request(handler->getRequest())
-            , _stream(handler->_stream) {
+            , _request(handler->getRequest().get())
+            , _stream(handler->_stream.get()) {
 
     }
 
     virtual ~WebSocketProtocol() {}
-
-    std::shared_ptr<WebSocketHandler> fetchHandler() const {
-        return _handler.lock();
-    }
-
-    std::shared_ptr<BaseIOStream> fetchStream() const {
-        return _stream.lock();
-    }
 
     void setClientTerminated(bool clientTerminated) {
         _clientTerminated = clientTerminated;
@@ -102,55 +102,64 @@ public:
     virtual void acceptConnection() = 0;
     virtual void writeMessage(const Byte *message, size_t length, bool binary=false) = 0;
     virtual void close() = 0;
+
+    void onConnectionClose() {
+        abort();
+    }
 protected:
     void abort() {
         _clientTerminated = true;
-        auto stream = fetchStream();
-        if (stream) {
-            stream->close();
-        }
+        _serverTerminated = true;
+        _stream->close();
+        close();
     }
 
-    std::weak_ptr<WebSocketHandler> _handler;
-    std::shared_ptr<HTTPServerRequest> _request;
-    std::weak_ptr<BaseIOStream> _stream;
+    WebSocketHandler *_handler{nullptr};
+    HTTPServerRequest *_request{nullptr};
+    BaseIOStream *_stream{nullptr};
     bool _clientTerminated{false};
+    bool _serverTerminated{false};
 };
 
 
 class TC_COMMON_API WebSocketProtocol76: public WebSocketProtocol {
 public:
-    WebSocketProtocol76(std::shared_ptr<WebSocketHandler> handler)
-            : WebSocketProtocol(std::move(handler)) {
+    WebSocketProtocol76(WebSocketHandler *handler)
+            : WebSocketProtocol(handler) {
 
     }
 
     void acceptConnection() override;
     std::string challengeResponse(const std::string &challenge) const;
-    void close() override;
     void writeMessage(const Byte *message, size_t length, bool binary=false) override;
+    void close() override;
 protected:
-    void handleChallenge(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void writeResponse(std::shared_ptr<WebSocketHandler> handler, const std::string &challenge);
+    void handleChallenge(ByteArray data);
+    void writeResponse(const std::string &challenge);
     void handleWebSocketHeaders() const;
     std::string calculatePart(const std::string &key) const;
     std::string generateChallengeResponse(const std::string &part1, const std::string &part2,
                                           const std::string &part3) const;
-    void receiveMessage(std::shared_ptr<WebSocketHandler> handler);
-    void onFrameType(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onEndDelimiter(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onLengthIndicator(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onAbort(std::shared_ptr<WebSocketHandler> handler);
+
+    void receiveMessage() {
+        _stream->readBytes(1, [this, handler=_handler->shared_from_this()](ByteArray data) {
+           onFrameType(std::move(data));
+        });
+    }
+
+    void onFrameType(ByteArray data);
+    void onEndDelimiter(ByteArray data);
+    void onLengthIndicator(ByteArray data);
 
 //    std::string _challenge;
     Timeout _waiting;
 };
 
 
-class TC_COMMON_API WebSocketProtocol8: public WebSocketProtocol {
+class TC_COMMON_API WebSocketProtocol13: public WebSocketProtocol {
 public:
-    WebSocketProtocol8(std::shared_ptr<WebSocketHandler> handler)
-            : WebSocketProtocol(std::move(handler)) {
+    WebSocketProtocol13(WebSocketHandler *handler)
+            : WebSocketProtocol(handler) {
 
     }
 
@@ -160,25 +169,30 @@ public:
 protected:
     void handleWebSocketHeaders() const;
     std::string challengeResponse() const;
-    void onAcceptConnection();
+    void doAcceptConnection();
     void writeFrame(bool fin, Byte opcode, const Byte *data, size_t length);
-    void receiveFrame(std::shared_ptr<WebSocketHandler> handler);
-    void onFrameStart(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onFrameLength16(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onFrameLength64(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onMaskKey(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void onFrameData(std::shared_ptr<WebSocketHandler> handler, ByteArray data);
-    void handleMessage(Byte opcode, ByteArray data);
-    void onAbort(std::shared_ptr<WebSocketHandler> handler);
 
-    Timeout _waiting;
+    void receiveFrame() {
+        _stream->readBytes(2, [this, handler=_handler->shared_from_this()](ByteArray data) {
+            onFrameStart(std::move(data));
+        });
+    }
+
+    void onFrameStart(ByteArray data);
+    void onFrameLength16(ByteArray data);
+    void onFrameLength64(ByteArray data);
+    void onMaskKey(ByteArray data);
+    void onFrameData(ByteArray data);
+    void handleMessage(Byte opcode, ByteArray data);
+
     bool _finalFrame{false};
+    bool _frameOpcodeIsControl{false};
     Byte _frameOpcode{0};
     std::array<Byte, 4> _frameMask;
     uint64_t _frameLength{0};
     ByteArray _fragmentedMessageBuffer;
     Byte _fragmentedMessageOpcode{0};
-    bool _startedClosingHandshake{false};
+    Timeout _waiting;
 };
 
 #endif //TINYCORE_WEBSOCKET_H

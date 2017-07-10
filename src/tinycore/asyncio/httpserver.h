@@ -285,6 +285,12 @@ public:
         return std::make_shared<HTTPServerRequest>(std::forward<Args>(args)...);
     }
 protected:
+    bool validIp(const std::string &ip) {
+        boost::system::error_code ec;
+        boost::asio::ip::address::from_string(ip, ec);
+        return !ec;
+    }
+
     std::string _method;
     std::string _uri;
     std::string _version;

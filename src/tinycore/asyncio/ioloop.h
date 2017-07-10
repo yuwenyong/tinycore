@@ -135,6 +135,10 @@ public:
 
     void stop() {
         _running = false;
+        if (!_timeout.expired()) {
+            _ioloop->removeTimeout(_timeout);
+            _timeout.reset();
+        }
     }
 
     template <typename ...Args>
@@ -146,7 +150,7 @@ protected:
 
     void scheduleNext() {
         if (_running) {
-            _ioloop->addTimeout(_callbackTime, std::bind(&PeriodicCallback::run, shared_from_this()));
+            _timeout = _ioloop->addTimeout(_callbackTime, std::bind(&PeriodicCallback::run, shared_from_this()));
         }
     }
 
@@ -154,6 +158,7 @@ protected:
     Duration _callbackTime;
     IOLoop *_ioloop;
     bool _running;
+    Timeout _timeout;
 };
 
 
