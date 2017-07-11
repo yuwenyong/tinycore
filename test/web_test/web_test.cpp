@@ -29,7 +29,7 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) override {
-        write(getCookie("foo"));
+        write(getCookie("foo", "default"));
     }
 };
 
@@ -75,12 +75,32 @@ public:
     }
 
     void testGetCookie() {
-        HTTPHeaders headers{{"Cookie", "foo=bar"}};
-        HTTPResponse response = fetch("/get", ARG_headers=headers);
-        const ByteArray *responseBody = response.getBody();
-        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
-        std::string body((const char*)responseBody->data(), responseBody->size());
-        BOOST_CHECK_EQUAL(body, "bar");
+        do {
+            HTTPHeaders headers{{"Cookie", "foo=bar"}};
+            HTTPResponse response = fetch("/get", ARG_headers=headers);
+            const ByteArray *responseBody = response.getBody();
+            BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+            std::string body((const char*)responseBody->data(), responseBody->size());
+            BOOST_CHECK_EQUAL(body, "bar");
+        } while (false);
+
+        do {
+            HTTPHeaders headers{{"Cookie", "foo=\"bar\""}};
+            HTTPResponse response = fetch("/get", ARG_headers=headers);
+            const ByteArray *responseBody = response.getBody();
+            BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+            std::string body((const char*)responseBody->data(), responseBody->size());
+            BOOST_CHECK_EQUAL(body, "bar");
+        } while (false);
+
+        do {
+            HTTPHeaders headers{{"Cookie", "/=exception;"}};
+            HTTPResponse response = fetch("/get", ARG_headers=headers);
+            const ByteArray *responseBody = response.getBody();
+            BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
+            std::string body((const char*)responseBody->data(), responseBody->size());
+            BOOST_CHECK_EQUAL(body, "default");
+        } while (false);
     }
 
     void testSetCookieDomain() {
@@ -315,6 +335,25 @@ public:
 };
 
 
+class TestRedirectHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        std::string permanent, status;
+        permanent = getArgument("permanent", "");
+        status = getArgument("status", "");
+        if (!permanent.empty()) {
+            redirect("/", std::stoi(permanent) != 0);
+        } else if (!status.empty()) {
+            redirect("/", false, std::stoi(status));
+        } else {
+            ThrowException(Exception, "didn't get permanent or status arguments");
+        }
+    }
+};
+
+
 class WebTest: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
@@ -322,6 +361,7 @@ public:
                 url<OptionalPathHandler>(R"(/optional_path/(.+)?)"),
                 url<FlowControlHandler>("/flow_control"),
                 url<MultiHeaderHandler>("/multi_header"),
+                url<TestRedirectHandler>("/redirect"),
         };
         return make_unique<Application>(std::move(handlers));
     }
@@ -368,6 +408,23 @@ public:
         BOOST_CHECK_EQUAL(headers.at("x-overwrite"), "2");
         StringVector rhs{"3", "4"};
         BOOST_CHECK_EQUAL(headers.getList("x-multi"), rhs);
+    }
+
+    void testRedirect() {
+        do {
+            HTTPResponse response = fetch("/redirect?permanent=1", ARG_followRedirects=false);
+            BOOST_CHECK_EQUAL(response.getCode(), 301);
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/redirect?permanent=0", ARG_followRedirects=false);
+            BOOST_CHECK_EQUAL(response.getCode(), 302);
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/redirect?status=307", ARG_followRedirects=false);
+            BOOST_CHECK_EQUAL(response.getCode(), 307);
+        } while (false);
     }
 };
 
@@ -503,6 +560,7 @@ TINYCORE_TEST_CASE(RequestEncodingTest, testQuestionMark)
 TINYCORE_TEST_CASE(WebTest, testOptionalPath)
 TINYCORE_TEST_CASE(WebTest, testFlowControl)
 TINYCORE_TEST_CASE(WebTest, testMultiHeader)
+TINYCORE_TEST_CASE(WebTest, testRedirect)
 TINYCORE_TEST_CASE(ErrorResponseTest, testDefault)
 TINYCORE_TEST_CASE(ErrorResponseTest, testWriteError)
 TINYCORE_TEST_CASE(ErrorResponseTest, testFailedWriteError)

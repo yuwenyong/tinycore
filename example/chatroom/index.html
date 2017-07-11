@@ -1,0 +1,65 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>聊天室</title>
+    <style>
+        body{
+            background-color: #FFF;
+            padding:60px;
+        }
+        #message{
+            background-color: pink;
+            border:10px;
+            solid: #00F;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>欢迎光临聊天室 </h1>
+
+    <div id="message"></div>
+    <label>昵称：</label>
+    <input id="username" type="text"/>
+    <label>内容：</label>
+    <input id="text" type="text" style="width:300px"/>
+    <button onclick="start()">连接</button>
+    <button onclick="send()">发送</button>
+    <button onclick="closeWebSocket()">退出聊天室</button>
+</div>
+</body>
+<script type="text/javascript">
+    var websocket = null;
+
+    function start() {
+        var username=document.getElementById('username').value;
+        websocket = new WebSocket("ws://localhost:3080/chat?name=" + username);
+        websocket.onerror = function(){
+            setMessageInnerHTML("error");
+        };
+        websocket.onopen = function(event){
+            setMessageInnerHTML("链接成功,欢迎加入聊天室！");
+        }
+        websocket.onmessage = function(event) {
+            setMessageInnerHTML(event.data);
+        }
+        websocket.onclose = function(){
+            setMessageInnerHTML("退出了聊天室！");
+        }
+    }
+//    window.onbeforeunload = function(){
+//        websocket.close();
+//    }
+    function setMessageInnerHTML(innerHTML){
+        document.getElementById('message').innerHTML += innerHTML + '\n';
+    }
+    function closeWebSocket(){
+        websocket.close();
+    }
+    function send(){
+        var message = document.getElementById('text').value;
+        websocket.send(message);
+        document.getElementById('text').value="";
+    }
+</script>
+</html>

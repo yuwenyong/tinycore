@@ -112,6 +112,16 @@ public:
         } while (false);
     }
 
+    void testWriteZeroBytes() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        server->write(nullptr, 0, [this]() {
+            stop();
+        });
+        wait();
+        BOOST_CHECK(!server->writing());
+    }
+
     void testConnectionRefused() {
         bool connectCalled = false;
         BaseIOStream::SocketType socket(_ioloop.getService());
@@ -238,6 +248,7 @@ public:
 
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(IOStreamTest, testReadZeroBytes)
+TINYCORE_TEST_CASE(IOStreamTest, testWriteZeroBytes)
 TINYCORE_TEST_CASE(IOStreamTest, testConnectionRefused)
 TINYCORE_TEST_CASE(IOStreamTest, testConnectionClosed)
 TINYCORE_TEST_CASE(IOStreamTest, testReadUntilClose)

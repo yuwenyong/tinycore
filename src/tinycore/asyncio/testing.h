@@ -79,6 +79,7 @@ public:
     virtual bool getHTTPServerNoKeepAlive() const;
     virtual bool getHTTPServerXHeaders() const;
     virtual std::shared_ptr<SSLOption> getHTTPServerSSLOption() const;
+    virtual std::string getLocalIp() const;
     virtual std::unique_ptr<Application> getApp() const =0;
 
     std::string getURL(const std::string &path) const {

@@ -24,21 +24,21 @@ public:
     WebSocketHandler(Application *application, std::shared_ptr<HTTPServerRequest> request);
     ~WebSocketHandler();
 
-    void writeMessage(const Byte *message, size_t length);
+    void writeMessage(const Byte *message, size_t length, bool binary=true);
 
-    void writeMessage(const char *message);
+    void writeMessage(const char *message, bool binary=false);
 
-    void writeMessage(const std::string &message);
+    void writeMessage(const std::string &message, bool binary=false);
 
-    void writeMessage(const ByteArray &message);
+    void writeMessage(const ByteArray &message, bool binary=true);
 
-    void writeMessage(const SimpleJSONType &message) {
-        writeMessage(String::fromJSON(message));
+    void writeMessage(const SimpleJSONType &message, bool binary=false) {
+        writeMessage(String::fromJSON(message), binary);
     }
 
 #ifdef HAS_RAPID_JSON
-    void writeMessage(const rapidjson::Document &message) {
-        writeMessage(String::fromJSON(message));
+    void writeMessage(const rapidjson::Document &message, bool binary=false) {
+        writeMessage(String::fromJSON(message), binary);
     }
 #endif
 
@@ -60,8 +60,6 @@ public:
     }
 
     void onConnectionClose() override;
-    void setClientTerminated(bool clientTerminated);
-    bool getClientTerminated() const;
 protected:
     void execute(TransformsType &transforms, StringVector args) override;
 
