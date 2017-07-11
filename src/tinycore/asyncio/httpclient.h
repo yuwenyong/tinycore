@@ -87,7 +87,7 @@ public:
         return _headers;
     }
 
-    void setBody(ByteArray body) {
+    void setBody(boost::optional<ByteArray> body) {
         _body = std::move(body);
     }
 

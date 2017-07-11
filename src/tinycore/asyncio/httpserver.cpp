@@ -115,12 +115,15 @@ void HTTPConnection::finishRequest() {
     } else {
         auto headers = _request->getHTTPHeaders();
         std::string connectionHeader = headers->get("Connection");
+        if (!connectionHeader.empty()) {
+            boost::to_lower(connectionHeader);
+        }
         if (_request->supportsHTTP1_1()) {
             disconnect = connectionHeader == "close";
         } else if (headers->has("Content-Length")
                    || _request->getMethod() == "HEAD"
                    || _request->getMethod() == "GET") {
-            disconnect = connectionHeader != "Keep-Alive";
+            disconnect = connectionHeader != "keep-alive";
         } else {
             disconnect = true;
         }
@@ -249,6 +252,9 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     if (connection && connection->getXHeaders()) {
         _remoteIp = _headers->get("X-Forwarded-For", remoteIp);
         _remoteIp = _headers->get("X-Real-Ip", _remoteIp);
+        if (!validIp(_remoteIp)) {
+            _remoteIp = std::move(remoteIp);
+        }
         _protocol = _headers->get("X-Forwarded-Proto", protocol);
         _protocol = _headers->get("X-Scheme", _protocol);
         if (_protocol != "http" && _protocol != "https") {

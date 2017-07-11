@@ -402,7 +402,7 @@ std::string URLParse::urlUnparse(const URLParseResult &data) {
 
 std::string URLParse::urlUnsplit(const URLSplitResult &data) {
     std::string scheme, netloc, query, fragment, url;
-    std::tie(scheme, netloc, query, fragment, url) = data;
+    std::tie(scheme, netloc, url, query, fragment) = data;
     if (!netloc.empty() || (!scheme.empty() && _usesNetloc.find(scheme) != _usesNetloc.end() &&
                             !boost::starts_with(url, "//"))) {
         if (!url.empty() && url[0] != '/') {

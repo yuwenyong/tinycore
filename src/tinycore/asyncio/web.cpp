@@ -67,6 +67,10 @@ void RequestHandler::prepare() {
 
 }
 
+void RequestHandler::onFinish() {
+
+}
+
 void RequestHandler::onConnectionClose() {
 
 }
@@ -177,11 +181,16 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
     }
 }
 
-void RequestHandler::redirect(const std::string &url, bool permanent) {
+void RequestHandler::redirect(const std::string &url, bool permanent, boost::optional<int> status) {
     if (_headersWritten) {
         ThrowException(Exception, "Cannot redirect after headers have been written");
     }
-    setStatus(permanent ? 301 : 302);
+    if (!status) {
+        status = permanent ? 301 : 302;
+    } else {
+        ASSERT(300 <= status && status <= 399);
+    }
+    setStatus(*status);
     const boost::regex patt(R"([\x00-\x20]+)");
     std::string location = URLParse::urlJoin(_request->getURI(), boost::regex_replace(url, patt, ""));
     setHeader("Location", location);
@@ -241,6 +250,7 @@ void RequestHandler::finish() {
     _request->finish();
     log();
     _finished = true;
+    onFinish();
 }
 
 void RequestHandler::sendError(int statusCode, std::exception_ptr error) {

@@ -299,11 +299,38 @@ void _HTTPConnection::onHeaders(ByteArray data) {
         ThrowException(Exception, "Unexpected first line");
     }
     _headers = HTTPHeaders::parse(headerData);
+    boost::optional<size_t> contentLength;
+    if (_headers->has("Content-Length")) {
+        if (_headers->at("Content-Length").find(',') != std::string::npos) {
+            StringVector pieces = String::split(_headers->at("Content-Length"), ',');
+            for (auto &piece: pieces) {
+                boost::trim(piece);
+            }
+            for (auto &piece: pieces) {
+                if (piece != pieces[0]) {
+                    ThrowException(ValueError, String::format("Multiple unequal Content-Lengths: %s",
+                                                              _headers->at("Content-Length").c_str()));
+                }
+            }
+            (*_headers)["Content-Length"] = pieces[0];
+        }
+        contentLength = std::stoul(_headers->at("Content-Length"));
+    }
     auto &headerCallback = _request->getHeaderCallback();
     if (headerCallback) {
         _headers->getAll([&headerCallback](const std::string &k, const std::string &v){
             headerCallback(k + ": " + v + "\r\n");
         });
+    }
+    if (_request->getMethod() == "HEAD") {
+        onBody({});
+        return;
+    }
+    if ((100 <= _code && _code < 200) || _code == 204 || _code == 304) {
+        ASSERT(!_headers->has("Transfer-Encoding"));
+        ASSERT(!contentLength || *contentLength == 0);
+        onBody({});
+        return;
     }
     if (_request->isUseGzip() && _headers->get("Content-Encoding") == "gzip") {
         _decompressor = make_unique<DecompressObj>(16 + Zlib::maxWBits);
@@ -311,23 +338,8 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     if (_headers->get("Transfer-Encoding") == "chunked") {
         _chunks = ByteArray();
         _stream->readUntil("\r\n", std::bind(&_HTTPConnection::onChunkLength, this, std::placeholders::_1));
-    } else if (_headers->has("Content-Length")) {
-        if (_headers->at("Content-Length").find(',') != std::string::npos) {
-            const std::string &contentLength = _headers->at("Content-Length");
-            StringVector pieces = String::split(contentLength, ',');
-            for (auto &piece: pieces) {
-                boost::trim(piece);
-            }
-            for (auto &piece: pieces) {
-                if (piece != pieces[0]) {
-                    ThrowException(ValueError, String::format("Multiple unequal Content-Lengths: %s",
-                                                              contentLength.c_str()));
-                }
-            }
-            (*_headers)["Content-Length"] = pieces[0];
-        }
-        size_t contentLength = std::stoul(_headers->at("Content-Length"));
-        _stream->readBytes(contentLength, std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
+    } else if (contentLength) {
+        _stream->readBytes(*contentLength, std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
     } else {
         _stream->readUntilClose(std::bind(&_HTTPConnection::onBody, this, std::placeholders::_1));
     }
@@ -337,6 +349,38 @@ void _HTTPConnection::onBody(ByteArray data) {
     if (!_timeout.expired()) {
         _ioloop->removeTimeout(_timeout);
         _timeout.reset();
+    }
+    auto originalRequest = _request->getOriginalRequest();
+    if (!originalRequest) {
+        originalRequest = _request;
+    }
+    if (_request->isFollowRedirects() && _request->getMaxRedirects() > 0
+        && (_code == 301 || _code == 302 || _code == 303 || _code == 307)) {
+        auto newRequest= HTTPRequest::create(_request);
+        std::string url = _request->getURL();
+        url = URLParse::urlJoin(url, _headers->at("Location"));
+        newRequest->setURL(std::move(url));
+        newRequest->setMaxRedirects(_request->getMaxRedirects() - 1);
+        newRequest->headers().erase("Host");
+        if (_code == 303) {
+            newRequest->setMethod("GET");
+            newRequest->setBody(boost::none);
+            const std::array<std::string, 4> fields = {"Content-Length", "Content-Type", "Content-Encoding",
+                                                       "Transfer-Encoding"};
+            for (auto &field: fields) {
+                try {
+                    newRequest->headers().erase(field);
+                } catch (KeyError &e) {
+
+                }
+            }
+        }
+        newRequest->setOriginalRequest(std::move(originalRequest));
+        CallbackType callback;
+        callback.swap(_callback);
+        _client->fetch(std::move(newRequest), std::move(callback));
+        _stream->close();
+        return;
     }
     if (_decompressor) {
         data = _decompressor->decompress(data);
@@ -349,24 +393,6 @@ void _HTTPConnection::onBody(ByteArray data) {
         }
     } else {
         buffer = std::move(data);
-    }
-    auto originalRequest = _request->getOriginalRequest();
-    if (!originalRequest) {
-        originalRequest = _request;
-    }
-    if (_request->isFollowRedirects() && _request->getMaxRedirects() > 0 && (_code == 301 || _code == 302)) {
-        auto newRequest= HTTPRequest::create(_request);
-        std::string url = _request->getURL();
-        url = URLParse::urlJoin(url, _headers->at("Location"));
-        newRequest->setURL(std::move(url));
-        newRequest->setMaxRedirects(_request->getMaxRedirects() - 1);
-        newRequest->headers().erase("Host");
-        newRequest->setOriginalRequest(std::move(originalRequest));
-        CallbackType callback;
-        callback.swap(_callback);
-        _client->fetch(std::move(newRequest), std::move(callback));
-        _stream->close();
-        return;
     }
     HTTPResponse response(originalRequest, _code.get(), *_headers, std::move(buffer), _request->getURL(),
                           TimestampClock::now() - _startTime);

@@ -129,7 +129,30 @@ public:
 
     void start() {
         _stream->setCloseCallback(std::bind(&MyConnection::onClose, shared_from_this()));
-        _stream->readBytes(1, std::bind(&MyConnection::onLength, shared_from_this(), std::placeholders::_1));
+        _stream->readBytes(4, std::bind(&MyConnection::onKBEHeader, shared_from_this(), std::placeholders::_1));
+    }
+
+    void onKBEHeader(ByteArray data) {
+        uint16 packetId = *(uint16 *)data.data();
+        uint16 length = *((uint16 *)data.data() + 1);
+        if (length == 0xFFFF) {
+            _stream->readBytes(4, std::bind(&MyConnection::onKBELength, shared_from_this(), packetId,
+                                            std::placeholders::_1));
+        } else {
+            _stream->readBytes(length, std::bind(&MyConnection::onKBEPacket, shared_from_this(), packetId,
+                                                 std::placeholders::_1));
+        }
+    }
+
+    void onKBELength(uint16 packetId, ByteArray data) {
+        uint32 length = *(uint32 *)data.data();
+        _stream->readBytes(length, std::bind(&MyConnection::onKBELength, shared_from_this(), packetId,
+                                             std::placeholders::_1));
+    }
+
+    void onKBEPacket(uint16 packetId, ByteArray data) {
+        // unpack packet,then cached,let logic thread handle it
+        _stream->readBytes(4, std::bind(&MyConnection::onKBEHeader, shared_from_this(), std::placeholders::_1));
     }
 
     void onLength(ByteArray data) {

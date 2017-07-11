@@ -68,7 +68,7 @@ void AsyncHTTPTestCase::setUp() {
     _app = getApp();
     _httpServer = make_unique<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
                                           getHTTPServerXHeaders(), getHTTPServerSSLOption());
-    _httpServer->listen(getHTTPPort());
+    _httpServer->listen(getHTTPPort(), getLocalIp());
 }
 
 void AsyncHTTPTestCase::tearDown() {
@@ -94,4 +94,8 @@ bool AsyncHTTPTestCase::getHTTPServerXHeaders() const {
 
 std::shared_ptr<SSLOption> AsyncHTTPTestCase::getHTTPServerSSLOption() const {
     return nullptr;
+}
+
+std::string AsyncHTTPTestCase::getLocalIp() const {
+    return "127.0.0.1";
 }

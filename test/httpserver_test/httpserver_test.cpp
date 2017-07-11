@@ -7,6 +7,27 @@
 #include <boost/algorithm/string.hpp>
 #include "tinycore/tinycore.h"
 
+BOOST_TEST_DONT_PRINT_LOG_VALUE(rapidjson::Document)
+
+using namespace rapidjson;
+
+class HandlerBaseTestCase: public AsyncHTTPTestCase {
+public:
+    template <typename ...Args>
+    Document fetchJSON(Args&& ...args) {
+        auto response = fetch(std::forward<Args>(args)...);
+        response.rethrow();
+        const ByteArray *buffer = response.getBody();
+        std::string body;
+        if (buffer) {
+            body.assign((const char *)buffer->data(), buffer->size());
+        }
+        Document json;
+        json.Parse(body.c_str());
+        return json;
+    }
+};
+
 
 class HelloWorldRequestHandler: public RequestHandler {
 public:
@@ -143,8 +164,62 @@ public:
 };
 
 
+class XHeaderTest: public HandlerBaseTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(StringVector args) override {
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+            std::string remoteIp{_request->getRemoteIp()};
+            doc.AddMember("remoteIp", remoteIp, a);
+            write(doc);
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    bool getHTTPServerXHeaders() const override {
+        return true;
+    }
+
+    void testIpHeaders() {
+        Document doc;
+        HTTPHeaders headers;
+
+        doc = fetchJSON("/");
+        BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+
+        headers["X-Real-IP"] = "4.4.4.4";
+        doc = fetchJSON("/", ARG_headers=headers);
+        BOOST_CHECK(doc["remoteIp"] == "4.4.4.4");
+
+        headers["X-Real-IP"] = "2620:0:1cfe:face:b00c::3";
+        doc = fetchJSON("/", ARG_headers=headers);
+        BOOST_CHECK(doc["remoteIp"] == "2620:0:1cfe:face:b00c::3");
+
+        headers["X-Real-IP"] = "4.4.4.4<script>";
+        doc = fetchJSON("/", ARG_headers=headers);
+        BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+
+        headers["X-Real-IP"] = "www.google.com";
+        doc = fetchJSON("/", ARG_headers=headers);
+        BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+    }
+};
+
+
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(SSLTest, testSSL)
 TINYCORE_TEST_CASE(SSLTest, testLargePost)
 TINYCORE_TEST_CASE(SSLTest, testNonSSLRequest)
 TINYCORE_TEST_CASE(HTTPConnectionTest, test100Continue)
+TINYCORE_TEST_CASE(XHeaderTest, testIpHeaders)

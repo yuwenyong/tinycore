@@ -98,15 +98,19 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
 
 void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType callback) {
     checkClosed();
-    if (length == 0) {
-        return;
+    if (length) {
+        MessageBuffer packet(length);
+        packet.write(data, length);
+        _writeQueue.push(std::move(packet));
     }
-    MessageBuffer packet(length);
-    packet.write(data, length);
-    _writeQueue.push(std::move(packet));
     _writeCallback = StackContext::wrap(std::move(callback));
-    if ((_state & S_WRITE) == S_NONE) {
-        writeToSocket();
+    if (!_writeQueue.empty()) {
+        if ((_state & S_WRITE) == S_NONE) {
+            writeToSocket();
+        }
+    } else {
+        runCallback(std::move(_writeCallback));
+        _writeCallback = nullptr;
     }
 }
 
