@@ -265,8 +265,8 @@ public:
         };
 
         auto port = getUnusedPort();
-        _Server server(&_ioloop, nullptr);
-        server.listen(port);
+        auto server = std::make_shared<_Server>(&_ioloop, nullptr);
+        server->listen(port);
         _httpClient->fetch(String::format("http://127.0.0.1:%u/", port), [this](HTTPResponse response){
             stop(std::move(response));
         });
@@ -348,10 +348,6 @@ public:
                                         std::move(settings));
     }
 
-    std::string getLocalIp() const override {
-        return "::1";
-    }
-
     void testGzip() {
         HTTPHeaders headers;
         headers["Accept-Encoding"] = "gzip";
@@ -404,6 +400,9 @@ public:
     }
 
     void testIPV6() {
+        _httpServer = std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
+                                                   getHTTPServerXHeaders(), getHTTPServerSSLOption());
+        _httpServer->listen(getHTTPPort(), "::1");
         std::string url = boost::replace_all_copy(getURL("/hello"), "localhost", "[::1]");
         _httpClient->fetch(url, [this](HTTPResponse response) {
             stop(response);

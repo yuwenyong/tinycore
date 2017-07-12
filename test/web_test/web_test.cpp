@@ -354,6 +354,22 @@ public:
 };
 
 
+class HeaderInjectHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        try {
+            setHeader("X-Foo", "foo\r\nX-Bar: baz");
+            ThrowException(Exception, "Didn't get expected exception");
+        } catch (ValueError &e) {
+            BOOST_CHECK(boost::contains(e.what(), "Unsafe header value"));
+            finish("ok");
+        }
+    }
+};
+
+
 class WebTest: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
@@ -362,6 +378,7 @@ public:
                 url<FlowControlHandler>("/flow_control"),
                 url<MultiHeaderHandler>("/multi_header"),
                 url<TestRedirectHandler>("/redirect"),
+                url<HeaderInjectHandler>("/header_injection"),
         };
         return make_unique<Application>(std::move(handlers));
     }
@@ -425,6 +442,14 @@ public:
             HTTPResponse response = fetch("/redirect?status=307", ARG_followRedirects=false);
             BOOST_CHECK_EQUAL(response.getCode(), 307);
         } while (false);
+    }
+
+    void testHeaderInject() {
+        HTTPResponse response = fetch("/header_injection");
+        const ByteArray *bytes = response.getBody();
+        BOOST_REQUIRE_NE(bytes, static_cast<const ByteArray *>(nullptr));
+        std::string body((const char *)bytes->data(), bytes->size());
+        BOOST_CHECK_EQUAL(body, "ok");
     }
 };
 
@@ -561,6 +586,7 @@ TINYCORE_TEST_CASE(WebTest, testOptionalPath)
 TINYCORE_TEST_CASE(WebTest, testFlowControl)
 TINYCORE_TEST_CASE(WebTest, testMultiHeader)
 TINYCORE_TEST_CASE(WebTest, testRedirect)
+TINYCORE_TEST_CASE(WebTest, testHeaderInject)
 TINYCORE_TEST_CASE(ErrorResponseTest, testDefault)
 TINYCORE_TEST_CASE(ErrorResponseTest, testWriteError)
 TINYCORE_TEST_CASE(ErrorResponseTest, testFailedWriteError)

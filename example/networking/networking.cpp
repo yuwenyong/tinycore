@@ -222,8 +222,8 @@ int main(int argc, char **argv) {
     Application application({
                                     url<HelloWorld>("/"),
                             });
-    HTTPServer server(HTTPServerCB(application));
-    server.listen(3080);
+    auto server = std::make_shared<HTTPServer>(HTTPServerCB(application));
+    server->listen(3080);
     sIOLoop->start();
     Log::info("After stop");
     return 0;

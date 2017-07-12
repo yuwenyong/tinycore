@@ -56,8 +56,8 @@ public:
 
         IOStreamPair streams;
         auto port = getUnusedPort();
-        _Server server(&_ioloop, this, streams);
-        server.listen(port);
+        auto server = std::make_shared<_Server>(&_ioloop, this, streams);
+        server->listen(port);
         BaseIOStream::SocketType socket(_ioloop.getService());
         std::shared_ptr<IOStream> clientStream = IOStream::create(std::move(socket), &_ioloop);
         clientStream->connect("127.0.0.1", port, [this, &clientStream, &streams] {
@@ -68,7 +68,7 @@ public:
         wait(5, [&streams]() {
             return streams.first && streams.second;
         });
-        server.stop();
+        server->stop();
         return streams;
     }
 

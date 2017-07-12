@@ -61,8 +61,7 @@ int main(int argc, char **argv) {
                                     url<HelloWorld>("/"),
                                     url<ChatUser>("/chat"),
                             });
-    HTTPServer server(HTTPServerCB(application));
-    server.listen(3080);
+    application.listen(3080, "::");
     sIOLoop->start();
     return 0;
 }

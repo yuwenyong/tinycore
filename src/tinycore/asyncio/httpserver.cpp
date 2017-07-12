@@ -314,14 +314,14 @@ void HTTPServerRequest::finish() {
     _finishTime = TimestampClock::now();
 }
 
-float HTTPServerRequest::requestTime() const {
-    std::chrono::milliseconds elapse;
+double HTTPServerRequest::requestTime() const {
+    std::chrono::microseconds elapse;
     if (_finishTime == Timestamp::min()) {
-        elapse = std::chrono::duration_cast<std::chrono::milliseconds>(TimestampClock::now() - _startTime);
+        elapse = std::chrono::duration_cast<std::chrono::microseconds>(TimestampClock::now() - _startTime);
     } else {
-        elapse = std::chrono::duration_cast<std::chrono::milliseconds>(_finishTime - _startTime);
+        elapse = std::chrono::duration_cast<std::chrono::microseconds>(_finishTime - _startTime);
     }
-    return elapse.count() / 1000 + elapse.count() % 1000 / 1000.0f;
+    return elapse.count() / 1000000 + elapse.count() % 1000000 / 1000000.0;
 }
 
 std::string HTTPServerRequest::dump() const {

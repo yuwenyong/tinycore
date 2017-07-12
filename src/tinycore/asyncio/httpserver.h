@@ -194,7 +194,7 @@ public:
         return _protocol + "://" + _host + _uri;
     }
 
-    float requestTime() const;
+    double requestTime() const;
 
     const HTTPHeaders* getHTTPHeaders() const {
         return _headers.get();

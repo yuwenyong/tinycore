@@ -480,7 +480,7 @@ void Application::logRequest(RequestHandler *handler) const {
     }
     int statusCode = handler->getStatus();
     std::string summary = handler->requestSummary();
-    float requestTime = 1000.0f * handler->_request->requestTime();
+    double requestTime = 1000.0 * handler->_request->requestTime();
     std::string logInfo = String::format("%d %s %.2fms", statusCode, summary.c_str(), requestTime);
     if (statusCode < 400) {
         Log::info(logInfo.c_str());

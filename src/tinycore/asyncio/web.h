@@ -318,8 +318,8 @@ public:
     virtual ~Application();
 
     template <typename... Args>
-    std::unique_ptr<HTTPServer> listen(unsigned short port, std::string address, Args&&... args) {
-        std::unique_ptr<HTTPServer> server = make_unique<HTTPServer>(
+    std::shared_ptr<HTTPServer> listen(unsigned short port, std::string address, Args&&... args) {
+        std::shared_ptr<HTTPServer> server = std::make_shared<HTTPServer>(
                 [this](std::shared_ptr<HTTPServerRequest> request) {
                     (*this)(std::move(request));
                 }, std::forward<Args>(args)...);
