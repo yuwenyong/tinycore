@@ -11,7 +11,7 @@
 #include "tinycore/asyncio/iostream.h"
 
 
-class TC_COMMON_API TCPServer {
+class TC_COMMON_API TCPServer: public std::enable_shared_from_this<TCPServer> {
 public:
     typedef boost::asio::ip::tcp::acceptor AcceptorType;
 
@@ -32,7 +32,7 @@ public:
     virtual void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) = 0;
 protected:
     void doAccept() {
-        _acceptor.async_accept(_socket, std::bind(&TCPServer::onAccept, this, std::placeholders::_1));
+        _acceptor.async_accept(_socket, std::bind(&TCPServer::onAccept, shared_from_this(), std::placeholders::_1));
     }
 
     void onAccept(const boost::system::error_code &ec);

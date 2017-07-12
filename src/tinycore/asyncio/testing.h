@@ -101,7 +101,7 @@ protected:
     mutable boost::optional<unsigned short> _port;
     std::shared_ptr<HTTPClient> _httpClient;
     std::unique_ptr<Application> _app;
-    std::unique_ptr<HTTPServer> _httpServer;
+    std::shared_ptr<HTTPServer> _httpServer;
 };
 
 

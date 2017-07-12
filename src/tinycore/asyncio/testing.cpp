@@ -66,9 +66,9 @@ void AsyncHTTPTestCase::setUp() {
     AsyncTestCase::setUp();
     _httpClient = HTTPClient::create(&_ioloop);
     _app = getApp();
-    _httpServer = make_unique<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
-                                          getHTTPServerXHeaders(), getHTTPServerSSLOption());
-    _httpServer->listen(getHTTPPort(), getLocalIp());
+    _httpServer = std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
+                                               getHTTPServerXHeaders(), getHTTPServerSSLOption());
+    _httpServer->listen(getHTTPPort(), "127.0.0.1");
 }
 
 void AsyncHTTPTestCase::tearDown() {
