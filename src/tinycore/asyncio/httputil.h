@@ -121,7 +121,7 @@ class HTTPFile {
 public:
     HTTPFile(std::string fileName,
              std::string contentType,
-             ByteArray body)
+             std::string body)
             : _fileName(std::move(fileName))
             , _contentType(std::move(contentType))
             , _body(std::move(body)) {
@@ -136,13 +136,13 @@ public:
         return _contentType;
     }
 
-    const ByteArray& getBody() const {
+    const std::string& getBody() const {
         return _body;
     }
 protected:
     std::string _fileName;
     std::string _contentType;
-    ByteArray _body;
+    std::string _body;
 };
 
 
@@ -167,7 +167,7 @@ public:
         return url;
     }
 
-    static void parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgListMap &arguments,
+    static void parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                        HTTPFileListMap &files);
 
 protected:

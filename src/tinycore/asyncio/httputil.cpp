@@ -95,7 +95,7 @@ std::string HTTPHeaders::normalizeName(const std::string &name) {
 }
 
 
-void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &data, QueryArgListMap &arguments,
+void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                       HTTPFileListMap &files) {
     if (boost::starts_with(boundary, "\"") && boost::ends_with(boundary, "\"")) {
         if (boundary.length() >= 2) {
@@ -104,28 +104,21 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
             boundary.clear();
         }
     }
-    size_t footerLength;
-    if (data.size() >= 2 && (char)data[data.size() - 2] == '\r' && (char)data[data.size() - 1] == '\n') {
-        footerLength = boundary.length() + 6;
-    } else {
-        footerLength = boundary.length() + 4;
-    }
-    if (data.size() <= footerLength) {
+    size_t finalBoundaryIndex = data.rfind("--" + boundary + "--");
+    if (finalBoundaryIndex == std::string::npos) {
+        Log::warn("Invalid multipart/form-data: no final boundary");
         return;
     }
-    std::string sep("--" + boundary + "\r\n");
-    const Byte *beg = data.data(), *end = data.data() + data.size() - footerLength, *cur, *val;
-    size_t eoh, valSize;
-    std::string part, dispHeader, disposition, name, ctype;
+    StringVector parts = String::split(data.substr(0, finalBoundaryIndex), "--" + boundary + "\r\n");
+    size_t eoh;
     HTTPHeaders headers;
+    std::string dispHeader, disposition, name, value, ctype;
     StringMap dispParams;
     decltype(dispParams.begin()) nameIter, fileNameIter;
-    for (; beg < end; beg = cur + sep.size()) {
-        cur = std::search(beg, end, (const Byte *)sep.data(), (const Byte *)sep.data() + sep.size());
-        if (cur == beg) {
+    for (auto &part: parts) {
+        if (part.empty()) {
             continue;
         }
-        part.assign(beg, cur);
         eoh = part.find("\r\n\r\n");
         if (eoh == std::string::npos) {
             Log::warn("multipart/form-data missing headers");
@@ -140,11 +133,9 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
             continue;
         }
         if (part.length() <= eoh + 6) {
-            val = (const Byte *)part.data();
-            valSize = 0;
+            value.clear();
         } else {
-            val = (const Byte *)part.data() + eoh + 4;
-            valSize = part.size() - eoh - 6;
+            value = part.substr(eoh, part.length() - eoh - 6);
         }
         nameIter = dispParams.find("name");
         if (nameIter == dispParams.end()) {
@@ -155,10 +146,9 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const ByteArray &dat
         fileNameIter = dispParams.find("filename");
         if (fileNameIter != dispParams.end()) {
             ctype = headers.get("Content-Type", "application/unknown");
-            files[name].emplace_back(HTTPFile(std::move(fileNameIter->second), std::move(ctype),
-                                              ByteArray(val, val + valSize)));
+            files[name].emplace_back(HTTPFile(std::move(fileNameIter->second), std::move(ctype), std::move(value)));
         } else {
-            arguments[name].emplace_back((const char *)val, valSize);
+            arguments[name].emplace_back(std::move(value));
         }
     }
 }

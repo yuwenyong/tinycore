@@ -87,11 +87,11 @@ public:
         return _headers;
     }
 
-    void setBody(boost::optional<ByteArray> body) {
+    void setBody(boost::optional<std::string> body) {
         _body = std::move(body);
     }
 
-    const ByteArray* getBody() const {
+    const std::string* getBody() const {
         return _body.get_ptr();
     }
 
@@ -258,7 +258,7 @@ protected:
     std::string _url;
     std::string _method;
     HTTPHeaders _headers;
-    boost::optional<ByteArray> _body;
+    boost::optional<std::string> _body;
     boost::optional<std::string> _authUserName;
     std::string _authPassword;
     float _connectTimeout;
@@ -319,7 +319,7 @@ public:
             optional
                     (method, (std::string))
                     (headers, (HTTPHeaders))
-                    (body, (ByteArray))
+                    (body, (std::string))
                     (authUserName, (std::string))
                     (authPassword, (std::string))
                     (connectTimeout, (float))
@@ -368,7 +368,7 @@ class HTTPResponse {
 public:
     HTTPResponse() = default; 
     
-    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, HTTPHeaders headers, ByteArray body,
+    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, HTTPHeaders headers, std::string body,
                  std::string effectiveURL, Duration requestTime)
             : _request(std::move(request))
             , _code(code)
@@ -407,7 +407,7 @@ public:
         return _headers;
     }
 
-    const ByteArray* getBody() const {
+    const std::string* getBody() const {
         return _body.get_ptr();
     }
 
@@ -432,7 +432,7 @@ protected:
     std::shared_ptr<HTTPRequest> _request;
     int _code{200};
     HTTPHeaders _headers;
-    boost::optional<ByteArray> _body;
+    boost::optional<std::string> _body;
     std::string _effectiveURL;
     std::exception_ptr _error;
     Duration _requestTime;
@@ -453,6 +453,10 @@ public:
     template <typename ...Args>
     void fetch(const std::string &url, CallbackType callback, Args&& ...args) {
         fetch(HTTPRequest::create(url, std::forward<Args>(args)...), std::move(callback));
+    }
+
+    void fetch(const HTTPRequest &request, CallbackType callback) {
+        fetch(HTTPRequest::create(request), std::move(callback));
     }
 
     void fetch(std::shared_ptr<HTTPRequest> request, CallbackType callback);
@@ -494,12 +498,12 @@ public:
 protected:
     void onTimeout();
 
-    void onConnect(URLSplitResult parsed);
+    void onConnect(URLSplitResult parsed, std::string parsedHostname);
 
     void runCallback(HTTPResponse response) {
         if (_callback) {
-            CallbackType callback;
-            callback.swap(_callback);
+            CallbackType callback(std::move(_callback));
+            _callback = nullptr;
             callback(std::move(response));
         }
     }

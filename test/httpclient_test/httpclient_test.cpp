@@ -136,8 +136,7 @@ public:
     using RequestHandler::RequestHandler;
 
     void onPost(StringVector args) override {
-        std::string body((const char*)_request->getBody().data(), _request->getBody().size());
-        BOOST_CHECK_EQUAL(body, "blah");
+        BOOST_CHECK_EQUAL(_request->getBody(), "blah");
         setHeader("Location", "/303_get");
         setStatus(303);
     }

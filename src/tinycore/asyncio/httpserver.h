@@ -160,7 +160,7 @@ public:
                       std::string uri,
                       std::string version = "HTTP/1.0",
                       std::unique_ptr<HTTPHeaders> &&headers = nullptr,
-                      ByteArray body = {},
+                      std::string body = {},
                       std::string remoteIp = {},
                       std::string protocol = {},
                       std::string host = {},
@@ -212,11 +212,11 @@ public:
         return _version;
     }
 
-    void setBody(ByteArray body) {
+    void setBody(std::string body) {
         _body = std::move(body);
     }
 
-    const ByteArray& getBody() const {
+    const std::string& getBody() const {
         return _body;
     }
 
@@ -295,7 +295,7 @@ protected:
     std::string _uri;
     std::string _version;
     std::unique_ptr<HTTPHeaders> _headers;
-    ByteArray _body;
+    std::string _body;
     std::string _remoteIp;
     std::string _protocol;
     std::string _host;

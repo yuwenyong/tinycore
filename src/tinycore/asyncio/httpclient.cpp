@@ -111,15 +111,13 @@ void _HTTPConnection::start() {
         if (iter != hostnameMapping.end()) {
             host = iter->second;
         }
+        std::string parsedHostname = host;
         BaseIOStream::SocketType socket(_ioloop->getService());
         if (scheme == "https") {
             auto sslOption = SSLOption::create(false);
             if (_request->isValidateCert()) {
                 sslOption->setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
-                auto hostname = parsed.getHostName();
-                if (hostname) {
-                    sslOption->setCheckHost(*hostname);
-                }
+                sslOption->setCheckHost(parsedHostname);
             } else {
                 sslOption->setVerifyMode(SSLVerifyMode::CERT_NONE);
             }
@@ -148,15 +146,14 @@ void _HTTPConnection::start() {
         }
         _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        auto connectCallback = [this, parsed=std::move(parsed)](){
-            onConnect(std::move(parsed));
-        };
+        _stream->connect(host, port, [this, parsed=std::move(parsed), parsedHostname=std::move(parsedHostname)](){
+            onConnect(std::move(parsed), std::move(parsedHostname));
+        });
 #else
-        auto connectCallback = std::bind([this](URLSplitResult &parsed){
-            onConnect(std::move(parsed));
-        }, std::move(parsed));
+        _stream->connect(host, port, std::bind([this](URLSplitResult &parsed, std::string &parsedHostname){
+            onConnect(std::move(parsed), std::move(parsedHostname));
+        }, std::move(parsed), std::move(parsedHostname)));
 #endif
-        _stream->connect(host, port, std::move(connectCallback));
     } catch (...) {
         error = std::current_exception();
     }
@@ -165,7 +162,7 @@ void _HTTPConnection::start() {
     }
 }
 
-const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT", "DELETE"};
+const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"};
 
 void _HTTPConnection::onTimeout() {
     _timeout.reset();
@@ -174,7 +171,7 @@ void _HTTPConnection::onTimeout() {
     _stream->close();
 }
 
-void _HTTPConnection::onConnect(URLSplitResult parsed) {
+void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostname) {
     if (!_timeout.expired()) {
         _ioloop->removeTimeout(_timeout);
         _timeout.reset();
@@ -203,8 +200,17 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
         ThrowException(NotImplementedError, "ProxyPassword not supported");
     }
     auto &headers = _request->headers();
+    if (!headers.has("Connection")) {
+        headers["Connection"] = "close";
+    }
     if (!headers.has("Host")) {
-        headers["Host"] = parsed.getNetloc();
+        if (parsed.getNetloc().find('@') != std::string::npos) {
+            std::string host;
+            std::tie(std::ignore, std::ignore, host) = String::rpartition(parsed.getNetloc(), "@");
+            headers["Host"] = host;
+        } else {
+            headers["Host"] = parsed.getNetloc();
+        }
     }
     std::string userName, password;
     if (parsed.getUserName()) {
@@ -225,7 +231,7 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
     }
     auto requestBody = _request->getBody();
     if (!_request->isAllowNonstandardMethods()) {
-        if (method == "POST" || method == "PUT") {
+        if (method == "POST" || method == "PATCH" || method == "PUT") {
             ASSERT(requestBody != nullptr);
         } else {
             ASSERT(requestBody == nullptr);
@@ -260,7 +266,7 @@ void _HTTPConnection::onConnect(URLSplitResult parsed) {
     headerData += "\r\n\r\n";
     _stream->write((const Byte *)headerData.data(), headerData.size());
     if (requestBody) {
-        _stream->write(requestBody->data(), requestBody->size());
+        _stream->write((const Byte *)requestBody->data(), requestBody->size());
     }
     _stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
 }
@@ -274,6 +280,9 @@ void _HTTPConnection::cleanup(std::exception_ptr error) {
         Log::warn("unknown exception");
     }
     runCallback(HTTPResponse(_request, 599, error, TimestampClock::now() - _startTime));
+    if (_stream) {
+        _stream->close();
+    }
 }
 
 void _HTTPConnection::onClose() {
@@ -385,14 +394,14 @@ void _HTTPConnection::onBody(ByteArray data) {
     if (_decompressor) {
         data = _decompressor->decompress(data);
     }
-    ByteArray buffer;
+    std::string buffer;
     auto &streamingCallback = _request->getStreamingCallback();
     if (streamingCallback) {
         if (!_chunks) {
             streamingCallback(std::move(data));
         }
     } else {
-        buffer = std::move(data);
+        buffer.assign((const char*)data.data(), data.size())
     }
     HTTPResponse response(originalRequest, _code.get(), *_headers, std::move(buffer), _request->getURL(),
                           TimestampClock::now() - _startTime);

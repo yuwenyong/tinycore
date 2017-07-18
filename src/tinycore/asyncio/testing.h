@@ -55,11 +55,19 @@ public:
         return boost::any_cast<T>(result);
     }
 protected:
+    void rethrow() {
+        if (_failure) {
+            std::rethrow_exception(_failure);
+            _failure = nullptr;
+        }
+    }
+
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
     std::exception_ptr _failure;
     boost::any _stopArgs;
+    Timeout _timeout;
 };
 
 

@@ -30,7 +30,11 @@ void AsyncTestCase::stop() {
 void AsyncTestCase::wait(int timeout, ConditionCallback condition) {
     if (!_stopped) {
         if (timeout > 0) {
-            _ioloop.addTimeout(1.0f * timeout, [this, timeout](){
+            if (!_timeout.expired()) {
+                _ioloop.removeTimeout(_timeout);
+                _timeout.reset();
+            }
+            _timeout = _ioloop.addTimeout(1.0f * timeout, [this, timeout](){
                 try {
                     ThrowException(TimeoutError, String::format("Async operation timed out after %d seconds", timeout));
                 } catch (...) {
@@ -52,9 +56,7 @@ void AsyncTestCase::wait(int timeout, ConditionCallback condition) {
     }
     ASSERT(_stopped);
     _stopped = false;
-    if (_failure) {
-        std::rethrow_exception(_failure);
-    }
+    rethrow();
 }
 
 

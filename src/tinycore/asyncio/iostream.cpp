@@ -5,7 +5,6 @@
 #include "tinycore/asyncio/iostream.h"
 #include "tinycore/asyncio/httpserver.h"
 #include "tinycore/asyncio/ioloop.h"
-#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/log.h"
@@ -31,65 +30,43 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
 }
 
 void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType callback) {
-    ASSERT(!_readCallback, "Already reading");
+    setReadCallback(std::move(callback));
     _readRegex = boost::regex(regex);
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
-    if (readFromBuffer()) {
-        return;
-    }
-    checkClosed();
-    if ((_state & S_READ) == S_NONE) {
-        readFromSocket();
-    }
+    tryInlineRead();
 }
 
 void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
-    ASSERT(!_readCallback, "Already reading");
+    setReadCallback(std::move(callback));
     _readDelimiter = std::move(delimiter);
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
-    if (readFromBuffer()) {
-        return;
-    }
-    checkClosed();
-    if ((_state & S_READ) == S_NONE) {
-        readFromSocket();
-    }
+    tryInlineRead();
 }
 
 void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback) {
-    ASSERT(!_readCallback, "Already reading");
+    setReadCallback(std::move(callback));
     _readBytes = numBytes;
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
     _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
-    if (readFromBuffer()) {
-        return;
-    }
-    checkClosed();
-    if ((_state & S_READ) == S_NONE) {
-        readFromSocket();
-    }
+    tryInlineRead();
 }
 
 void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback) {
-    ASSERT(!_readCallback, "Already reading");
+    setReadCallback(std::move(callback));
     if (closed()) {
-        callback = StackContext::wrap<ByteArray>(std::move(callback));
+        callback = StackContext::wrap<ByteArray>(std::move(_readCallback));
         ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
         _readBuffer.readCompleted(_readBuffer.getActiveSize());
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        auto func = [callback=std::move(callback), data=std::move(data)](){
+        runCallback([callback=std::move(callback), data=std::move(data)](){
             callback(std::move(data));
-        };
+        });
 #else
-        auto func = std::bind([](ReadCallbackType &callback, ByteArray &data){
+        runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
             callback(std::move(data));
-        }, std::move(callback), std::move(data));
+        }, std::move(callback), std::move(data)));
 #endif
-        runCallback(std::move(func));
+        _readCallback = nullptr;
         return;
     }
     _readUntilClose = true;
-    _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
     _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     if ((_state & S_READ) == S_NONE) {
         readFromSocket();
@@ -121,40 +98,40 @@ void BaseIOStream::setCloseCallback(CloseCallbackType callback) {
 void BaseIOStream::close() {
     if (!closed()) {
         if (_readUntilClose) {
-            ReadCallbackType callback;
-            callback.swap(_readCallback);
+            ReadCallbackType callback(std::move(_readCallback));
+            _readCallback = nullptr;
             _readUntilClose = false;
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
             _readBuffer.readCompleted(_readBuffer.getActiveSize());
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [callback=std::move(callback), data=std::move(data)](){
+            runCallback([callback=std::move(callback), data=std::move(data)](){
                 callback(std::move(data));
-            };
+            });
 #else
-            auto func = std::bind([](ReadCallbackType &callback, ByteArray &data) {
+            runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data) {
                 callback(std::move(data));
-            }, std::move(callback), std::move(data));
+            }, std::move(callback), std::move(data)));
 #endif
-            runCallback(std::move(func));
         }
         closeSocket();
         _closed = true;
     }
 }
 
-void BaseIOStream::onConnect(const boost::system::error_code &error) {
+void BaseIOStream::onConnect(const boost::system::error_code &ec) {
     _state &= ~S_WRITE;
-    if (error) {
+    if (ec) {
         _connectCallback = nullptr;
-        if (error != boost::asio::error::operation_aborted) {
-            Log::warn("Connect error %d :%s", error.value(), error.message());
+        if (ec != boost::asio::error::operation_aborted) {
+            _error = std::make_exception_ptr(boost::system::system_error(ec));
+            Log::warn("Connect error %d :%s", ec.value(), ec.message());
         }
         close();
         return;
     } else {
         if (_connectCallback) {
-            ConnectCallbackType callback;
-            callback.swap(_connectCallback);
+            ConnectCallbackType callback(std::move(_connectCallback));
+            _connectCallback = nullptr;
             runCallback(std::move(callback));
         }
     }
@@ -162,10 +139,10 @@ void BaseIOStream::onConnect(const boost::system::error_code &error) {
     maybeAddErrorListener();
 }
 
-void BaseIOStream::onRead(const boost::system::error_code &error, size_t transferredBytes) {
+void BaseIOStream::onRead(const boost::system::error_code &ec, size_t transferredBytes) {
     _state &= ~S_READ;
     try {
-        if (readToBuffer(error, transferredBytes) == 0) {
+        if (readToBuffer(ec, transferredBytes) == 0) {
             return;
         }
     } catch (std::exception &e) {
@@ -185,12 +162,13 @@ void BaseIOStream::onRead(const boost::system::error_code &error, size_t transfe
     }
 }
 
-void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transferredBytes) {
+void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferredBytes) {
     _state &= ~S_WRITE;
-    if (error) {
+    if (ec) {
         _writeCallback = nullptr;
-        if (error != boost::asio::error::operation_aborted) {
-            Log::warn("Write error %d :%s", error.value(), error.message());
+        if (ec != boost::asio::error::operation_aborted) {
+            _error = std::make_exception_ptr(boost::system::system_error(ec));
+            Log::warn("Write error %d :%s", ec.value(), ec.message());
         }
         close();
         return;
@@ -215,14 +193,19 @@ void BaseIOStream::onWrite(const boost::system::error_code &error, size_t transf
     }
 }
 
-void BaseIOStream::onClose(const boost::system::error_code &error) {
-    if (error) {
-        Log::warn("Close error %d :%s", error.value(), error.message());
+void BaseIOStream::onClose(const boost::system::error_code &ec) {
+    if (ec) {
+        _error = std::make_exception_ptr(boost::system::system_error(ec));
+        Log::warn("Close error %d :%s", ec.value(), ec.message());
     }
+    maybeRunCloseCallback();
+}
+
+void BaseIOStream::maybeRunCloseCallback() {
     if (_closeCallback) {
-        if (_pendingCallbacks == 0) {
-            CloseCallbackType callback;
-            callback.swap(_closeCallback);
+        if (_closed && _pendingCallbacks == 0) {
+            CloseCallbackType callback(std::move(_closeCallback));
+            _closeCallback = nullptr;
             runCallback(std::move(callback));
             clearCallbacks();
         }
@@ -262,15 +245,16 @@ void BaseIOStream::runCallback(CallbackType callback) {
     _ioloop->addCallback(std::bind(&Wrapper1::operator(), std::move(op)));
 }
 
-size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t transferredBytes) {
-    if (error) {
-        if (error != boost::asio::error::operation_aborted) {
-            if (error != boost::asio::error::eof) {
-                Log::warn("Read error %d :%s", error.value(), error.message());
+size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t transferredBytes) {
+    if (ec) {
+        if (ec != boost::asio::error::operation_aborted) {
+            if (ec != boost::asio::error::eof) {
+                _error = std::make_exception_ptr(boost::system::system_error(ec));
+                Log::warn("Read error %d :%s", ec.value(), ec.message());
             }
             close();
-            if (error != boost::asio::error::eof) {
-                throw boost::system::system_error(error);
+            if (ec != boost::asio::error::eof) {
+                std::rethrow_exception(_error);
             }
         }
         return 0;
@@ -285,107 +269,86 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &error, size_t
 }
 
 bool BaseIOStream::readFromBuffer() {
-    if (_readBytes) {
-        if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
-            size_t bytesToConsume = std::min(_readBytes.get(), _readBuffer.getActiveSize());
-            _readBytes.get() -= bytesToConsume;
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + bytesToConsume);
-            _readBuffer.readCompleted(bytesToConsume);
+    if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
+        size_t bytesToConsume = std::min(_readBytes.get(), _readBuffer.getActiveSize());
+        _readBytes.get() -= bytesToConsume;
+        ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + bytesToConsume);
+        _readBuffer.readCompleted(bytesToConsume);
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [streamingCallback=_streamingCallback, data=std::move(data)](){
-                streamingCallback(std::move(data));
-            };
+        runCallback([streamingCallback=_streamingCallback, data=std::move(data)](){
+            streamingCallback(std::move(data));
+        });
 #else
-            auto func = std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data){
-                streamingCallback(std::move(data));
-            }, _streamingCallback, std::move(data));
+        runCallback(std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data) {
+            streamingCallback(std::move(data));
+        }, _streamingCallback, std::move(data)));
 #endif
-            runCallback(std::move(func));
+    }
+    if (_readBytes && _readBuffer.getActiveSize() >= _readBytes.get()) {
+        size_t numBytes = _readBytes.get();
+        ReadCallbackType callback(std::move(_readCallback));
+        _readCallback = nullptr;
+        _streamingCallback = nullptr;
+        _readBytes = boost::none;
+        ByteArray data;
+        if (numBytes > 0) {
+            data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + numBytes);
+            _readBuffer.readCompleted(numBytes);
         }
-        if (_readBuffer.getActiveSize() >= _readBytes.get()) {
-            size_t numBytes = _readBytes.get();
-            ReadCallbackType callback;
-            callback.swap(_readCallback);
-            _streamingCallback = nullptr;
-            _readBytes = boost::none;
-            ByteArray data;
-            if (numBytes > 0) {
-                data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + numBytes);
-                _readBuffer.readCompleted(numBytes);
-            }
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [callback=std::move(callback), data=std::move(data)](){
-                callback(std::move(data));
-            };
+        runCallback([callback=std::move(callback), data=std::move(data)](){
+            callback(std::move(data));
+        });
 #else
-            auto func = std::bind([](ReadCallbackType &callback, ByteArray &data){
-                callback(std::move(data));
-            }, std::move(callback), std::move(data));
+        runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data) {
+            callback(std::move(data));
+        }, std::move(callback), std::move(data)));
 #endif
-            runCallback(std::move(func));
-            return true;
-        }
+        return true;
     } else if (_readDelimiter) {
         const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
                                   _readDelimiter->c_str());
         if (loc) {
             size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter->size();
-            ReadCallbackType callback;
-            callback.swap(_readCallback);
+            ReadCallbackType callback(std::move(_readCallback));
+            _readCallback = nullptr;
             _streamingCallback = nullptr;
             _readDelimiter = boost::none;
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
             _readBuffer.readCompleted(readBytes);
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [callback=std::move(callback), data=std::move(data)](){
+            runCallback([callback=std::move(callback), data=std::move(data)](){
                 callback(std::move(data));
-            };
+            });
 #else
-            auto func = std::bind([](ReadCallbackType &callback, ByteArray &data){
+            runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
                 callback(std::move(data));
-            }, std::move(callback), std::move(data));
+            }, std::move(callback), std::move(data)));
 #endif
-            runCallback(std::move(func));
             return true;
         }
     } else if (_readRegex) {
         boost::cmatch m;
-        if (boost::regex_search((const char *)_readBuffer.getReadPointer(),
-                                (const char *)_readBuffer.getReadPointer() + _readBuffer.getActiveSize(), m,
+        if (boost::regex_search((const char *) _readBuffer.getReadPointer(),
+                                (const char *) _readBuffer.getReadPointer() + _readBuffer.getActiveSize(), m,
                                 _readRegex.get())) {
-            auto readBytes = m.position((size_t)0) + m.length();
-            ReadCallbackType callback;
-            callback.swap(_readCallback);
+            auto readBytes = m.position((size_t) 0) + m.length();
+            ReadCallbackType callback(std::move(_readCallback));
+            _readCallback = nullptr;
             _streamingCallback = nullptr;
             _readRegex = boost::none;
             ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
-            _readBuffer.readCompleted((size_t)readBytes);
+            _readBuffer.readCompleted((size_t) readBytes);
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [callback=std::move(callback), data=std::move(data)](){
+            runCallback([callback = std::move(callback), data = std::move(data)]() {
                 callback(std::move(data));
-            };
+            });
 #else
-            auto func = std::bind([](ReadCallbackType &callback, ByteArray &data){
+            runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
                 callback(std::move(data));
-            }, std::move(callback), std::move(data));
+            }, std::move(callback), std::move(data)));
 #endif
-            runCallback(std::move(func));
             return true;
-        }
-    } else if (_readUntilClose) {
-        if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-            _readBuffer.readCompleted(_readBuffer.getActiveSize());
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            auto func = [streamingCallback=_streamingCallback, data=std::move(data)](){
-                streamingCallback(std::move(data));
-            };
-#else
-            auto func = std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data){
-                streamingCallback(std::move(data));
-            }, _streamingCallback, std::move(data));
-#endif
-            runCallback(std::move(func));
         }
     }
     return false;
@@ -394,12 +357,7 @@ bool BaseIOStream::readFromBuffer() {
 void BaseIOStream::maybeAddErrorListener() {
     if (_state == S_NONE && _pendingCallbacks == 0) {
         if (closed()) {
-            if (_closeCallback) {
-                CloseCallbackType callback;
-                callback.swap(_closeCallback);
-                runCallback(std::move(callback));
-            }
-            clearCallbacks();
+            maybeRunCloseCallback();
         } else {
             readFromSocket();
         }
@@ -456,9 +414,9 @@ void IOStream::writeToSocket() {
 }
 
 void IOStream::closeSocket() {
-    boost::system::error_code error;
-    _socket.close(error);
-    onClose(error);
+    boost::system::error_code ec;
+    _socket.close(ec);
+    onClose(ec);
 }
 
 SSLIOStream::SSLIOStream(SocketType &&socket,
@@ -556,20 +514,23 @@ void SSLIOStream::doWrite() {
 }
 
 void SSLIOStream::doClose() {
-    boost::system::error_code error;
-    _socket.close(error);
-    onClose(error);
+    boost::system::error_code ec;
+    _socket.close(ec);
+    onClose(ec);
 }
 
-void SSLIOStream::onHandshake(const boost::system::error_code &error) {
+void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
     _state &= ~S_WRITE;
     _sslAccepting = false;
-    if (error) {
-        if (error != boost::asio::error::operation_aborted) {
-            Log::warn("SSL error %d :%s, closing connection.", error.value(), error.message());
+    if (ec) {
+        if (ec != boost::asio::error::operation_aborted) {
+            _error = std::make_exception_ptr(std::make_exception_ptr(boost::system::system_error(ec)));
+            Log::warn("SSL error %d :%s, closing connection.", ec.value(), ec.message());
         }
         close();
-        throw boost::system::system_error(error);
+        if (ec != boost::asio::error::operation_aborted) {
+            std::rethrow_exception(_error);
+        }
     } else {
         _sslAccepted = true;
         if (writing()) {
@@ -582,9 +543,9 @@ void SSLIOStream::onHandshake(const boost::system::error_code &error) {
     }
 }
 
-void SSLIOStream::onShutdown(const boost::system::error_code &error) {
-    if (error.category() == boost::asio::error::get_ssl_category()) {
-        Log::warn("SSL shutdown error %d :%s", error.value(), error.message());
+void SSLIOStream::onShutdown(const boost::system::error_code &ec) {
+    if (ec.category() == boost::asio::error::get_ssl_category()) {
+        Log::warn("SSL shutdown error %d :%s", ec.value(), ec.message());
     }
     doClose();
 }
