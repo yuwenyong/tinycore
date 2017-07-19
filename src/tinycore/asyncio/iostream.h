@@ -277,6 +277,7 @@ protected:
     bool _connecting{false};
     int _state{S_NONE};
     int _pendingCallbacks{0};
+    bool _closing{false};
     bool _closed{false};
 };
 

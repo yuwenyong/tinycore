@@ -92,7 +92,7 @@ void HTTPConnection::finish() {
     ASSERT(!_requestObserver.expired(), "Request closed");
     _request = _requestObserver.lock();
     _requestFinished = true;
-    if (_stream->writing()) {
+    if (!_stream->writing()) {
         finishRequest();
     }
 }
@@ -166,7 +166,7 @@ void HTTPConnection::onHeaders(ByteArray data) {
         }
         auto headers = HTTPHeaders::parse(rest);
         _request = HTTPServerRequest::create(shared_from_this(), std::move(method), std::move(uri), std::move(version),
-                                             std::move(headers), ByteArray(), _address);
+                                             std::move(headers), std::string(), _address);
         _requestObserver = _request;
         auto requestHeaders = _request->getHTTPHeaders();
         std::string contentLengthValue = requestHeaders->get("Content-Length");

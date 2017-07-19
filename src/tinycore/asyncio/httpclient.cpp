@@ -401,7 +401,7 @@ void _HTTPConnection::onBody(ByteArray data) {
             streamingCallback(std::move(data));
         }
     } else {
-        buffer.assign((const char*)data.data(), data.size())
+        buffer.assign((const char*)data.data(), data.size());
     }
     HTTPResponse response(originalRequest, _code.get(), *_headers, std::move(buffer), _request->getURL(),
                           TimestampClock::now() - _startTime);

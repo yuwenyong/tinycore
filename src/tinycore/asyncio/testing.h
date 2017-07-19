@@ -46,10 +46,10 @@ public:
         stop();
     }
 
-    void wait(int timeout=5, ConditionCallback condition= nullptr);
+    void wait(int timeout=500, ConditionCallback condition= nullptr);
 
     template <typename T>
-    T waitResult(int timeout=5, ConditionCallback condition= nullptr) {
+    T waitResult(int timeout=500, ConditionCallback condition= nullptr) {
         wait(timeout, std::move(condition));
         boost::any result(std::move(_stopArgs));
         return boost::any_cast<T>(result);

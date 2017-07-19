@@ -81,7 +81,6 @@ size_t GzipFile::write(const Byte *data, size_t len) {
         _size += len;
         _crc = Zlib::crc32(data, len, _crc) & 0xffffffff;
         ByteArray compressData = _compress->compress(data, len);
-        std::cout << String::toHexStr(compressData) << std::endl;
         _fileObj->write((char *)compressData.data(), compressData.size());
         _offset += len;
     }

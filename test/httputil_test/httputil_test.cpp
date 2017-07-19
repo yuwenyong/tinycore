@@ -98,6 +98,58 @@ BOOST_AUTO_TEST_CASE(TestSpecialFilenames) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(TestBoundaryStartsAndEndsWithQuotes) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("\"1234\"", data, args, files);
+    auto &file = files["files"][0];
+    BOOST_CHECK_EQUAL(file.getFileName(), "ab.txt");
+    BOOST_CHECK_EQUAL(file.getBody(), "Foo");
+}
+
+BOOST_AUTO_TEST_CASE(TestMissingHeaders) {
+    const char *data = "--1234\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestInvalidContentDisposition) {
+    const char *data = "--1234\r\nContent-Disposition: invalid; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestLineDoesNotEndWithCorrectLineBreak) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestContentDispositionHeaderWithoutNameParameter) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestDataAfterFinalBoundary) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--\r\n";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    auto &file = files["files"][0];
+    BOOST_CHECK_EQUAL(file.getFileName(), "ab.txt");
+    BOOST_CHECK_EQUAL(file.getBody(), "Foo");
+}
+
 BOOST_AUTO_TEST_CASE(TestMultiLine) {
     const char *data = "Foo: bar\r\n baz\r\nAsdf: qwer\r\n\tzxcv\r\nFoo: even\r\n     more\r\n     lines\r\n";
     auto headers = HTTPHeaders::parse(data);

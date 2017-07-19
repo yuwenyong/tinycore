@@ -135,7 +135,7 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &d
         if (part.length() <= eoh + 6) {
             value.clear();
         } else {
-            value = part.substr(eoh, part.length() - eoh - 6);
+            value = part.substr(eoh + 4, part.length() - eoh - 6);
         }
         nameIter = dispParams.find("name");
         if (nameIter == dispParams.end()) {

@@ -96,7 +96,7 @@ void BaseIOStream::setCloseCallback(CloseCallbackType callback) {
 }
 
 void BaseIOStream::close() {
-    if (!closed()) {
+    if (!_closing && !_closed) {
         if (_readUntilClose) {
             ReadCallbackType callback(std::move(_readCallback));
             _readCallback = nullptr;
@@ -113,8 +113,8 @@ void BaseIOStream::close() {
             }, std::move(callback), std::move(data)));
 #endif
         }
+        _closing = true;
         closeSocket();
-        _closed = true;
     }
 }
 
@@ -194,6 +194,8 @@ void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferr
 }
 
 void BaseIOStream::onClose(const boost::system::error_code &ec) {
+    _closing = false;
+    _closed = true;
     if (ec) {
         _error = std::make_exception_ptr(boost::system::system_error(ec));
         Log::warn("Close error %d :%s", ec.value(), ec.message());
