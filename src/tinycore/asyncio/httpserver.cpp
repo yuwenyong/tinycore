@@ -92,7 +92,7 @@ void HTTPConnection::finish() {
     ASSERT(!_requestObserver.expired(), "Request closed");
     _request = _requestObserver.lock();
     _requestFinished = true;
-    if (_stream->writing()) {
+    if (!_stream->writing()) {
         finishRequest();
     }
 }
@@ -166,7 +166,7 @@ void HTTPConnection::onHeaders(ByteArray data) {
         }
         auto headers = HTTPHeaders::parse(rest);
         _request = HTTPServerRequest::create(shared_from_this(), std::move(method), std::move(uri), std::move(version),
-                                             std::move(headers), ByteArray(), _address);
+                                             std::move(headers), std::string(), _address);
         _requestObserver = _request;
         auto requestHeaders = _request->getHTTPHeaders();
         std::string contentLengthValue = requestHeaders->get("Content-Length");
@@ -193,21 +193,19 @@ void HTTPConnection::onHeaders(ByteArray data) {
 }
 
 void HTTPConnection::onRequestBody(ByteArray data) {
-    _request->setBody(std::move(data));
+    _request->setBody(std::string((const char *)data.data(), data.size()));
     auto headers = _request->getHTTPHeaders();
     std::string contentType = headers->get("Content-Type");
     const std::string &method = _request->getMethod();
-    if (method == "POST" || method == "PUT") {
+    if (method == "POST" || method == "PATCH" || method == "PUT") {
         if (boost::starts_with(contentType, "application/x-www-form-urlencoded")) {
-            const ByteArray &body = _request->getBody();
-            auto arguments = URLParse::parseQS(std::string((const char *)body.data(), body.size()), false);
+            auto arguments = URLParse::parseQS(_request->getBody(), false);
             for (auto &nv: arguments) {
                 if (!nv.second.empty()) {
                     _request->addArguments(nv.first, std::move(nv.second));
                 }
             }
         } else if (boost::starts_with(contentType, "multipart/form-data")) {
-            const ByteArray &body = _request->getBody();
             StringVector fields = String::split(contentType, ';');
             bool found = false;
             std::string k, sep, v;
@@ -215,7 +213,8 @@ void HTTPConnection::onRequestBody(ByteArray data) {
                 boost::trim(field);
                 std::tie(k, sep, v) = String::partition(field, "=");
                 if (k == "boundary" && !v.empty()) {
-                    HTTPUtil::parseMultipartFormData(std::move(v), body, _request->arguments(), _request->files());
+                    HTTPUtil::parseMultipartFormData(std::move(v), _request->getBody(), _request->arguments(),
+                                                     _request->files());
                     found = true;
                     break;
                 }
@@ -235,7 +234,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
                                      std::string uri,
                                      std::string version,
                                      std::unique_ptr<HTTPHeaders> &&headers,
-                                     ByteArray body,
+                                     std::string body,
                                      std::string remoteIp,
                                      std::string protocol,
                                      std::string host,
@@ -275,7 +274,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     } else {
         _host = _headers->get("Host", "127.0.0.1");
     }
-    std::tie(std::ignore, std::ignore, _path, _query, std::ignore) = URLParse::urlSplit(_uri);;
+    std::tie(_path, std::ignore, _query) = String::partition(_uri, "?");
     _arguments = URLParse::parseQS(_query, false);
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);

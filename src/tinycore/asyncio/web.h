@@ -32,8 +32,8 @@ public:
     typedef boost::ptr_vector<OutputTransform> TransformsType;
     typedef std::vector<std::pair<std::string, std::string>> ListHeadersType;
     typedef std::map<std::string, boost::any> SettingsType;
-//    typedef boost::optional<BaseCookie> CookiesType;
-    typedef boost::optional<std::vector<SimpleCookie>> NewCookiesType;
+    typedef boost::optional<SimpleCookie> CookiesType;
+//    typedef boost::optional<std::vector<SimpleCookie>> NewCookiesType;
     typedef boost::property_tree::ptree SimpleJSONType;
     typedef HTTPServerRequest::WriteCallbackType FlushCallbackType;
 
@@ -49,6 +49,7 @@ public:
     virtual void onGet(StringVector args);
     virtual void onPost(StringVector args);
     virtual void onDelete(StringVector args);
+    virtual void onPatch(StringVector args);
     virtual void onPut(StringVector args);
     virtual void onOptions(StringVector args);
 
@@ -99,6 +100,13 @@ public:
     template <typename T>
     void addHeader(std::string name, T value) {
         _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    }
+
+    void clearHeader(const std::string &name) {
+        auto iter = _headers.find(name);
+        if (iter != _headers.end()) {
+            _headers.erase(iter);
+        }
     }
 
     std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
@@ -180,7 +188,7 @@ public:
     template <typename... Args>
     std::string reverseURL(const std::string &name, Args&&... args);
 
-    virtual std::string computeEtag() const;
+    virtual boost::optional<std::string> computeEtag() const;
 
     std::shared_ptr<HTTPServerRequest> getRequest() const {
         return _request;
@@ -229,6 +237,15 @@ protected:
 
     void handleRequestException(std::exception_ptr e);
 
+    void clearHeadersFor304() {
+        const StringVector headers = {"Allow", "Content-Encoding", "Content-Language",
+                                      "Content-Length", "Content-MD5", "Content-Range",
+                                      "Content-Type", "Last-Modified"};
+        for (auto &h: headers) {
+            clearHeader(h);
+        }
+    }
+
     Application *_application;
     std::shared_ptr<HTTPServerRequest> _request;
     bool _headersWritten{false};
@@ -239,7 +256,7 @@ protected:
     ListHeadersType _listHeaders;
     ByteArray _writeBuffer;
     int _statusCode;
-    NewCookiesType _newCookies;
+    CookiesType _newCookie;
 };
 
 
@@ -274,7 +291,7 @@ public:
                 if (!query.empty()) { \
                     uri += "?" + query; \
                 } \
-                this->redirect(uri); \
+                this->redirect(uri, true); \
                 return; \
             } \
         } else { \
@@ -293,7 +310,7 @@ public:
             if (!query.empty()) { \
                 uri += "?" + query; \
             } \
-            this->redirect(uri); \
+            this->redirect(uri, true); \
             return; \
         } \
         ThrowException(HTTPError, 404); \
@@ -426,7 +443,7 @@ protected:
 class TC_COMMON_API OutputTransform {
 public:
     virtual ~OutputTransform() {}
-    virtual void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) =0;
+    virtual void transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) =0;
     virtual void transformChunk(ByteArray &chunk, bool finishing) =0;
 };
 
@@ -434,9 +451,8 @@ public:
 class TC_COMMON_API GZipContentEncoding: public OutputTransform {
 public:
     GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request);
-    void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) override;
+    void transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) override;
     void transformChunk(ByteArray &chunk, bool finishing) override;
-
 protected:
     static const StringSet _contentTypes;
     static const int _minLength = 5;
@@ -444,7 +460,6 @@ protected:
     bool _gzipping;
     std::shared_ptr<std::stringstream> _gzipValue;
     GzipFile _gzipFile;
-//    size_t _gzipPos{0};
 };
 
 
@@ -454,9 +469,8 @@ public:
         _chunking = request->supportsHTTP1_1();
     }
 
-    void transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) override;
+    void transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) override;
     void transformChunk(ByteArray &chunk, bool finishing) override;
-
 protected:
     bool _chunking;
 };
@@ -488,7 +502,7 @@ public:
     std::string reverse(Args&&... args) {
         ASSERT(!_path.empty(), "Cannot reverse url regex %s", _pattern.c_str());
         ASSERT(sizeof...(Args) == _groupCount, "required number of arguments not found");
-        return String::format(_path.c_str(), std::forward<Args>(args)...);
+        return String::formats(_path.c_str(), std::forward<Args>(args)...);
     }
 
     std::string reverse() {

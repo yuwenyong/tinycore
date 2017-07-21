@@ -125,6 +125,10 @@ public:
         return _items.find(key) != _items.end();
     }
 
+    void erase(const std::string &key) {
+        _items.erase(key);
+    }
+
     void getAll(CallbackType callback) const {
         for (auto &item: _items) {
             callback(item.first, item.second);

@@ -19,8 +19,20 @@ public:
         } catch (std::exception &e) {
         }
     }
+
+    void testSubsequentWaitCalls() {
+        _ioloop.addTimeout(0.01f, [this]() {
+            stop();
+        });
+        wait(0.02f);
+        _ioloop.addTimeout(0.03f, [this]() {
+            stop();
+        });
+        wait(0.1f);
+    }
 };
 
 
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(TestingTest, testExceptionInCallback)
+TINYCORE_TEST_CASE(TestingTest, testSubsequentWaitCalls)

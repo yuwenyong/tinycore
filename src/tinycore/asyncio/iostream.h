@@ -10,9 +10,10 @@
 #include <boost/asio/ssl.hpp>
 #include <boost/optional.hpp>
 #include <boost/regex.hpp>
+#include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/utilities/messagebuffer.h"
-#include "ioloop.h"
 
 
 enum class SSLVerifyMode {
@@ -219,14 +220,35 @@ public:
         return _maxBufferSize;
     }
 
-    void onConnect(const boost::system::error_code &error);
-    void onRead(const boost::system::error_code &error, size_t transferredBytes);
-    void onWrite(const boost::system::error_code &error, size_t transferredBytes);
-    void onClose(const boost::system::error_code &error);
+    std::exception_ptr getError() const {
+        return _error;
+    }
+
+    void onConnect(const boost::system::error_code &ec);
+    void onRead(const boost::system::error_code &ec, size_t transferredBytes);
+    void onWrite(const boost::system::error_code &ec, size_t transferredBytes);
+    void onClose(const boost::system::error_code &ec);
 protected:
+    void maybeRunCloseCallback();
+
     void runCallback(CallbackType callback);
 
-    size_t readToBuffer(const boost::system::error_code &error, size_t transferredBytes);
+    void setReadCallback(ReadCallbackType &&callback) {
+        ASSERT(!_readCallback, "Already reading");
+        _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
+    }
+
+    void tryInlineRead() {
+        if (readFromBuffer()) {
+            return;
+        }
+        checkClosed();
+        if ((_state & S_READ) == S_NONE) {
+            readFromSocket();
+        }
+    }
+
+    size_t readToBuffer(const boost::system::error_code &ec, size_t transferredBytes);
     bool readFromBuffer();
 
     void checkClosed() const {
@@ -244,6 +266,7 @@ protected:
     SocketType _socket;
     IOLoop *_ioloop;
     size_t _maxBufferSize;
+    std::exception_ptr _error;
     MessageBuffer _readBuffer;
     std::queue<MessageBuffer> _writeQueue;
     boost::optional<std::string> _readDelimiter;
@@ -258,6 +281,7 @@ protected:
     bool _connecting{false};
     int _state{S_NONE};
     int _pendingCallbacks{0};
+    bool _closing{false};
     bool _closed{false};
 };
 
@@ -307,8 +331,8 @@ protected:
     void doRead();
     void doWrite();
     void doClose();
-    void onHandshake(const boost::system::error_code &error);
-    void onShutdown(const boost::system::error_code &error);
+    void onHandshake(const boost::system::error_code &ec);
+    void onShutdown(const boost::system::error_code &ec);
 
     std::shared_ptr<SSLOption> _sslOption;
     SSLSocketType _sslSocket;

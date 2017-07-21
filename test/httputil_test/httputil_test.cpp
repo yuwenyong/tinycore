@@ -58,24 +58,20 @@ BOOST_AUTO_TEST_CASE(TestFileUpload) {
     const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
     QueryArgListMap args;
     HTTPFileListMap files;
-    HTTPUtil::parseMultipartFormData("1234", ByteArray((const Byte *)data, (const Byte *)data + strlen(data)), args,
-                                     files);
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
     auto &file = files["files"][0];
     BOOST_CHECK_EQUAL(file.getFileName(), "ab.txt");
-    std::string body((const char*)file.getBody().data(), file.getBody().size());
-    BOOST_CHECK_EQUAL(body, "Foo");
+    BOOST_CHECK_EQUAL(file.getBody(), "Foo");
 }
 
 BOOST_AUTO_TEST_CASE(TestUnquotedNames) {
     const char *data = "--1234\r\nContent-Disposition: form-data; name=files; filename=ab.txt\r\n\r\nFoo\r\n--1234--";
     QueryArgListMap args;
     HTTPFileListMap files;
-    HTTPUtil::parseMultipartFormData("1234", ByteArray((const Byte *)data, (const Byte *)data + strlen(data)), args,
-                                     files);
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
     auto &file = files["files"][0];
     BOOST_CHECK_EQUAL(file.getFileName(), "ab.txt");
-    std::string body((const char*)file.getBody().data(), file.getBody().size());
-    BOOST_CHECK_EQUAL(body, "Foo");
+    BOOST_CHECK_EQUAL(file.getBody(), "Foo");
 }
 
 BOOST_AUTO_TEST_CASE(TestSpecialFilenames) {
@@ -95,13 +91,63 @@ BOOST_AUTO_TEST_CASE(TestSpecialFilenames) {
         " name=\"files\"; filename=\"%s\"\r\n\r\nFoo\r\n--1234--", name.c_str());
         QueryArgListMap args;
         HTTPFileListMap files;
-        HTTPUtil::parseMultipartFormData("1234", ByteArray((const Byte *)data.data(),
-                                                           (const Byte *)data.data() + data.size()), args, files);
+        HTTPUtil::parseMultipartFormData("1234", data, args, files);
         auto &file = files["files"][0];
         BOOST_CHECK_EQUAL(file.getFileName(), filename);
-        std::string body((const char*)file.getBody().data(), file.getBody().size());
-        BOOST_CHECK_EQUAL(body, "Foo");
+        BOOST_CHECK_EQUAL(file.getBody(), "Foo");
     }
+}
+
+BOOST_AUTO_TEST_CASE(TestBoundaryStartsAndEndsWithQuotes) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("\"1234\"", data, args, files);
+    auto &file = files["files"][0];
+    BOOST_CHECK_EQUAL(file.getFileName(), "ab.txt");
+    BOOST_CHECK_EQUAL(file.getBody(), "Foo");
+}
+
+BOOST_AUTO_TEST_CASE(TestMissingHeaders) {
+    const char *data = "--1234\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestInvalidContentDisposition) {
+    const char *data = "--1234\r\nContent-Disposition: invalid; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestLineDoesNotEndWithCorrectLineBreak) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestContentDispositionHeaderWithoutNameParameter) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    BOOST_CHECK_EQUAL(files.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestDataAfterFinalBoundary) {
+    const char *data = "--1234\r\nContent-Disposition: form-data; name=\"files\"; filename=\"ab.txt\"\r\n\r\nFoo\r\n--1234--\r\n";
+    QueryArgListMap args;
+    HTTPFileListMap files;
+    HTTPUtil::parseMultipartFormData("1234", data, args, files);
+    auto &file = files["files"][0];
+    BOOST_CHECK_EQUAL(file.getFileName(), "ab.txt");
+    BOOST_CHECK_EQUAL(file.getBody(), "Foo");
 }
 
 BOOST_AUTO_TEST_CASE(TestMultiLine) {

@@ -55,6 +55,10 @@ void RequestHandler::onDelete(StringVector args) {
     ThrowException(HTTPError, 405);
 }
 
+void RequestHandler::onPatch(StringVector args) {
+    ThrowException(HTTPError, 405);
+}
+
 void RequestHandler::onPut(StringVector args) {
     ThrowException(HTTPError, 405);
 }
@@ -153,13 +157,14 @@ void RequestHandler::setCookie(const std::string &name, const std::string &value
     if (boost::regex_search(name + value, patt)) {
         ThrowException(ValueError, String::format("Invalid cookie %s: %s", name.c_str(), value.c_str()));
     }
-    if (!_newCookies) {
-        _newCookies.emplace();
+    if (!_newCookie) {
+        _newCookie.emplace();
     }
-    _newCookies->emplace_back();
-    SimpleCookie &newCookie = _newCookies->back();
-    newCookie[name] = value;
-    Morsel &morsel = newCookie.at(name);
+    if (_newCookie->has(name)) {
+        _newCookie->erase(name);
+    }
+    (*_newCookie)[name] = value;
+    auto &morsel = _newCookie->at(name);
     if (domain) {
         morsel["domain"] = domain;
     }
@@ -203,7 +208,7 @@ void RequestHandler::flush(bool includeFooters, FlushCallbackType callback) {
     if (!_headersWritten) {
         _headersWritten = true;
         for (auto &transfrom: _transforms) {
-            transfrom.transformFirstChunk(_headers, chunk, includeFooters);
+            transfrom.transformFirstChunk(_statusCode, _headers, chunk, includeFooters);
         }
         headers = generateHeaders();
     } else {
@@ -220,9 +225,7 @@ void RequestHandler::flush(bool includeFooters, FlushCallbackType callback) {
     if (!chunk.empty()) {
         headers.append((const char *)chunk.data(), chunk.size());
     }
-    if (!headers.empty()) {
-        _request->write(headers, std::move(callback));
-    }
+    _request->write(headers, std::move(callback));
 }
 
 void RequestHandler::finish() {
@@ -230,18 +233,20 @@ void RequestHandler::finish() {
     if (!_headersWritten) {
         const std::string &method = _request->getMethod();
         if (_statusCode == 200 && (method == "GET" || method == "HEAD") && _headers.find("Etag") == _headers.end()) {
-            std::string etag = computeEtag();
-            if (!etag.empty()) {
+            auto etag = computeEtag();
+            if (etag) {
+                setHeader("Etag", *etag);
                 std::string inm = _request->getHTTPHeaders()->get("If-None-Match");
-                if (inm.find(etag.c_str()) != std::string::npos) {
+                if (inm.find(etag->c_str()) != std::string::npos) {
                     _writeBuffer.clear();
                     setStatus(304);
-                } else {
-                    setHeader("Etag", etag);
                 }
             }
         }
-        if (_headers.find("Content-Length") == _headers.end()) {
+        if (_statusCode == 304) {
+            ASSERT(_writeBuffer.empty(), "Cannot send body with 304");
+            clearHeadersFor304();
+        } else if (_headers.find("Content-Length") == _headers.end()) {
             setHeader("Content-Length", _writeBuffer.size());
         }
     }
@@ -287,15 +292,15 @@ void RequestHandler::requireSetting(const std::string &name, const std::string &
     }
 }
 
-std::string RequestHandler::computeEtag() const {
+boost::optional<std::string> RequestHandler::computeEtag() const {
     SHA1Object hasher;
-    hasher.update(_writeBuffer.data(), _writeBuffer.size());
+    hasher.update(_writeBuffer);
     std::string etag = "\"" + hasher.hex() + "\"";
     return etag;
 }
 
 const StringSet RequestHandler::supportedMethods = {
-        "GET", "HEAD", "POST", "DELETE", "PUT", "OPTIONS"
+        "GET", "HEAD", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"
 };
 
 void RequestHandler::execute(TransformsType &transforms, StringVector args) {
@@ -316,6 +321,8 @@ void RequestHandler::execute(TransformsType &transforms, StringVector args) {
                 onPost(std::move(args));
             } else if (method == "DELETE") {
                 onDelete(std::move(args));
+            } else if (method == "PATCH") {
+                onPatch(std::move(args));
             } else if (method == "PUT") {
                 onPut(std::move(args));
             } else {
@@ -344,12 +351,10 @@ std::string RequestHandler::generateHeaders() const {
     for (auto &header: _listHeaders) {
         lines.emplace_back(header.first + ": " + header.second);
     }
-    if (_newCookies) {
-        for (auto &cookieDict: _newCookies.get()) {
-            cookieDict.getAll([&lines](const std::string &key, const Morsel &cookie) {
-                lines.emplace_back("Set-Cookie: " + cookie.outputString());
-            });
-        }
+    if (_newCookie) {
+        _newCookie->getAll([&lines](const std::string &key, const Morsel &cookie) {
+            lines.emplace_back("Set-Cookie: " + cookie.outputString());
+        });
     }
     return boost::join(lines, "\r\n") + "\r\n\r\n";
 }
@@ -584,7 +589,7 @@ GZipContentEncoding::GZipContentEncoding(std::shared_ptr<HTTPServerRequest> requ
     }
 }
 
-void GZipContentEncoding::transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) {
+void GZipContentEncoding::transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) {
     if (_gzipping) {
         auto iter = headers.find("Content-Type");
         std::string ctype = iter != headers.end() ? iter->second : "";
@@ -601,7 +606,6 @@ void GZipContentEncoding::transformFirstChunk(StringMap &headers, ByteArray &chu
         headers["Content-Encoding"] = "gzip";
         _gzipValue = std::make_shared<std::stringstream>();
         _gzipFile.initWithOutputStream(_gzipValue);
-//        _gzipPos = 0;
         transformChunk(chunk, finishing);
         if (headers.find("Content-Length") != headers.end()) {
             headers["Content-Length"] = std::to_string(chunk.size());
@@ -620,9 +624,6 @@ void GZipContentEncoding::transformChunk(ByteArray &chunk, bool finishing) {
         auto length = _gzipValue->tellp() - _gzipValue->tellg();
         chunk.resize((size_t)length);
         _gzipValue->read((char *)chunk.data(), length);
-//        std::string gzipValue = _gzipValue->str();
-//        chunk.assign((const Byte *)gzipValue.data() + _gzipPos, (const Byte *)gzipValue.data() + gzipValue.size());
-//        _gzipPos += chunk.size();
     }
 }
 
@@ -643,8 +644,9 @@ const StringSet GZipContentEncoding::_contentTypes = {
 const int GZipContentEncoding::_minLength;
 
 
-void ChunkedTransferEncoding::transformFirstChunk(StringMap &headers, ByteArray &chunk, bool finishing) {
-    if (_chunking) {
+void ChunkedTransferEncoding::transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk,
+                                                  bool finishing) {
+    if (_chunking && statusCode != 304) {
         if (headers.find("Content-Length") != headers.end() || headers.find("Transfer-Encoding") != headers.end()) {
             _chunking = false;
         } else {

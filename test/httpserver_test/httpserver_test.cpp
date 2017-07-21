@@ -17,13 +17,11 @@ public:
     Document fetchJSON(Args&& ...args) {
         auto response = fetch(std::forward<Args>(args)...);
         response.rethrow();
-        const ByteArray *buffer = response.getBody();
-        std::string body;
-        if (buffer) {
-            body.assign((const char *)buffer->data(), buffer->size());
-        }
+        const std::string *body = response.getBody();
         Document json;
-        json.Parse(body.c_str());
+        if (body) {
+            json.Parse(body->c_str());
+        }
         return json;
     }
 };
@@ -77,33 +75,33 @@ public:
     }
 
     void testSSL() {
-        std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
-        std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false);
-        HTTPResponse response = fetch(std::move(request));
-        const ByteArray *buffer = response.getBody();
-        BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
-        std::string body((const char*)buffer->data(), buffer->size());
-        BOOST_CHECK_EQUAL(body, "Hello world");
+        do {
+            std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
+            std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false);
+            HTTPResponse response = fetch(std::move(request));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "Hello world");
+        } while (false);
     }
 
     void testLargePost() {
-        std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
-        ByteArray data;
-        for (size_t i = 0; i != 5000; ++i) {
-            data.push_back('A');
-        }
-        std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false, ARG_method="POST",
-                                                                   ARG_body=data);
-        HTTPResponse response = fetch(std::move(request));
-        const ByteArray *buffer = response.getBody();
-        BOOST_REQUIRE_NE(buffer, static_cast<const ByteArray *>(nullptr));
-        std::string body((const char*)buffer->data(), buffer->size());
-        BOOST_CHECK_EQUAL(body, "Got 5000 bytes in POST");
+        do {
+            std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
+            std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false, ARG_method="POST",
+                                                                       ARG_body=std::string(5000, 'A'));
+            HTTPResponse response = fetch(std::move(request));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "Got 5000 bytes in POST");
+        } while (false);
     }
 
     void testNonSSLRequest() {
-        HTTPResponse response = fetch("/", ARG_requestTimeout=3600, ARG_connectTimeout=3600);
-        BOOST_CHECK_EQUAL(response.getCode(), 599);
+        do {
+            HTTPResponse response = fetch("/", ARG_requestTimeout=3600, ARG_connectTimeout=3600);
+            BOOST_CHECK_EQUAL(response.getCode(), 599);
+        } while (false);
     }
 };
 
@@ -128,8 +126,15 @@ public:
             stop();
         });
         wait();
-        const char *request = "POST /hello HTTP/1.1\r\nContent-Length: 1024\r\nExpect: 100-continue\r\n\r\n";
-        stream->write((const Byte *)request, strlen(request), [this]() {
+        StringVector lines = {
+                "POST /hello HTTP/1.1",
+                "Content-Length: 1024",
+                "Expect: 100-continue",
+                "Connection: close",
+                "\r\n",
+        };
+        std::string request = boost::join(lines, "\r\n");
+        stream->write((const Byte *)request.data(), request.size(), [this]() {
             stop();
         });
         wait();
@@ -160,6 +165,51 @@ public:
         received = waitResult<ByteArray>();
         std::string body((const char*)received.data(), received.size());
         BOOST_CHECK_EQUAL(body, "Got 1024 bytes in POST");
+    }
+};
+
+
+class EchoHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(StringVector args) override {
+        auto &arguments = _request->getArguments();
+        Document doc;
+        Document::AllocatorType &a = doc.GetAllocator();
+        doc.SetObject();
+        for (auto &arg: arguments) {
+            rapidjson::Value values;
+            values.SetArray();
+            for (auto &val: arg.second) {
+                values.PushBack(StringRef(val.c_str(), val.size()), a);
+            }
+            doc.AddMember(StringRef(arg.first.c_str(), arg.first.size()), values, a);
+        }
+        write(doc);
+    }
+};
+
+
+class HTTPServerTest: public AsyncHTTPTestCase {
+public:
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<EchoHandler>("//doubleslash"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testDoubleSlash() {
+        do {
+            HTTPResponse response = fetch("//doubleslash");
+            BOOST_CHECK_EQUAL(response.getCode(), 200);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            Document lhs, rhs;
+            lhs.Parse(body->c_str());
+            BOOST_CHECK_NE(lhs, rhs);
+        } while (false);
     }
 };
 
@@ -222,4 +272,5 @@ TINYCORE_TEST_CASE(SSLTest, testSSL)
 TINYCORE_TEST_CASE(SSLTest, testLargePost)
 TINYCORE_TEST_CASE(SSLTest, testNonSSLRequest)
 TINYCORE_TEST_CASE(HTTPConnectionTest, test100Continue)
+TINYCORE_TEST_CASE(HTTPServerTest, testDoubleSlash)
 TINYCORE_TEST_CASE(XHeaderTest, testIpHeaders)

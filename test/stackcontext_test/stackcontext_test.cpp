@@ -70,10 +70,9 @@ public:
         _httpClient->fetch(getURL("/"), std::bind(&HTTPStackContextTest::handleResponse, this, std::placeholders::_1));
         wait();
         BOOST_CHECK_EQUAL(_response.getCode(), 500);
-        const ByteArray *responseBody = _response.getBody();
-        BOOST_REQUIRE_NE(responseBody, static_cast<const ByteArray *>(nullptr));
-        std::string body((const char*)responseBody->data(), responseBody->size());
-        BOOST_CHECK_EQUAL(body, "got expected exception");
+        const std::string *body = _response.getBody();
+        BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+        BOOST_CHECK_EQUAL(*body, "got expected exception");
 //        Log::error("SUCCESS");
     }
 

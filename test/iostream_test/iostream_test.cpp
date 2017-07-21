@@ -32,7 +32,7 @@ public:
 
     using IOStreamPair = std::pair<std::shared_ptr<BaseIOStream>, std::shared_ptr<BaseIOStream>>;
 
-    IOStreamPair makeIOStreamPair() {
+    IOStreamPair makeIOStreamPair(size_t readChunkSize=0) {
 
         class _Server: public TCPServer {
         public:
@@ -59,7 +59,9 @@ public:
         auto server = std::make_shared<_Server>(&_ioloop, this, streams);
         server->listen(port);
         BaseIOStream::SocketType socket(_ioloop.getService());
-        std::shared_ptr<IOStream> clientStream = IOStream::create(std::move(socket), &_ioloop);
+        std::shared_ptr<IOStream> clientStream = IOStream::create(
+                std::move(socket), &_ioloop, DEFAULT_MAX_BUFFER_SIZE,
+                readChunkSize ? readChunkSize : DEFAULT_READ_CHUNK_SIZE);
         clientStream->connect("127.0.0.1", port, [this, &clientStream, &streams] {
 //            Log::error("OnConnect");
             streams.second = std::move(clientStream);
@@ -110,6 +112,8 @@ public:
             std::string readString((char *)bytes.data(), bytes.size());
             BOOST_REQUIRE_EQUAL(readString, "200");
         } while (false);
+
+        stream->close();
     }
 
     void testWriteZeroBytes() {
@@ -120,6 +124,9 @@ public:
         });
         wait();
         BOOST_CHECK(!server->writing());
+
+        server->close();
+        client->close();
     }
 
     void testConnectionRefused() {
@@ -134,6 +141,18 @@ public:
         });
         wait();
         BOOST_CHECK(!connectCalled);
+        BOOST_CHECK(stream->getError());
+    }
+
+    void testGaierror() {
+        BaseIOStream::SocketType socket(_ioloop.getService());
+        std::shared_ptr<IOStream> stream = IOStream::create(std::move(socket), &_ioloop);
+        stream->setCloseCallback([this](){
+            stop();
+        });
+        stream->connect("adomainthatdoesntexist.asdf", 54321);
+        wait();
+        BOOST_CHECK(stream->getError());
     }
 
     void testConnectionClosed() {
@@ -243,6 +262,48 @@ public:
         BOOST_CHECK_EQUAL(chunks, targetChunks);
         client->close();
     }
+
+    void testCloseBufferedData() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair(256);
+        ByteArray data(512, (Byte)'A');
+        server->write(data.data(), data.size());
+        client->readBytes(256, [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        data = waitResult<ByteArray>();
+        BOOST_CHECK_EQUAL(data, ByteArray(256, (Byte)'A'));
+        server->close();
+        _ioloop.addTimeout(0.01f, [this]() {
+            stop();
+        });
+        wait();
+        client->readBytes(256, [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        data = waitResult<ByteArray>();
+        BOOST_CHECK_EQUAL(data, ByteArray(256, (Byte)'A'));
+        client->close();
+    }
+
+    void testLargeReadUntil() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+
+        ByteArray data(1024, (Byte)'A');
+        for (size_t i = 0; i < 4096; ++i) {
+            client->write(data.data(), data.size());
+        }
+        const char *end = "\r\n";
+        client->write((const Byte *)end, strlen(end));
+        server->readUntil(end, [this](ByteArray data) {
+            stop(std::move(data));
+        });
+        data = waitResult<ByteArray>();
+        BOOST_CHECK_EQUAL(data.size(), 1024 * 4096 + 2);
+        server->close();
+        client->close();
+    }
 };
 
 
@@ -250,8 +311,11 @@ TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(IOStreamTest, testReadZeroBytes)
 TINYCORE_TEST_CASE(IOStreamTest, testWriteZeroBytes)
 TINYCORE_TEST_CASE(IOStreamTest, testConnectionRefused)
+TINYCORE_TEST_CASE(IOStreamTest, testGaierror)
 TINYCORE_TEST_CASE(IOStreamTest, testConnectionClosed)
 TINYCORE_TEST_CASE(IOStreamTest, testReadUntilClose)
 TINYCORE_TEST_CASE(IOStreamTest, testStreamingCallback)
 TINYCORE_TEST_CASE(IOStreamTest, testStreamingUntilClose)
 TINYCORE_TEST_CASE(IOStreamTest, testDelayedCloseCallback)
+TINYCORE_TEST_CASE(IOStreamTest, testCloseBufferedData)
+TINYCORE_TEST_CASE(IOStreamTest, testLargeReadUntil)
