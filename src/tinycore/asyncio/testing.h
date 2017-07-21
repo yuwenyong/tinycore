@@ -46,22 +46,23 @@ public:
         stop();
     }
 
-    void wait(int timeout=500, ConditionCallback condition= nullptr);
+    void wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
 
     template <typename T>
-    T waitResult(int timeout=500, ConditionCallback condition= nullptr) {
-        wait(timeout, std::move(condition));
+    T waitResult(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
+        wait(std::move(timeout), std::move(condition));
         boost::any result(std::move(_stopArgs));
         return boost::any_cast<T>(result);
     }
-protected:
+
     void rethrow() {
         if (_failure) {
-            std::rethrow_exception(_failure);
-            _failure = nullptr;
+            std::exception_ptr failure;
+            failure.swap(_failure);
+            std::rethrow_exception(failure);
         }
     }
-
+protected:
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
@@ -140,6 +141,7 @@ struct TestCaseFixture {
     if (error) { \
         testCase.handleException(error); \
     } \
+    testCase.rethrow(); \
 } \
 
 

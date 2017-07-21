@@ -7,13 +7,12 @@
 
 #include "tinycore/common/common.h"
 #include <boost/algorithm/string.hpp>
+#include <boost/format.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
 #ifdef HAS_CPP_FORMAT
 #include "fmt/format.h"
-#else
-#include <boost/format.hpp>
 #endif
 
 #ifdef HAS_RAPID_JSON
@@ -39,15 +38,25 @@ public:
         return fmt::sprintf(fmt, std::forward<Args>(args)...);
     }
 #else
-    typedef boost::format FormatType;
-
     template <typename... Args>
     static std::string format(const char *fmt, Args&&... args) {
-        FormatType formatter(fmt);
+        boost::format formatter(fmt);
         format(formatter, std::forward<Args>(args)...);
         return formatter.str();
     }
 #endif
+
+    template <typename... Args>
+    static std::string formats(const char *fmt) {
+        return std::string(fmt);
+    }
+
+    template <typename... Args>
+    static std::string formats(const char *fmt, Args&&... args) {
+        boost::format formatter(fmt);
+        formats(formatter, std::forward<Args>(args)...);
+        return formatter.str();
+    }
 
     static StringVector split(const std::string &s, bool keepEmpty=true) {
         StringVector result;
@@ -116,16 +125,46 @@ public:
 protected:
 #ifndef HAS_CPP_FORMAT
     template <typename T, typename... Args>
-    static void format(FormatType &formatter, T &&value, Args&&... args) {
+    static void format(boost::format &formatter, T &&value, Args&&... args) {
         formatter % value;
         format(formatter, std::forward<Args>(args)...);
     }
 
     template <typename T>
-    static void format(FormatType &formatter, T &&value) {
+    static void format(boost::format &formatter, T &&value) {
         formatter % value;
     }
 #endif
+    template <typename... Args>
+    static void formats(boost::format &formatter, const char *value, Args&&... args) {
+        formatter % value;
+        format(formatter, std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    static void formats(boost::format &formatter, const std::string &value, Args&&... args) {
+        formatter % value;
+        format(formatter, std::forward<Args>(args)...);
+    }
+
+    template <typename T, typename... Args>
+    static void formats(boost::format &formatter, T &&value, Args&&... args) {
+        formatter % std::to_string(value);
+        format(formatter, std::forward<Args>(args)...);
+    }
+
+    static void formats(boost::format &formatter, const char *value) {
+        formatter % value;
+    }
+
+    static void formats(boost::format &formatter, const std::string &value) {
+        formatter % value;
+    }
+
+    template <typename T>
+    static void formats(boost::format &formatter, T &&value) {
+        formatter % std::to_string(value);
+    }
 };
 
 #endif //TINYCORE_STRING_H

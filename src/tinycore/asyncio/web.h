@@ -32,7 +32,7 @@ public:
     typedef boost::ptr_vector<OutputTransform> TransformsType;
     typedef std::vector<std::pair<std::string, std::string>> ListHeadersType;
     typedef std::map<std::string, boost::any> SettingsType;
-    typedef boost::optional<BaseCookie> CookiesType;
+    typedef boost::optional<SimpleCookie> CookiesType;
 //    typedef boost::optional<std::vector<SimpleCookie>> NewCookiesType;
     typedef boost::property_tree::ptree SimpleJSONType;
     typedef HTTPServerRequest::WriteCallbackType FlushCallbackType;
@@ -502,7 +502,7 @@ public:
     std::string reverse(Args&&... args) {
         ASSERT(!_path.empty(), "Cannot reverse url regex %s", _pattern.c_str());
         ASSERT(sizeof...(Args) == _groupCount, "required number of arguments not found");
-        return String::format(_path.c_str(), std::forward<Args>(args)...);
+        return String::formats(_path.c_str(), std::forward<Args>(args)...);
     }
 
     std::string reverse() {

@@ -272,8 +272,11 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t tr
 
 bool BaseIOStream::readFromBuffer() {
     if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
-        size_t bytesToConsume = std::min(_readBytes.get(), _readBuffer.getActiveSize());
-        _readBytes.get() -= bytesToConsume;
+        size_t bytesToConsume = _readBuffer.getActiveSize();
+        if (_readBytes) {
+            bytesToConsume = std::min(_readBytes.get(), bytesToConsume);
+            _readBytes.get() -= bytesToConsume;
+        }
         ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + bytesToConsume);
         _readBuffer.readCompleted(bytesToConsume);
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
@@ -386,11 +389,16 @@ IOStream::~IOStream() {
 void IOStream::realConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
+    boost::system::error_code ec;
+    auto iter = resolver.resolve(query, ec);
+    if (ec) {
+        onConnect(ec);
+        return;
+    }
     auto op = std::make_shared<Wrapper2>(shared_from_this(), [this](const boost::system::error_code &ec) {
         onConnect(ec);
     });
-    boost::asio::async_connect(_socket, resolver.resolve(query),
-                               std::bind(&Wrapper2::operator(), std::move(op), std::placeholders::_1));
+    boost::asio::async_connect(_socket, iter, std::bind(&Wrapper2::operator(), std::move(op), std::placeholders::_1));
     _state |= S_WRITE;
 }
 
@@ -443,10 +451,16 @@ SSLIOStream::~SSLIOStream() {
 void SSLIOStream::realConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
+    boost::system::error_code ec;
+    auto iter = resolver.resolve(query, ec);
+    if (ec) {
+        onConnect(ec);
+        return;
+    }
     auto op = std::make_shared<Wrapper2>(shared_from_this(), [this](const boost::system::error_code &ec) {
         onConnect(ec);
     });
-    boost::asio::async_connect(_sslSocket.lowest_layer(), resolver.resolve(query),
+    boost::asio::async_connect(_sslSocket.lowest_layer(), iter,
                                std::bind(&Wrapper2::operator(), std::move(op), std::placeholders::_1));
     _state |= S_WRITE;
 }
@@ -526,7 +540,7 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
     _sslAccepting = false;
     if (ec) {
         if (ec != boost::asio::error::operation_aborted) {
-            _error = std::make_exception_ptr(std::make_exception_ptr(boost::system::system_error(ec)));
+            _error = std::make_exception_ptr(boost::system::system_error(ec));
             Log::warn("SSL error %d :%s, closing connection.", ec.value(), ec.message());
         }
         close();

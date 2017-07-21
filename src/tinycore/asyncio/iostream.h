@@ -220,6 +220,10 @@ public:
         return _maxBufferSize;
     }
 
+    std::exception_ptr getError() const {
+        return _error;
+    }
+
     void onConnect(const boost::system::error_code &ec);
     void onRead(const boost::system::error_code &ec, size_t transferredBytes);
     void onWrite(const boost::system::error_code &ec, size_t transferredBytes);
