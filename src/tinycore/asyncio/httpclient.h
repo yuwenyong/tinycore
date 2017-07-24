@@ -12,7 +12,6 @@
 #include "tinycore/asyncio/httputil.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/iostream.h"
-#include "tinycore/compress/zlib.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
 #include "tinycore/utilities/string.h"
@@ -523,7 +522,7 @@ protected:
     boost::optional<int> _code;
     std::unique_ptr<HTTPHeaders> _headers;
     boost::optional<ByteArray> _chunks;
-    std::unique_ptr<DecompressObj> _decompressor;
+    std::unique_ptr<GzipDecompressor> _decompressor;
     Timeout _timeout;
     std::shared_ptr<BaseIOStream> _stream;
 };

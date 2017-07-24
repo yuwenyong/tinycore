@@ -94,6 +94,35 @@ std::string HTTPHeaders::normalizeName(const std::string &name) {
     return boost::join(nameParts, "-");
 }
 
+void HTTPUtil::parseBodyArguments(const std::string &contentType, const std::string &body, QueryArgListMap &arguments,
+                                  HTTPFileListMap &files) {
+    if (boost::starts_with(contentType, "application/x-www-form-urlencoded")) {
+        auto uriArguments = URLParse::parseQS(body, false);
+        for (auto &nv: uriArguments) {
+            if (!nv.second.empty()) {
+                for (auto &value: nv.second) {
+                    arguments[nv.first].push_back(std::move(value));
+                }
+            }
+        }
+    } else if (boost::starts_with(contentType, "multipart/form-data")) {
+        StringVector fields = String::split(contentType, ';');
+        bool found = false;
+        std::string k, sep, v;
+        for (auto &field: fields) {
+            boost::trim(field);
+            std::tie(k, sep, v) = String::partition(field, "=");
+            if (k == "boundary" && !v.empty()) {
+                HTTPUtil::parseMultipartFormData(std::move(v), body, arguments, files);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            Log::warn("Invalid multipart/form-data");
+        }
+    }
+}
 
 void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                       HTTPFileListMap &files) {

@@ -98,8 +98,8 @@ public:
     }
 
     void close() {
-        clearCallbacks();
         _stream->close();
+        clearCallbacks();
     }
 
     void start();

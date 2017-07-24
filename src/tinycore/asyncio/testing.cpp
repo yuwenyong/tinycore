@@ -67,10 +67,9 @@ AsyncHTTPTestCase::~AsyncHTTPTestCase() {
 
 void AsyncHTTPTestCase::setUp() {
     AsyncTestCase::setUp();
-    _httpClient = HTTPClient::create(&_ioloop);
+    _httpClient = getHTTPClient();
     _app = getApp();
-    _httpServer = std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
-                                               getHTTPServerXHeaders(), getHTTPServerSSLOption());
+    _httpServer = getHTTPServer();
     _httpServer->listen(getHTTPPort(), "127.0.0.1");
 }
 
@@ -87,6 +86,15 @@ HTTPResponse AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request) {
     return waitResult<HTTPResponse>();
 }
 
+std::shared_ptr<HTTPClient> AsyncHTTPTestCase::getHTTPClient() {
+    return HTTPClient::create(&_ioloop);
+}
+
+std::shared_ptr<HTTPServer> AsyncHTTPTestCase::getHTTPServer() {
+    return std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
+                                        getHTTPServerXHeaders(), getHTTPServerSSLOption());
+}
+
 bool AsyncHTTPTestCase::getHTTPServerNoKeepAlive() const {
     return false;
 }
@@ -99,6 +107,18 @@ std::shared_ptr<SSLOption> AsyncHTTPTestCase::getHTTPServerSSLOption() const {
     return nullptr;
 }
 
-std::string AsyncHTTPTestCase::getLocalIp() const {
-    return "127.0.0.1";
+std::string AsyncHTTPTestCase::getProtocol() const {
+    return "http";
+}
+
+
+std::shared_ptr<SSLOption> AsyncHTTPSTestCase::getHTTPServerSSLOption() const {
+    auto sslOption = SSLOption::create(true);
+    sslOption->setKeyFile("test.key");
+    sslOption->setCertFile("test.crt");
+    return sslOption;
+}
+
+std::string AsyncHTTPSTestCase::getProtocol() const {
+    return "https";
 }

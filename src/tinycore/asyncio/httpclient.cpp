@@ -142,7 +142,10 @@ void _HTTPConnection::start() {
         }
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout > 0.000001f) {
-            _timeout = _ioloop->addTimeout(timeout, std::bind(&_HTTPConnection::onTimeout, this));
+            IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
+                onTimeout();
+            };
+            _timeout = _ioloop->addTimeout(timeout, StackContext::wrap(std::move(timeoutCallback)));
         }
         _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
@@ -166,9 +169,9 @@ const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT
 
 void _HTTPConnection::onTimeout() {
     _timeout.reset();
-    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(_HTTPError, 599, "Timeout"),
-                             TimestampClock::now() - _startTime));
-    _stream->close();
+    if (_callback) {
+        ThrowException(_HTTPError, 599, "Timeout");
+    }
 }
 
 void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostname) {
@@ -178,7 +181,10 @@ void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostnam
     }
     float requestTimeout = _request->getRequestTimeout();
     if (requestTimeout > 0.000001f) {
-        _timeout = _ioloop->addTimeout(requestTimeout, std::bind(&_HTTPConnection::onTimeout, this));
+        IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
+            onTimeout();
+        };
+        _timeout = _ioloop->addTimeout(requestTimeout, StackContext::wrap(std::move(timeoutCallback)));
     }
     const std::string &method = _request->getMethod();
     if (supportedMethods.find(method) == supportedMethods.end() && !_request->isAllowNonstandardMethods()) {
@@ -268,7 +274,7 @@ void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostnam
     if (requestBody) {
         _stream->write((const Byte *)requestBody->data(), requestBody->size());
     }
-    _stream->readUntil("\r\n\r\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
+    _stream->readUntilRegex("\r?\n\r?\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
 }
 
 void _HTTPConnection::cleanup(std::exception_ptr error) {
@@ -286,8 +292,17 @@ void _HTTPConnection::cleanup(std::exception_ptr error) {
 }
 
 void _HTTPConnection::onClose() {
-    runCallback(HTTPResponse(_request, 599, MakeExceptionPtr(_HTTPError, 599, "Connection closed"),
-                             TimestampClock::now() - _startTime));
+    if (_callback) {
+        std::string message("Connection closed");
+        if (_stream->getError()) {
+            try {
+                std::rethrow_exception(_stream->getError());
+            } catch (std::exception &e) {
+                message = e.what();
+            }
+        }
+        ThrowException(_HTTPError, 599, message);
+    }
 }
 
 void _HTTPConnection::onHeaders(ByteArray data) {
@@ -303,7 +318,13 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     const boost::regex firstLinePattern("HTTP/1.[01] ([0-9]+) .*");
     boost::smatch match;
     if (boost::regex_match(firstLine, match, firstLinePattern)) {
-        _code = std::stoi(match[1]);
+        int code = std::stoi(match[1]);
+        if (code >= 100 && code < 200) {
+            _stream->readUntilRegex("\r?\n\r?\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
+            return;
+        } else {
+            _code = code;
+        }
     } else {
         ThrowException(Exception, "Unexpected first line");
     }
@@ -336,13 +357,14 @@ void _HTTPConnection::onHeaders(ByteArray data) {
         return;
     }
     if ((100 <= _code && _code < 200) || _code == 204 || _code == 304) {
-        ASSERT(!_headers->has("Transfer-Encoding"));
-        ASSERT(!contentLength || *contentLength == 0);
+        if (_headers->has("Transfer-Encoding") || (contentLength && *contentLength != 0)) {
+            ThrowException(ValueError, String::format("Response with code %d should not have body", *_code));
+        }
         onBody({});
         return;
     }
     if (_request->isUseGzip() && _headers->get("Content-Encoding") == "gzip") {
-        _decompressor = make_unique<DecompressObj>(16 + Zlib::maxWBits);
+        _decompressor = make_unique<GzipDecompressor>();
     }
     if (_headers->get("Transfer-Encoding") == "chunked") {
         _chunks = ByteArray();
@@ -393,6 +415,10 @@ void _HTTPConnection::onBody(ByteArray data) {
     }
     if (_decompressor) {
         data = _decompressor->decompress(data);
+        auto tail = _decompressor->flush();
+        if (!tail.empty()) {
+            data.insert(data.end(), tail.begin(), tail.end());
+        }
     }
     std::string buffer;
     auto &streamingCallback = _request->getStreamingCallback();
@@ -414,7 +440,18 @@ void _HTTPConnection::onChunkLength(ByteArray data) {
     boost::trim(content);
     size_t length = std::stoul(content, nullptr, 16);
     if (length == 0) {
-        _decompressor.reset();
+        if (_decompressor) {
+            auto tail = _decompressor->flush();
+            if (!tail.empty()) {
+                auto &streamingCallback = _request->getStreamingCallback();
+                if (streamingCallback) {
+                    streamingCallback(std::move(tail));
+                } else {
+                    _chunks->insert(_chunks->end(), tail.begin(), tail.end());
+                }
+            }
+            _decompressor.reset();
+        }
         onBody(std::move(_chunks.get()));
     } else {
         _stream->readBytes(length + 2, std::bind(&_HTTPConnection::onChunkData, this, std::placeholders::_1));
