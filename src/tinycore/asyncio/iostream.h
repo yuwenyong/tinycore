@@ -16,6 +16,11 @@
 #include "tinycore/utilities/messagebuffer.h"
 
 
+#ifdef BOOST_ASIO_HAS_IOCP
+#define TC_SOCKET_USE_IOCP
+#endif
+
+
 enum class SSLVerifyMode {
     CERT_NONE,
     CERT_OPTIONAL,
@@ -183,6 +188,7 @@ public:
     }
 
     void start() {
+        _socket.non_blocking(true);
         maybeAddErrorListener();
     }
 
