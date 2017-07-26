@@ -164,6 +164,10 @@ public:
                  size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~BaseIOStream();
 
+    const IOLoop* ioloop() const {
+        return _ioloop;
+    }
+
     IOLoop* ioloop() {
         return _ioloop;
     }
@@ -311,7 +315,7 @@ public:
     typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket&> SSLSocketType;
 
     SSLIOStream(SocketType &&socket,
-                std::shared_ptr<SSLOption>  sslOption,
+                std::shared_ptr<SSLOption> sslOption,
                 IOLoop *ioloop,
                 size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE,
                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);

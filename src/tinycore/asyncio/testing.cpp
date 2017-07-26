@@ -19,14 +19,6 @@ void AsyncTestCase::tearDown() {
 
 }
 
-void AsyncTestCase::stop() {
-    if (_running) {
-        _ioloop.stop();
-        _running = false;
-    }
-    _stopped = true;
-}
-
 void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
     if (!_stopped) {
         if (timeout) {
@@ -60,6 +52,14 @@ void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condi
     rethrow();
 }
 
+void AsyncTestCase::stopImpl() {
+    if (_running) {
+        _ioloop.stop();
+        _running = false;
+    }
+    _stopped = true;
+}
+
 
 AsyncHTTPTestCase::~AsyncHTTPTestCase() {
 
@@ -79,7 +79,7 @@ void AsyncHTTPTestCase::tearDown() {
     AsyncTestCase::tearDown();
 }
 
-HTTPResponse AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request) {
+HTTPResponse AsyncHTTPTestCase::fetchImpl(std::shared_ptr<HTTPRequest> request) {
     _httpClient->fetch(std::move(request), [this](HTTPResponse response){
         stop(std::move(response));
     });
@@ -111,6 +111,11 @@ std::string AsyncHTTPTestCase::getProtocol() const {
     return "http";
 }
 
+
+HTTPResponse AsyncHTTPSTestCase::fetchImpl(std::shared_ptr<HTTPRequest> request) {
+    request->setValidateCert(false);
+    return AsyncHTTPTestCase::fetchImpl(request);
+}
 
 std::shared_ptr<SSLOption> AsyncHTTPSTestCase::getHTTPServerSSLOption() const {
     auto sslOption = SSLOption::create(true);

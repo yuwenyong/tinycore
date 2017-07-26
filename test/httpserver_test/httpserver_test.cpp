@@ -40,7 +40,9 @@ public:
     }
 
     void onGet(StringVector args) override {
-        BOOST_CHECK_EQUAL(_request->getProtocol(), _expectedProtocol);
+        if (_request->getProtocol() != _expectedProtocol) {
+            ThrowException(Exception, "unexpected protocol");
+        }
         finish("Hello world");
     }
 
@@ -53,7 +55,7 @@ protected:
 };
 
 
-class SSLTest: public AsyncHTTPTestCase {
+class SSLTest: public AsyncHTTPSTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
 
@@ -67,18 +69,18 @@ public:
         return make_unique<Application>(std::move(handlers));
     }
 
-    std::shared_ptr<SSLOption> getHTTPServerSSLOption() const override {
-        auto sslOption = SSLOption::create(true);
-        sslOption->setKeyFile("test.key");
-        sslOption->setCertFile("test.crt");
-        return sslOption;
-    }
+//    std::shared_ptr<SSLOption> getHTTPServerSSLOption() const override {
+//        auto sslOption = SSLOption::create(true);
+//        sslOption->setKeyFile("test.key");
+//        sslOption->setCertFile("test.crt");
+//        return sslOption;
+//    }
 
     void testSSL() {
         do {
-            std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
-            std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false);
-            HTTPResponse response = fetch(std::move(request));
+//            std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
+//            std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false);
+            HTTPResponse response = fetch("/");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "Hello world");
@@ -87,10 +89,11 @@ public:
 
     void testLargePost() {
         do {
-            std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
-            std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false, ARG_method="POST",
-                                                                       ARG_body=std::string(5000, 'A'));
-            HTTPResponse response = fetch(std::move(request));
+//            std::string url = boost::replace_first_copy(getURL("/"), "http", "https");
+//            std::shared_ptr<HTTPRequest> request = HTTPRequest::create(url, ARG_validateCert=false, ARG_method="POST",
+//                                                                       ARG_body=std::string(5000, 'A'));
+//            HTTPResponse response = fetch(std::move(request));
+            HTTPResponse response = fetch("/", ARG_method="POST", ARG_body=std::string(5000, 'A'));
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "Got 5000 bytes in POST");
@@ -99,7 +102,11 @@ public:
 
     void testNonSSLRequest() {
         do {
-            HTTPResponse response = fetch("/", ARG_requestTimeout=3600, ARG_connectTimeout=3600);
+            std::string url = boost::replace_first_copy(getURL("/"), "https", "http");
+            _httpClient->fetch(url, [this](HTTPResponse response) {
+                stop(std::move(response));
+            }, ARG_requestTimeout=3600, ARG_connectTimeout=3600);
+            HTTPResponse response = waitResult<HTTPResponse>();
             BOOST_CHECK_EQUAL(response.getCode(), 599);
         } while (false);
     }

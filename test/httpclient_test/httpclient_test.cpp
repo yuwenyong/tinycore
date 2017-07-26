@@ -324,7 +324,9 @@ public:
     using RequestHandler::RequestHandler;
 
     void onPost(StringVector args) override {
-        BOOST_CHECK_EQUAL(_request->getBody(), "blah");
+        if (_request->getBody() != "blah") {
+            ThrowException(Exception, String::format("unexpected body %s", _request->getBody().c_str()));
+        }
         setHeader("Location", "/303_get");
         setStatus(303);
     }
@@ -336,8 +338,9 @@ public:
     using RequestHandler::RequestHandler;
 
     void onGet(StringVector args) override {
-        const auto &body = _request->getBody();
-        BOOST_CHECK_EQUAL(body.size(), 0ul);
+        if (!_request->getBody().empty()) {
+            ThrowException(Exception, String::format("unexpected body %s", _request->getBody().c_str()));
+        }
         write("ok");
     }
 };
@@ -422,7 +425,7 @@ public:
             BOOST_REQUIRE_EQUAL(response.getCode(), 599);
             auto requestTime = std::chrono::duration_cast<std::chrono::milliseconds>(response.getRequestTime());
             BOOST_CHECK_LE(std::chrono::milliseconds(99), requestTime);
-            BOOST_CHECK_LE(requestTime, std::chrono::milliseconds(110));
+            BOOST_CHECK_LE(requestTime, std::chrono::milliseconds(120));
             try {
                 response.rethrow();
                 BOOST_CHECK(false);
@@ -531,6 +534,17 @@ public:
             BOOST_CHECK(boost::regex_match(*body, hostRe));
         } while (false);
     }
+
+    void testConnectionRefused() {
+        do {
+            auto port = getUnusedPort();
+            _httpClient->fetch(String::format("http://localhost:%u/", port), [this] (HTTPResponse response) {
+                stop(std::move(response));
+            });
+            HTTPResponse response = waitResult<HTTPResponse>();
+            BOOST_CHECK_EQUAL(response.getCode(), 599);
+        } while (false);
+    }
 };
 
 
@@ -544,3 +558,4 @@ TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testHeadRequest)
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testOptionsRequest)
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testNoContent)
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testHostHeader)
+TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testConnectionRefused)

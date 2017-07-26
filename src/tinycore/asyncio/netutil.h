@@ -24,14 +24,14 @@ public:
     void bind(unsigned short port, std::string address);
 
     void start() {
-        doAccept();
+        accept();
     }
 
     void stop();
 
     virtual void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) = 0;
 protected:
-    void doAccept() {
+    void accept() {
         _acceptor.async_accept(_socket, std::bind(&TCPServer::onAccept, shared_from_this(), std::placeholders::_1));
     }
 

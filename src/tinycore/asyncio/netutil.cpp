@@ -55,6 +55,6 @@ void TCPServer::onAccept(const boost::system::error_code &ec) {
         } catch (std::exception &e) {
             Log::error("Error in connection callback:%s", e.what());
         }
-        doAccept();
+        accept();
     }
 }

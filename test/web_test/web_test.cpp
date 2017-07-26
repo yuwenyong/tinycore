@@ -494,8 +494,11 @@ public:
             setHeader("X-Foo", "foo\r\nX-Bar: baz");
             ThrowException(Exception, "Didn't get expected exception");
         } catch (ValueError &e) {
-            BOOST_CHECK(boost::contains(e.what(), "Unsafe header value"));
-            finish("ok");
+            if (boost::contains(e.what(), "Unsafe header value")) {
+                finish("ok");
+            } else {
+                throw;
+            }
         }
     }
 };
@@ -506,11 +509,11 @@ public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
                 url<OptionalPathHandler>(R"(/optional_path/(.+)?)", "optional_path"),
-                url<FlowControlHandler>("/flow_control"),
                 url<MultiHeaderHandler>("/multi_header"),
                 url<TestRedirectHandler>("/redirect"),
-                url<EmptyFlushCallbackHandler>("/empty_flush"),
                 url<HeaderInjectHandler>("/header_injection"),
+                url<FlowControlHandler>("/flow_control"),
+                url<EmptyFlushCallbackHandler>("/empty_flush"),
         };
         return make_unique<Application>(std::move(handlers));
     }
@@ -549,14 +552,7 @@ public:
         } while (false);
     }
 
-    void testFlowControl() {
-        do {
-            HTTPResponse response = fetch("/flow_control");
-            const std::string *body = response.getBody();
-            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
-            BOOST_CHECK_EQUAL(*body, "123");
-        } while (false);
-    }
+
 
     void testMultiHeader() {
         do {
@@ -585,18 +581,27 @@ public:
         } while (false);
     }
 
-    void testEmptyFlush() {
+    void testHeaderInject() {
         do {
-            HTTPResponse response = fetch("/empty_flush");
+            HTTPResponse response = fetch("/header_injection");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "ok");
         } while (false);
     }
 
-    void testHeaderInject() {
+    void testFlowControl() {
         do {
-            HTTPResponse response = fetch("/header_injection");
+            HTTPResponse response = fetch("/flow_control");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "123");
+        } while (false);
+    }
+
+    void testEmptyFlush() {
+        do {
+            HTTPResponse response = fetch("/empty_flush");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "ok");
@@ -812,11 +817,11 @@ TINYCORE_TEST_CASE(RequestEncodingTest, testQuestionMark)
 TINYCORE_TEST_CASE(RequestEncodingTest, testSlashes)
 TINYCORE_TEST_CASE(WebTest, testReverseURL)
 TINYCORE_TEST_CASE(WebTest, testOptionalPath)
-TINYCORE_TEST_CASE(WebTest, testFlowControl)
 TINYCORE_TEST_CASE(WebTest, testMultiHeader)
 TINYCORE_TEST_CASE(WebTest, testRedirect)
-TINYCORE_TEST_CASE(WebTest, testEmptyFlush)
 TINYCORE_TEST_CASE(WebTest, testHeaderInject)
+TINYCORE_TEST_CASE(WebTest, testFlowControl)
+TINYCORE_TEST_CASE(WebTest, testEmptyFlush)
 TINYCORE_TEST_CASE(ErrorResponseTest, testDefault)
 TINYCORE_TEST_CASE(ErrorResponseTest, testWriteError)
 TINYCORE_TEST_CASE(ErrorResponseTest, testFailedWriteError)
