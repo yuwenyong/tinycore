@@ -122,6 +122,13 @@ public:
     }
 #endif
 
+    static std::string toString(const ByteArray &bytes) {
+        return {(const char *)bytes.data(), bytes.size()};
+    }
+
+    static ByteArray toByteArray(const std::string &s) {
+        return ByteArray((const Byte *)s.data(), (const Byte *)s.data() + s.size());
+    }
 protected:
 #ifndef HAS_CPP_FORMAT
     template <typename T, typename... Args>

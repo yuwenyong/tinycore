@@ -7,6 +7,7 @@
 
 #include "tinycore/common/common.h"
 #include <boost/regex.hpp>
+#include "tinycore/compress/zlib.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/httputils/urlparse.h"
 
@@ -167,12 +168,58 @@ public:
         return url;
     }
 
+    static void parseBodyArguments(const std::string &contentType, const std::string &body, QueryArgListMap &arguments,
+                                   HTTPFileListMap &files);
+
     static void parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                        HTTPFileListMap &files);
 
 protected:
     static StringVector parseParam(std::string s);
     static std::tuple<std::string, StringMap> parseHeader(const std::string &line);
+};
+
+
+class GzipDecompressor {
+public:
+    GzipDecompressor()
+            : _decompressObj(16 + Zlib::maxWBits) {
+
+    }
+
+    ByteArray decompress(const Byte *data, size_t len) {
+        return _decompressObj.decompress(data, len);
+    }
+
+    ByteArray decompress(const ByteArray &data) {
+        return _decompressObj.decompress(data);
+    }
+
+    ByteArray decompress(const std::string &data) {
+        return _decompressObj.decompress(data);
+    }
+
+    std::string decompressToString(const Byte *data, size_t len) {
+        return _decompressObj.decompressToString(data, len);
+    }
+
+    std::string decompressToString(const ByteArray &data) {
+        return _decompressObj.decompressToString(data);
+    }
+
+    std::string decompressToString(const std::string &data) {
+        return _decompressObj.decompressToString(data);
+    }
+
+    ByteArray flush() {
+        return _decompressObj.flush();
+    }
+
+    std::string flushToString() {
+        return _decompressObj.flushToString();
+    }
+protected:
+    DecompressObj _decompressObj;
 };
 
 

@@ -19,14 +19,6 @@ void AsyncTestCase::tearDown() {
 
 }
 
-void AsyncTestCase::stop() {
-    if (_running) {
-        _ioloop.stop();
-        _running = false;
-    }
-    _stopped = true;
-}
-
 void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
     if (!_stopped) {
         if (timeout) {
@@ -60,6 +52,14 @@ void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condi
     rethrow();
 }
 
+void AsyncTestCase::stopImpl() {
+    if (_running) {
+        _ioloop.stop();
+        _running = false;
+    }
+    _stopped = true;
+}
+
 
 AsyncHTTPTestCase::~AsyncHTTPTestCase() {
 
@@ -67,10 +67,9 @@ AsyncHTTPTestCase::~AsyncHTTPTestCase() {
 
 void AsyncHTTPTestCase::setUp() {
     AsyncTestCase::setUp();
-    _httpClient = HTTPClient::create(&_ioloop);
+    _httpClient = getHTTPClient();
     _app = getApp();
-    _httpServer = std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
-                                               getHTTPServerXHeaders(), getHTTPServerSSLOption());
+    _httpServer = getHTTPServer();
     _httpServer->listen(getHTTPPort(), "127.0.0.1");
 }
 
@@ -80,11 +79,20 @@ void AsyncHTTPTestCase::tearDown() {
     AsyncTestCase::tearDown();
 }
 
-HTTPResponse AsyncHTTPTestCase::fetch(std::shared_ptr<HTTPRequest> request) {
+HTTPResponse AsyncHTTPTestCase::fetchImpl(std::shared_ptr<HTTPRequest> request) {
     _httpClient->fetch(std::move(request), [this](HTTPResponse response){
         stop(std::move(response));
     });
     return waitResult<HTTPResponse>();
+}
+
+std::shared_ptr<HTTPClient> AsyncHTTPTestCase::getHTTPClient() {
+    return HTTPClient::create(&_ioloop);
+}
+
+std::shared_ptr<HTTPServer> AsyncHTTPTestCase::getHTTPServer() {
+    return std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
+                                        getHTTPServerXHeaders(), getHTTPServerSSLOption());
 }
 
 bool AsyncHTTPTestCase::getHTTPServerNoKeepAlive() const {
@@ -99,6 +107,23 @@ std::shared_ptr<SSLOption> AsyncHTTPTestCase::getHTTPServerSSLOption() const {
     return nullptr;
 }
 
-std::string AsyncHTTPTestCase::getLocalIp() const {
-    return "127.0.0.1";
+std::string AsyncHTTPTestCase::getProtocol() const {
+    return "http";
+}
+
+
+HTTPResponse AsyncHTTPSTestCase::fetchImpl(std::shared_ptr<HTTPRequest> request) {
+    request->setValidateCert(false);
+    return AsyncHTTPTestCase::fetchImpl(request);
+}
+
+std::shared_ptr<SSLOption> AsyncHTTPSTestCase::getHTTPServerSSLOption() const {
+    auto sslOption = SSLOption::create(true);
+    sslOption->setKeyFile("test.key");
+    sslOption->setCertFile("test.crt");
+    return sslOption;
+}
+
+std::string AsyncHTTPSTestCase::getProtocol() const {
+    return "https";
 }

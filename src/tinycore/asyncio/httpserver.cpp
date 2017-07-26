@@ -188,41 +188,17 @@ void HTTPConnection::onHeaders(ByteArray data) {
         _requestCallback(std::move(_request));
     } catch (_BadRequestException &e) {
         Log::info("Malformed HTTP request from %s: %s", _address.c_str(), e.what());
-        _stream->close();
+        close();
     }
 }
 
 void HTTPConnection::onRequestBody(ByteArray data) {
     _request->setBody(std::string((const char *)data.data(), data.size()));
     auto headers = _request->getHTTPHeaders();
-    std::string contentType = headers->get("Content-Type");
     const std::string &method = _request->getMethod();
     if (method == "POST" || method == "PATCH" || method == "PUT") {
-        if (boost::starts_with(contentType, "application/x-www-form-urlencoded")) {
-            auto arguments = URLParse::parseQS(_request->getBody(), false);
-            for (auto &nv: arguments) {
-                if (!nv.second.empty()) {
-                    _request->addArguments(nv.first, std::move(nv.second));
-                }
-            }
-        } else if (boost::starts_with(contentType, "multipart/form-data")) {
-            StringVector fields = String::split(contentType, ';');
-            bool found = false;
-            std::string k, sep, v;
-            for (auto &field: fields) {
-                boost::trim(field);
-                std::tie(k, sep, v) = String::partition(field, "=");
-                if (k == "boundary" && !v.empty()) {
-                    HTTPUtil::parseMultipartFormData(std::move(v), _request->getBody(), _request->arguments(),
-                                                     _request->files());
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                Log::warn("Invalid multipart/form-data");
-            }
-        }
+        HTTPUtil::parseBodyArguments(headers->get("Content-Type", ""), _request->getBody(), _request->arguments(),
+                                     _request->files());
     }
     _request->setConnection(shared_from_this());
     _requestCallback(std::move(_request));

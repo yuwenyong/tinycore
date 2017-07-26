@@ -34,16 +34,19 @@ public:
     virtual void tearDown();
 
     void handleException(std::exception_ptr error) {
-        _failure = error;
+        _failure = std::move(error);
         stop();
     }
 
-    void stop();
+    void stop() {
+        _stopArgs.clear();
+        stopImpl();
+    }
 
     template <typename T>
     void stop(T &&args) {
-        _stopArgs = std::move(args);
-        stop();
+        _stopArgs = std::forward<T>(args);
+        stopImpl();
     }
 
     void wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
@@ -55,6 +58,12 @@ public:
         return boost::any_cast<T>(result);
     }
 
+    boost::any waitAny(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
+        wait(std::move(timeout), std::move(condition));
+        boost::any result(std::move(_stopArgs));
+        return result;
+    }
+
     void rethrow() {
         if (_failure) {
             std::exception_ptr failure;
@@ -63,6 +72,21 @@ public:
         }
     }
 protected:
+    const IOLoop* ioloop() const {
+        return &_ioloop;
+    }
+
+    IOLoop* ioloop() {
+        return &_ioloop;
+    }
+
+    void stopImpl();
+
+    unsigned short getUnusedPort() const {
+        static unsigned short nextPort = 10000;
+        return ++nextPort;
+    }
+
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
@@ -84,22 +108,23 @@ public:
         return fetch(std::move(request));
     }
 
-    HTTPResponse fetch(std::shared_ptr<HTTPRequest> request);
+    HTTPResponse fetch(std::shared_ptr<HTTPRequest> request) {
+        return fetchImpl(std::move(request));
+    }
+
+    virtual HTTPResponse fetchImpl(std::shared_ptr<HTTPRequest> request);
+    virtual std::shared_ptr<HTTPClient> getHTTPClient();
+    virtual std::shared_ptr<HTTPServer> getHTTPServer();
+    virtual std::unique_ptr<Application> getApp() const =0;
     virtual bool getHTTPServerNoKeepAlive() const;
     virtual bool getHTTPServerXHeaders() const;
     virtual std::shared_ptr<SSLOption> getHTTPServerSSLOption() const;
-    virtual std::string getLocalIp() const;
-    virtual std::unique_ptr<Application> getApp() const =0;
+    virtual std::string getProtocol() const;
 
     std::string getURL(const std::string &path) const {
-        return "http://localhost:" + std::to_string(getHTTPPort()) + path;
+        return getProtocol() + "://localhost:" + std::to_string(getHTTPPort()) + path;
     }
 protected:
-    unsigned short getUnusedPort() const {
-        static unsigned short nextPort = 10000;
-        return ++nextPort;
-    }
-
     unsigned short getHTTPPort() const {
         if (!_port) {
             _port = getUnusedPort();
@@ -111,6 +136,14 @@ protected:
     std::shared_ptr<HTTPClient> _httpClient;
     std::unique_ptr<Application> _app;
     std::shared_ptr<HTTPServer> _httpServer;
+};
+
+
+class TC_COMMON_API AsyncHTTPSTestCase: public AsyncHTTPTestCase {
+public:
+    HTTPResponse fetchImpl(std::shared_ptr<HTTPRequest> request) override;
+    std::shared_ptr<SSLOption> getHTTPServerSSLOption() const override;
+    std::string getProtocol() const override;
 };
 
 
@@ -128,7 +161,7 @@ struct TestCaseFixture {
 
 #define TINYCORE_TEST_INIT()    BOOST_GLOBAL_FIXTURE(GlobalFixture);
 
-#define TINYCORE_TEST_CASE(cls, method, ...)    BOOST_FIXTURE_TEST_CASE(method, TestCaseFixture<cls>) { \
+#define TINYCORE_TEST_CASE(cls, method, ...)    BOOST_FIXTURE_TEST_CASE(cls##_##method, TestCaseFixture<cls>) { \
     std::exception_ptr error; \
     try { \
         ExceptionStackContext ctx([&](std::exception_ptr error) { \

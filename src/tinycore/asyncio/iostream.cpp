@@ -81,13 +81,15 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
         _writeQueue.push(std::move(packet));
     }
     _writeCallback = StackContext::wrap(std::move(callback));
-    if (!_writeQueue.empty()) {
-        if ((_state & S_WRITE) == S_NONE) {
-            writeToSocket();
+    if (!_connecting) {
+        if (!_writeQueue.empty()) {
+            if ((_state & S_WRITE) == S_NONE) {
+                writeToSocket();
+            }
+        } else {
+            runCallback(std::move(_writeCallback));
+            _writeCallback = nullptr;
         }
-    } else {
-        runCallback(std::move(_writeCallback));
-        _writeCallback = nullptr;
     }
 }
 
@@ -136,7 +138,14 @@ void BaseIOStream::onConnect(const boost::system::error_code &ec) {
         }
     }
     _connecting = false;
-    maybeAddErrorListener();
+    if (!_writeQueue.empty()) {
+        writeToSocket();
+    } else if (_writeCallback) {
+        runCallback(std::move(_writeCallback));
+        _writeCallback = nullptr;
+    } else {
+        maybeAddErrorListener();
+    }
 }
 
 void BaseIOStream::onRead(const boost::system::error_code &ec, size_t transferredBytes) {
