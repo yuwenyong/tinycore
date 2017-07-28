@@ -99,8 +99,8 @@ protected:
 class TC_COMMON_API AsyncHTTPTestCase: public AsyncTestCase {
 public:
     virtual ~AsyncHTTPTestCase();
-    virtual void setUp();
-    virtual void tearDown();
+    void setUp() override;
+    void tearDown() override;
 
     template <typename ...Args>
     HTTPResponse fetch(const std::string &path, Args&& ...args) {

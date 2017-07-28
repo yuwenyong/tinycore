@@ -192,14 +192,7 @@ public:
         maybeAddErrorListener();
     }
 
-    void clearCallbacks() {
-        _readCallback = nullptr;
-        _streamingCallback = nullptr;
-        _writeCallback = nullptr;
-        _closeCallback = nullptr;
-        _connectCallback = nullptr;
-    }
-
+    virtual void clearCallbacks();
     virtual void realConnect(const std::string &address, unsigned short port) = 0;
     virtual void closeSocket() = 0;
     virtual void writeToSocket() = 0;
@@ -223,7 +216,7 @@ public:
     }
 
     bool closed() const {
-        return _closed;
+        return _closing || _closed;
     }
 
     size_t getMaxBufferSize() const {
@@ -278,7 +271,7 @@ protected:
     size_t _maxBufferSize;
     std::exception_ptr _error;
     MessageBuffer _readBuffer;
-    std::queue<MessageBuffer> _writeQueue;
+    std::deque<MessageBuffer> _writeQueue;
     boost::optional<std::string> _readDelimiter;
     boost::optional<boost::regex> _readRegex;
     boost::optional<size_t> _readBytes;
@@ -327,6 +320,7 @@ public:
                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~SSLIOStream();
 
+    void clearCallbacks() override;
     void realConnect(const std::string &address, unsigned short port) override;
     void readFromSocket() override;
     void writeToSocket() override;
@@ -348,6 +342,7 @@ protected:
     SSLSocketType _sslSocket;
     bool _sslAccepting{false};
     bool _sslAccepted{false};
+    ConnectCallbackType _sslConnectCallback;
 };
 
 

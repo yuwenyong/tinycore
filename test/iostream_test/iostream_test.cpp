@@ -318,10 +318,11 @@ public:
             Base::stop();
         });
         const char *line = "1234";
-        server->write((const Byte *)line, strlen(line), [&server]() {
+        server->write((const Byte *)line, strlen(line), [&server] () {
             server->close();
         });
-        Base::wait();
+//        server->close();
+        Base::wait(boost::none);
         client->readUntilClose([this](ByteArray data) {
             Base::stop(std::move(data));
         });
@@ -338,9 +339,10 @@ public:
             Base::stop();
         });
         const char *line = "1234";
-        server->write((const Byte *)line, strlen(line), [&server]() {
+        server->write((const Byte *)line, strlen(line), [&server](){
             server->close();
         });
+//        server->close();
         Base::wait();
         std::vector<ByteArray> streamingChunks;
         client->readUntilClose([this](ByteArray data) {
@@ -360,6 +362,7 @@ public:
     }
 
     void testLargeReadUntil() {
+        Timestamp start = TimestampClock::now();
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
 
@@ -376,6 +379,9 @@ public:
         BOOST_CHECK_EQUAL(data.size(), 1024 * 4096 + 2);
         server->close();
         client->close();
+        auto elapse = std::chrono::duration_cast<std::chrono::microseconds>(TimestampClock::now() - start);
+        double cost = elapse.count() / 1000000 + elapse.count() % 1000000 / 1000000.0;
+        std::cerr << "Cost " << cost << "s" << std::endl;
     }
 
     void testCloseCallbackWithPendingRead() {
@@ -493,7 +499,7 @@ TINYCORE_TEST_CASE(TestIOStreamSSL, testDelayedCloseCallback)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testCloseBufferedData)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testReadUntilCloseAfterClose)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingReadUntilCloseAfterClose)
-//TINYCORE_TEST_CASE(TestIOStreamSSL, testLargeReadUntil)
+TINYCORE_TEST_CASE(TestIOStreamSSL, testLargeReadUntil)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testCloseCallbackWithPendingRead)
 
 
