@@ -311,7 +311,58 @@ public:
         client->close();
     }
 
+    void testReadUntilCloseAfterClose() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        client->setCloseCallback([this]() {
+            Base::stop();
+        });
+        const char *line = "1234";
+        server->write((const Byte *)line, strlen(line), [&server] () {
+            server->close();
+        });
+//        server->close();
+        Base::wait(boost::none);
+        client->readUntilClose([this](ByteArray data) {
+            Base::stop(std::move(data));
+        });
+        ByteArray data = Base::template waitResult<ByteArray>();
+        BOOST_CHECK_EQUAL(String::toString(data), line);
+        server->close();
+        client->close();
+    }
+
+    void testStreamingReadUntilCloseAfterClose() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        client->setCloseCallback([this]() {
+            Base::stop();
+        });
+        const char *line = "1234";
+        server->write((const Byte *)line, strlen(line), [&server](){
+            server->close();
+        });
+//        server->close();
+        Base::wait();
+        std::vector<ByteArray> streamingChunks;
+        client->readUntilClose([this](ByteArray data) {
+            Base::stop(std::move(data));
+        }, [this, &streamingChunks](ByteArray data) {
+            streamingChunks.push_back(std::move(data));
+        });
+        ByteArray data = Base::template waitResult<ByteArray>();
+        BOOST_CHECK_EQUAL(data.size(), 0);
+        std::string streamingData;
+        for (auto &streamingChunk: streamingChunks) {
+            streamingData.append((const char *)streamingChunk.data(), streamingChunk.size());
+        }
+        BOOST_CHECK_EQUAL(streamingData, line);
+        server->close();
+        client->close();
+    }
+
     void testLargeReadUntil() {
+        Timestamp start = TimestampClock::now();
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
 
@@ -328,6 +379,9 @@ public:
         BOOST_CHECK_EQUAL(data.size(), 1024 * 4096 + 2);
         server->close();
         client->close();
+        auto elapse = std::chrono::duration_cast<std::chrono::microseconds>(TimestampClock::now() - start);
+        double cost = elapse.count() / 1000000 + elapse.count() % 1000000 / 1000000.0;
+        std::cerr << "Cost " << cost << "s" << std::endl;
     }
 
     void testCloseCallbackWithPendingRead() {
@@ -431,6 +485,8 @@ TINYCORE_TEST_CASE(TestIOStream, testStreamingCallback)
 TINYCORE_TEST_CASE(TestIOStream, testStreamingUntilClose)
 TINYCORE_TEST_CASE(TestIOStream, testDelayedCloseCallback)
 TINYCORE_TEST_CASE(TestIOStream, testCloseBufferedData)
+TINYCORE_TEST_CASE(TestIOStream, testReadUntilCloseAfterClose)
+TINYCORE_TEST_CASE(TestIOStream, testStreamingReadUntilCloseAfterClose)
 TINYCORE_TEST_CASE(TestIOStream, testLargeReadUntil)
 TINYCORE_TEST_CASE(TestIOStream, testCloseCallbackWithPendingRead)
 
@@ -441,7 +497,9 @@ TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingCallback)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingUntilClose)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testDelayedCloseCallback)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testCloseBufferedData)
-//TINYCORE_TEST_CASE(TestIOStreamSSL, testLargeReadUntil)
+TINYCORE_TEST_CASE(TestIOStreamSSL, testReadUntilCloseAfterClose)
+TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingReadUntilCloseAfterClose)
+TINYCORE_TEST_CASE(TestIOStreamSSL, testLargeReadUntil)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testCloseCallbackWithPendingRead)
 
 

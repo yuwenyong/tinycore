@@ -14,13 +14,21 @@ BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBuffer
         : _socket(std::move(socket))
         , _ioloop(ioloop)
         , _maxBufferSize(maxBufferSize)
-        , _readBuffer(readChunkSize){
+        , _readBuffer(readChunkSize) {
 
 }
 
 
 BaseIOStream::~BaseIOStream() {
 
+}
+
+void BaseIOStream::clearCallbacks() {
+    _readCallback = nullptr;
+    _streamingCallback = nullptr;
+    _writeCallback = nullptr;
+    _closeCallback = nullptr;
+    _connectCallback = nullptr;
 }
 
 void BaseIOStream::connect(const std::string &address, unsigned short port, ConnectCallbackType callback) {
@@ -50,10 +58,27 @@ void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, Streami
 
 void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback) {
     setReadCallback(std::move(callback));
+    _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     if (closed()) {
-        callback = StackContext::wrap<ByteArray>(std::move(_readCallback));
-        ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-        _readBuffer.readCompleted(_readBuffer.getActiveSize());
+        if (_streamingCallback) {
+            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
+            _readBuffer.readCompleted(_readBuffer.getActiveSize());
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+            runCallback([streamingCallback=_streamingCallback, data=std::move(data)](){
+                streamingCallback(std::move(data));
+            });
+#else
+            runCallback(std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data) {
+            streamingCallback(std::move(data));
+        }, _streamingCallback, std::move(data)));
+#endif
+        }
+        callback = std::move(_readCallback);
+        ByteArray data;
+        if (_readBuffer.getActiveSize()) {
+            data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
+            _readBuffer.readCompleted(_readBuffer.getActiveSize());
+        }
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
         runCallback([callback=std::move(callback), data=std::move(data)](){
             callback(std::move(data));
@@ -63,11 +88,12 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
             callback(std::move(data));
         }, std::move(callback), std::move(data)));
 #endif
+        _streamingCallback = nullptr;
         _readCallback = nullptr;
         return;
     }
     _readUntilClose = true;
-    _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
+
     if ((_state & S_READ) == S_NONE) {
         readFromSocket();
     }
@@ -76,9 +102,20 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
 void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType callback) {
     checkClosed();
     if (length) {
-        MessageBuffer packet(length);
-        packet.write(data, length);
-        _writeQueue.push(std::move(packet));
+        constexpr size_t WRITE_BUFFER_CHUNK_SIZE = 128 * 1024;
+        if (length > WRITE_BUFFER_CHUNK_SIZE) {
+            size_t chunkSize;
+            for (size_t i = 0; i < length; i += chunkSize) {
+                chunkSize = std::min(WRITE_BUFFER_CHUNK_SIZE, length - i);
+                MessageBuffer packet(chunkSize);
+                packet.write(data + i, chunkSize);
+                _writeQueue.push_back(std::move(packet));
+            }
+        } else {
+            MessageBuffer packet(length);
+            packet.write(data, length);
+            _writeQueue.push_back(std::move(packet));
+        }
     }
     _writeCallback = StackContext::wrap(std::move(callback));
     if (!_connecting) {
@@ -98,7 +135,7 @@ void BaseIOStream::setCloseCallback(CloseCallbackType callback) {
 }
 
 void BaseIOStream::close() {
-    if (!_closing && !_closed) {
+    if (!closed()) {
         if (_readUntilClose) {
             ReadCallbackType callback(std::move(_readCallback));
             _readCallback = nullptr;
@@ -137,6 +174,7 @@ void BaseIOStream::onConnect(const boost::system::error_code &ec) {
             runCallback(std::move(callback));
         }
     }
+    _socket.non_blocking(true);
     _connecting = false;
     if (!_writeQueue.empty()) {
         writeToSocket();
@@ -182,9 +220,11 @@ void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferr
         close();
         return;
     }
-    _writeQueue.front().readCompleted(transferredBytes);
-    if (!_writeQueue.front().getActiveSize()) {
-        _writeQueue.pop();
+    if (transferredBytes > 0) {
+        _writeQueue.front().readCompleted(transferredBytes);
+        if (!_writeQueue.front().getActiveSize()) {
+            _writeQueue.pop_front();
+        }
     }
     if (_writeQueue.empty() && _writeCallback) {
         WriteCallbackType callback;
@@ -424,7 +464,49 @@ void IOStream::readFromSocket() {
 
 
 void IOStream::writeToSocket() {
+#ifndef TC_SOCKET_USE_IOCP
+    size_t bytesToSend, bytesSent;
+    boost::system::error_code ec;
+    for(;;) {
+        MessageBuffer &buffer = _writeQueue.front();
+        bytesToSend = buffer.getActiveSize();
+        bytesSent = _socket.write_some(boost::asio::buffer(buffer.getReadPointer(), bytesToSend), ec);
+        if (ec) {
+            if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
+                break;
+            }
+            onWrite(ec, 0);
+            return;
+        } else if (bytesSent == 0){
+            close();
+            return;
+        } else if (bytesSent < bytesToSend) {
+            buffer.readCompleted(bytesSent);
+            break;
+        }
+        _writeQueue.pop_front();
+        if (_writeQueue.empty()) {
+            onWrite(ec, 0);
+            return;
+        }
+    }
+#endif
     MessageBuffer &buffer = _writeQueue.front();
+#ifdef TC_SOCKET_USE_IOCP
+    if (_writeQueue.size() > 1) {
+        size_t space = 0;
+        for (auto iter = std::next(_writeQueue.begin()); iter != _writeQueue.end(); ++iter) {
+            space += iter->getActiveSize();
+        }
+        buffer.ensureFreeSpace(space);
+        for (auto iter = std::next(_writeQueue.begin()); iter != _writeQueue.end(); ++iter) {
+            buffer.write(iter->getReadPointer(), iter->getActiveSize());
+        }
+        while (_writeQueue.size() > 1) {
+            _writeQueue.pop_back();
+        }
+    }
+#endif
     Wrapper3 op(shared_from_this(), [this](const boost::system::error_code &ec, size_t transferredBytes) {
         onWrite(ec, transferredBytes);
     });
@@ -457,6 +539,11 @@ SSLIOStream::~SSLIOStream() {
 #endif
 }
 
+void SSLIOStream::clearCallbacks() {
+    BaseIOStream::clearCallbacks();
+    _sslConnectCallback = nullptr;
+}
+
 void SSLIOStream::realConnect(const std::string &address, unsigned short port) {
     ResolverType resolver(_ioloop->getService());
     ResolverType::query query(address, std::to_string(port));
@@ -466,6 +553,8 @@ void SSLIOStream::realConnect(const std::string &address, unsigned short port) {
         onConnect(ec);
         return;
     }
+    _sslConnectCallback = std::move(_connectCallback);
+    _connectCallback = nullptr;
     auto op = std::make_shared<Wrapper2>(shared_from_this(), [this](const boost::system::error_code &ec) {
         onConnect(ec);
     });
@@ -491,12 +580,13 @@ void SSLIOStream::writeToSocket() {
 }
 
 void SSLIOStream::closeSocket() {
-    if (_sslAccepted) {
+    if (_sslAccepted && ((_state & S_WRITE) == S_NONE)) {
         auto self = std::static_pointer_cast<SSLIOStream>(shared_from_this());
         Wrapper2 op(shared_from_this(), [this](const boost::system::error_code &ec) {
             onShutdown(ec);
         });
         _sslSocket.async_shutdown(std::move(op));
+        _state |= S_WRITE;
     } else {
         doClose();
     }
@@ -530,11 +620,25 @@ void SSLIOStream::doRead() {
 }
 
 void SSLIOStream::doWrite() {
-    MessageBuffer& buffer = _writeQueue.front();
     Wrapper3 op(shared_from_this(), [this](const boost::system::error_code &ec, size_t transferredBytes) {
         onWrite(ec, transferredBytes);
     });
-    _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()), std::move(op));
+    MessageBuffer& buffer = _writeQueue.front();
+    if (_writeQueue.size() > 1) {
+        size_t space = 0;
+        for (auto iter = std::next(_writeQueue.begin()); iter != _writeQueue.end(); ++iter) {
+            space += iter->getActiveSize();
+        }
+        buffer.ensureFreeSpace(space);
+        for (auto iter = std::next(_writeQueue.begin()); iter != _writeQueue.end(); ++iter) {
+            buffer.write(iter->getReadPointer(), iter->getActiveSize());
+        }
+        while (_writeQueue.size() > 1) {
+            _writeQueue.pop_back();
+        }
+    }
+    _sslSocket.async_write_some(boost::asio::buffer(buffer.getReadPointer(), buffer.getActiveSize()),
+                                std::move(op));
     _state |= S_WRITE;
 }
 
@@ -558,6 +662,11 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
         }
     } else {
         _sslAccepted = true;
+        if (_sslConnectCallback) {
+            ConnectCallbackType callback(std::move(_sslConnectCallback));
+            _sslConnectCallback = nullptr;
+            runCallback(std::move(callback));
+        }
         if (writing()) {
             doWrite();
         }
@@ -569,6 +678,7 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
 }
 
 void SSLIOStream::onShutdown(const boost::system::error_code &ec) {
+    _state &= ~S_WRITE;
     if (ec.category() == boost::asio::error::get_ssl_category()) {
         Log::warn("SSL shutdown error %d :%s", ec.value(), ec.message());
     }

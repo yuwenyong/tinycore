@@ -94,6 +94,12 @@ public:
         }
     }
 
+    void ensureFreeSpace(size_t space) {
+        if (getRemainingSpace() < space) {
+            _storage.resize(getBufferSize() + space - getRemainingSpace());
+        }
+    }
+
     void write(const Byte* data, size_t size) {
         if (size) {
             memcpy(getWritePointer(), data, size);

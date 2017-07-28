@@ -21,11 +21,11 @@ void AsyncTestCase::tearDown() {
 
 void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
     if (!_stopped) {
+        if (!_timeout.expired()) {
+            _ioloop.removeTimeout(_timeout);
+            _timeout.reset();
+        }
         if (timeout) {
-            if (!_timeout.expired()) {
-                _ioloop.removeTimeout(_timeout);
-                _timeout.reset();
-            }
             _timeout = _ioloop.addTimeout(*timeout, [this, timeout](){
                 try {
                     ThrowException(TimeoutError, String::format("Async operation timed out after %f seconds",
