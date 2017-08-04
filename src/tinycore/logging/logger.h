@@ -17,7 +17,7 @@ namespace src = boost::log::sources;
 namespace keywords = boost::log::keywords;
 
 enum LogLevel {
-    LOG_LEVEL_DISABLED,
+    LOG_LEVEL_DISABL,
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
     LOG_LEVEL_WARN,
