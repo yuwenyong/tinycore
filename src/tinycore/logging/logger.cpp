@@ -3,8 +3,3 @@
 //
 
 #include "tinycore/logging/logger.h"
-
-
-Logger::~Logger() {
-
-}

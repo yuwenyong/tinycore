@@ -19,33 +19,14 @@ namespace logging = boost::log;
 namespace expr = boost::log::expressions;
 
 
-enum LogLevel {
-    LOG_LEVEL_UNSET,
-    LOG_LEVEL_DEBUG,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_FATAL,
-};
+using LogLevel = logging::trivial::severity_level;
 
-
-template< typename CharT, typename TraitsT >
-std::basic_ostream< CharT, TraitsT >& operator<< (std::basic_ostream< CharT, TraitsT>& strm, LogLevel lvl) {
-    static const char* const str[] = {
-            "UNSET",
-            "DEBUG",
-            "INFO ",
-            "WARN ",
-            "ERROR",
-            "FATAL",
-    };
-    if (static_cast<size_t>(lvl) < (sizeof(str) / sizeof(*str))) {
-        strm << str[lvl];
-    } else {
-        strm << static_cast<int>(lvl);
-    }
-    return strm;
-}
+#define LOG_LEVEL_TRACE     logging::trivial::trace
+#define LOG_LEVEL_DEBUG     logging::trivial::debug
+#define LOG_LEVEL_INFO      logging::trivial::info
+#define LOG_LEVEL_WARNING   logging::trivial::warning
+#define LOG_LEVEL_ERROR     logging::trivial::error
+#define LOG_LEVEL_FATAL     logging::trivial::fatal
 
 
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_severity, "Severity", LogLevel)
@@ -53,7 +34,7 @@ BOOST_LOG_ATTRIBUTE_KEYWORD(attr_channel, "Channel", std::string)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_timestamp, "TimeStamp", DateTime)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_file, "File", logging::string_literal)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_line, "Line", size_t)
-BOOST_LOG_ATTRIBUTE_KEYWORD(attr_func, "Function", logging::string_literal)
+BOOST_LOG_ATTRIBUTE_KEYWORD(attr_func, "Func", logging::string_literal)
 
 
 class TimeStampFormatterFactory: public logging::basic_formatter_factory<char, DateTime> {

@@ -3,6 +3,7 @@
 //
 
 #include "tinycore/logging/sinks.h"
+#include <boost/algorithm/string.hpp>
 #include <boost/core/null_deleter.hpp>
 
 
@@ -42,7 +43,7 @@ ConsoleSink::FrontendSinkPtr ConsoleSink::createSink() {
     return sink;
 }
 
-FrontendSinkPtr ConsoleSink::createAsyncSink() {
+ConsoleSink::FrontendSinkPtr ConsoleSink::createAsyncSink() {
     auto backend = createBackend();
     auto sink = boost::make_shared<sinks::asynchronous_sink<BackendSink>>(backend);
     return sink;
@@ -58,19 +59,19 @@ ConsoleSink::BackendSinkPtr ConsoleSink::createBackend() {
 
 FileSink::BackendSinkPtr FileSink::createBackend() {
     auto backend = boost::make_shared<BackendSink>();
-    backend->add_stream(boost::make_shared< std::ofstream >(_fileName));
+    backend->add_stream(boost::make_shared<std::ofstream>(_fileName));
     backend->auto_flush(_autoFlush);
     return backend;
 }
 
 
-FrontendSinkPtr RotatingFileSink::createSink() {
+RotatingFileSink::FrontendSinkPtr RotatingFileSink::createSink() {
     auto backend = createBackend();
     auto sink = boost::make_shared<sinks::synchronous_sink<BackendSink>>(backend);
     return sink;
 }
 
-FrontendSinkPtr RotatingFileSink::createAsyncSink() {
+RotatingFileSink::FrontendSinkPtr RotatingFileSink::createAsyncSink() {
     auto backend = createBackend();
     auto sink = boost::make_shared<sinks::asynchronous_sink<BackendSink>>(backend);
     return sink;
@@ -81,18 +82,136 @@ RotatingFileSink::BackendSinkPtr RotatingFileSink::createBackend() {
             keywords::file_name = _fileName,
             keywords::open_mode = _mode,
             keywords::rotation_size = _maxFileSize,
-            keywords::auto_flush = _autoFlush;
+            keywords::auto_flush = _autoFlush
     );
     return backend;
 }
 
 
-BackendSinkPtr TimedRotatingFileSink::createBackend() {
-    auto backend = boost::make_shared<BackendSink>(
-            keywords::file_name = _fileName,
-            keywords::open_mode = _mode,
-            keywords::rotation_size = _maxFileSize,
-            keywords::auto_flush = _autoFlush;
-    );
+TimedRotatingFileSink::BackendSinkPtr TimedRotatingFileSink::createBackend() {
+    return boost::apply_visitor(RotationTimeVisitor(_fileName, _mode, _maxFileSize, _autoFlush), _rotationTime);
+}
+
+#ifndef BOOST_LOG_WITHOUT_SYSLOG
+
+SyslogSink::FrontendSinkPtr SyslogSink::createSink() {
+    auto backend = createBackend();
+    auto sink = boost::make_shared<sinks::synchronous_sink<BackendSink>>(backend);
+    return sink;
+}
+
+SyslogSink::FrontendSinkPtr SyslogSink::createAsyncSink() {
+    auto backend = createBackend();
+    auto sink = boost::make_shared<sinks::asynchronous_sink<BackendSink>>(backend);
+    return sink;
+}
+
+SyslogSink::BackendSinkPtr SyslogSink::createBackend() {
+    auto backend = boost::make_shared<BackendSink>(keywords::facility=_facility);
+    if (_targetAddress) {
+        backend->set_target_address(*_targetAddress, _targetPort);
+    }
+    sinks::syslog::custom_severity_mapping< std::string > mapping("Severity");
+    mapping["trace"] = sinks::syslog::debug;
+    mapping["debug"] = sinks::syslog::debug;
+    mapping["info"] = sinks::syslog::info;
+    mapping["warning"] = sinks::syslog::warning;
+    mapping['error'] = sinks::syslog::error;
+    mapping["fatal"] = sinks::syslog::critical;
+    backend->set_severity_mapper(mapping);
     return backend;
+}
+
+#endif
+
+
+#ifndef BOOST_LOG_WITHOUT_EVENT_LOG
+
+SimpleEventLogSink::FrontendSinkPtr SimpleEventLogSink::createSink() {
+    auto backend = createBackend();
+    auto sink = boost::make_shared<sinks::synchronous_sink<BackendSink>>(backend);
+    return sink;
+}
+
+SimpleEventLogSink::FrontendSinkPtr SimpleEventLogSink::createAsyncSink() {
+    auto backend = createBackend();
+    auto sink = boost::make_shared<sinks::asynchronous_sink<BackendSink>>(backend);
+    return sink;
+}
+
+SimpleEventLogSink::BackendSinkPtr SimpleEventLogSink::createBackend() {
+    std::string logName = _logName, logSource = _logSource;
+    if (logName.empty()) {
+        logName = BackendSink::get_default_log_name();
+    }
+    if (logSource.empty()) {
+        logSource = BackendSink::get_default_source_name();
+    }
+    auto backend = boost::make_shared<BackendSink>(
+            keywords::log_name = logName,
+            keywords::log_source = logSource,
+            keywords::registration = _registrationMode
+    );
+    sinks::event_log::custom_event_type_mapping<LogLevel> mapping("Severity");
+    mapping[LOG_LEVEL_TRACE] = sinks::event_log::info;
+    mapping[LOG_LEVEL_DEBUG] = sinks::event_log::info;
+    mapping[LOG_LEVEL_INFO] = sinks::event_log::info;
+    mapping[LOG_LEVEL_WARNING] = sinks::event_log::warning;
+    mapping[LOG_LEVEL_ERROR] = sinks::event_log::error;
+    mapping[LOG_LEVEL_FATAL] = sinks::event_log::error;
+    backend->set_event_type_mapper(mapping);
+    return backend;
+}
+
+#endif
+
+
+#ifndef BOOST_LOG_WITHOUT_DEBUG_OUTPUT
+
+DebuggerSink::FrontendSinkPtr DebuggerSink::createSink() {
+    auto backend = createBackend();
+    auto sink = boost::make_shared<sinks::synchronous_sink<BackendSink>>(backend);
+    return sink;
+}
+
+DebuggerSink::FrontendSinkPtr DebuggerSink::createAsyncSink() {
+    auto backend = createBackend();
+    auto sink = boost::make_shared<sinks::asynchronous_sink<BackendSink>>(backend);
+    return sink;
+}
+
+DebuggerSink::BackendSinkPtr DebuggerSink::createBackend() {
+    auto backend = boost::make_shared<BackendSink>();
+    return backend;
+}
+
+#endif
+
+
+bool BasicSinkFactory::paramCastToBool(const string_type &param) {
+    if (boost::iequals(param, "true")) {
+        return true;
+    }
+    if (boost::iequals(param, "false")) {
+        return false;
+    }
+    return std::stoi(param) != 0;
+}
+
+
+boost::shared_ptr<sinks::sink> FileSinkFactory::create_sink(settings_section const &settings) {
+    std::string fileName;
+    if (boost::optional<std::string> param = settings["FileName"]) {
+        fileName = param.get();
+    } else {
+        throw std::runtime_error("No target file name specified in settings");
+    }
+    bool autoFlush = false;
+    if (boost::optional<string_type> autoFlushParam = settings["AutoFlush"]) {
+        autoFlush = paramCastToBool(autoFlushParam.get());
+    }
+    auto backend = boost::make_shared<BackendSink>();
+    backend->add_stream(boost::make_shared<std::ofstream>(fileName));
+    backend->auto_flush(autoFlush);
+    return initSink(backend, settings);
 }
