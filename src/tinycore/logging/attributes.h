@@ -17,9 +17,11 @@
 
 namespace logging = boost::log;
 namespace expr = boost::log::expressions;
+namespace attrs = boost::log::attributes;
 
 
 using LogLevel = logging::trivial::severity_level;
+using StringLiteral = logging::string_literal;
 
 #define LOG_LEVEL_TRACE     logging::trivial::trace
 #define LOG_LEVEL_DEBUG     logging::trivial::debug
@@ -32,9 +34,9 @@ using LogLevel = logging::trivial::severity_level;
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_severity, "Severity", LogLevel)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_channel, "Channel", std::string)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_timestamp, "TimeStamp", DateTime)
-BOOST_LOG_ATTRIBUTE_KEYWORD(attr_file, "File", logging::string_literal)
+BOOST_LOG_ATTRIBUTE_KEYWORD(attr_file, "File", StringLiteral)
 BOOST_LOG_ATTRIBUTE_KEYWORD(attr_line, "Line", size_t)
-BOOST_LOG_ATTRIBUTE_KEYWORD(attr_func, "Func", logging::string_literal)
+BOOST_LOG_ATTRIBUTE_KEYWORD(attr_func, "Func", StringLiteral)
 
 
 class TimeStampFormatterFactory: public logging::basic_formatter_factory<char, DateTime> {
