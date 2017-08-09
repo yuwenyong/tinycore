@@ -142,7 +142,7 @@ public:
                           {R"(foo="a\073b")", "a;b"},
                           {R"(foo="a\"b")", "a\"b"}};
         for (auto &kv: data) {
-            Log::info("trying %s", kv.first.c_str());
+            LOG_INFO("trying %s", kv.first.c_str());
             HTTPHeaders requestHeaders{{"Cookie", kv.first}};
             HTTPResponse response = fetch("/get", ARG_headers=requestHeaders);
             const std::string *body = response.getBody();
@@ -205,12 +205,12 @@ public:
     }
 
     void onHandlerWaiting() {
-        Log::info("handler waiting");
+        LOG_INFO("handler waiting");
         _stream->close();
     }
 
     void onConnectionClose() {
-        Log::info("connection closed");
+        LOG_INFO("connection closed");
         stop();
     }
 protected:

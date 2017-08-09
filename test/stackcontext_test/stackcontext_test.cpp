@@ -17,17 +17,17 @@ public:
 
     void onGet(StringVector args) override {
         Asynchronous()
-        Log::info("in get()");
+        LOG_INFO("in get()");
         _ioloop->addCallback(std::bind(&TestRequestHandler::part2, this));
     }
 
     void part2() {
-        Log::info("in part2()");
+        LOG_INFO("in part2()");
         _ioloop->addCallback(std::bind(&TestRequestHandler::part3, this));
     }
 
     void part3() {
-        Log::info("in part3()");
+        LOG_INFO("in part3()");
         ThrowException(Exception, "test exception");
     }
 

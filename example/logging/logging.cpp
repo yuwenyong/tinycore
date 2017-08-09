@@ -30,7 +30,7 @@ int main() {
 
     ConsoleSink sink2;
     sink2.setFilter("%Channel% child_of \"root.com\"");
-    sink2.setFormatter("[%TimeStamp(format=\"%Y.%m.%d %H:%M:%S.%f\")%][%Severity%][%File%:%Line%:%Func%]%Message%");
+//    sink2.setFormatter("[%TimeStamp(format=\"%Y.%m.%d %H:%M:%S.%f\")%][%Severity%][%File%:%Line%:%Func%]%Message%");
     Logging::addSink(sink2);
 
     RotatingFileSink sink3("logs/mylog_%3N.log");
@@ -39,7 +39,7 @@ int main() {
     Logging::addSink(sink3);
 
     ByteArray bytes;
-    for (int i = 0; i < 100; ++i) { bytes.push_back((Byte)i); }
+    for (int i = 0; i < 20; ++i) { bytes.push_back((Byte)i); }
     LOG_ERROR("This is log %d", 1);
     LOG_ERROR(bytes.data(), bytes.size());
     LOG_ERROR(accessLogger, "This is log %d", 2);
@@ -47,6 +47,8 @@ int main() {
     LOG_ERROR(accessLogger, bytes.data(), bytes.size());
     LOG_ERROR(appLogger, "This is log %d", 4);
     LOG_ERROR(comLogger, "This is log %d", 5);
+    Logger *accessChild = accessLogger->getChild("child");
+    LOG_ERROR(accessChild, "This is log %d", 6);
     Logging::close();
     std::cout << "Closed" << std::endl;
 //    std::this_thread::sleep_for(std::chrono::seconds(5));
