@@ -7,7 +7,7 @@
 #include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 
 
 RequestHandler::RequestHandler(Application *application, std::shared_ptr<HTTPServerRequest> request)
@@ -260,7 +260,7 @@ void RequestHandler::finish() {
 
 void RequestHandler::sendError(int statusCode, std::exception_ptr error) {
     if (_headersWritten) {
-        Log::error("Cannot send error response after headers written");
+        LOG_ERROR("Cannot send error response after headers written");
         if (!_finished) {
             finish();
             return;
@@ -271,7 +271,7 @@ void RequestHandler::sendError(int statusCode, std::exception_ptr error) {
     try {
         writeError(statusCode, error);
     } catch (std::exception &e) {
-        Log::error("Uncaught exception in writeError: %s", e.what());
+        LOG_ERROR("Uncaught exception in writeError: %s", e.what());
     }
     if (!_finished) {
         finish();
@@ -369,9 +369,9 @@ void RequestHandler::handleRequestException(std::exception_ptr error) {
     } catch (HTTPError &e) {
         std::string summary = requestSummary();
         int statusCode = e.getStatusCode();
-        Log::warn("%d %s: %s", statusCode, summary.c_str(), e.what());
+        LOG_WARNING("%d %s: %s", statusCode, summary.c_str(), e.what());
         if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
-            Log::error("Bad HTTP status code: %d", statusCode);
+            LOG_ERROR("Bad HTTP status code: %d", statusCode);
             sendError(500, error);
         } else {
             sendError(statusCode, error);
@@ -379,12 +379,12 @@ void RequestHandler::handleRequestException(std::exception_ptr error) {
     } catch (std::exception &e) {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
-        Log::error("Uncaught exception %s\n%s\n%s", e.what(), summary.c_str(), requestInfo.c_str());
+        LOG_ERROR("Uncaught exception %s\n%s\n%s", e.what(), summary.c_str(), requestInfo.c_str());
         sendError(500, error);
     } catch (...) {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
-        Log::error("Unknown exception\n%s\n%s", summary.c_str(), requestInfo.c_str());
+        LOG_ERROR("Unknown exception\n%s\n%s", summary.c_str(), requestInfo.c_str());
         sendError(500, error);
     }
 }
@@ -431,7 +431,7 @@ void Application::addHandlers(std::string hostPattern, HandlersType &&hostHandle
     for (auto &spec: handlers) {
         if (!spec.getName().empty()) {
             if (_namedHandlers.find(spec.getName()) != _namedHandlers.end()) {
-                Log::warn("Multiple handlers named %s; replacing previous value", spec.getName().c_str());
+                LOG_WARNING("Multiple handlers named %s; replacing previous value", spec.getName().c_str());
             }
             _namedHandlers[spec.getName()] = &spec;
         }
@@ -488,11 +488,11 @@ void Application::logRequest(RequestHandler *handler) const {
     double requestTime = 1000.0 * handler->_request->requestTime();
     std::string logInfo = String::format("%d %s %.2fms", statusCode, summary.c_str(), requestTime);
     if (statusCode < 400) {
-        Log::info(logInfo.c_str());
+        LOG_INFO(logInfo.c_str());
     } else if (statusCode < 500) {
-        Log::warn(logInfo.c_str());
+        LOG_WARNING(logInfo.c_str());
     } else {
-        Log::error(logInfo.c_str());
+        LOG_ERROR(logInfo.c_str());
     }
 }
 

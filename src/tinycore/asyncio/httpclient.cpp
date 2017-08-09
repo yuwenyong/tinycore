@@ -9,7 +9,7 @@
 #include "tinycore/crypto/base64.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 
 
 const char* _HTTPError::what() const noexcept {
@@ -281,9 +281,9 @@ void _HTTPConnection::cleanup(std::exception_ptr error) {
     try {
         std::rethrow_exception(error);
     } catch (std::exception &e) {
-        Log::warn("uncaught exception:%s", e.what());
+        LOG_WARNING("uncaught exception:%s", e.what());
     } catch (...) {
-        Log::warn("unknown exception");
+        LOG_WARNING("unknown exception");
     }
     runCallback(HTTPResponse(_request, 599, error, TimestampClock::now() - _startTime));
     if (_stream) {

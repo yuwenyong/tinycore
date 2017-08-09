@@ -53,7 +53,7 @@ void TCPServer::onAccept(const boost::system::error_code &ec) {
             std::string remoteAddress = stream->getRemoteAddress();
             handleStream(std::move(stream), std::move(remoteAddress));
         } catch (std::exception &e) {
-            Log::error("Error in connection callback:%s", e.what());
+            LOG_ERROR("Error in connection callback:%s", e.what());
         }
         accept();
     }

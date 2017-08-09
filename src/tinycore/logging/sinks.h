@@ -26,10 +26,7 @@ public:
         _level = level;
     }
 
-    void setFilter(std::string name, LogLevel level) {
-        _name = std::move(name);
-        setFilter(level);
-    }
+    void setFilter(const std::string &name, LogLevel level);
 
     void setFilter(std::string filter) {
         _filter = std::move(filter);
@@ -43,12 +40,12 @@ public:
         _async = async;
     }
 
-    FrontendSinkPtr makeSink() {
+    FrontendSinkPtr makeSink() const {
         FrontendSinkPtr sink;
         if (_async) {
-            sink = createSink();
-        } else {
             sink = createAsyncSink();
+        } else {
+            sink = createSink();
         }
         onSetFilter(sink);
         onSetFormatter(sink);
@@ -57,10 +54,10 @@ public:
 
     virtual ~BaseSink() = default;
 protected:
-    virtual FrontendSinkPtr createSink() = 0;
-    virtual FrontendSinkPtr createAsyncSink() = 0;
-    void onSetFilter(FrontendSinkPtr sink);
-    void onSetFormatter(FrontendSinkPtr sink);
+    virtual FrontendSinkPtr createSink() const= 0;
+    virtual FrontendSinkPtr createAsyncSink() const= 0;
+    void onSetFilter(FrontendSinkPtr sink) const;
+    void onSetFormatter(FrontendSinkPtr sink) const;
 
     static bool filter(const logging::value_ref<LogLevel, tag::attr_severity> &sev,
                        const logging::value_ref<std::string, tag::attr_channel> &channel,
@@ -89,9 +86,9 @@ public:
     }
 
 protected:
-    FrontendSinkPtr createSink() override;
-    FrontendSinkPtr createAsyncSink() override;
-    virtual BackendSinkPtr createBackend();
+    FrontendSinkPtr createSink() const override;
+    FrontendSinkPtr createAsyncSink() const override;
+    virtual BackendSinkPtr createBackend() const;
 
     bool _autoFlush;
 };
@@ -105,7 +102,7 @@ public:
 
     }
 protected:
-    BackendSinkPtr createBackend() override;
+    BackendSinkPtr createBackend() const override;
 
     std::string _fileName;
 };
@@ -138,9 +135,9 @@ public:
         _autoFlush = autoFlush;
     }
 protected:
-    FrontendSinkPtr createSink() override;
-    FrontendSinkPtr createAsyncSink() override;
-    virtual BackendSinkPtr createBackend();
+    FrontendSinkPtr createSink() const override;
+    FrontendSinkPtr createAsyncSink() const override;
+    virtual BackendSinkPtr createBackend() const;
 
     std::string _fileName;
     std::ios_base::openmode _mode;
@@ -219,7 +216,7 @@ public:
         _rotationTime = timeInterval;
     }
 protected:
-    BackendSinkPtr createBackend() override;
+    BackendSinkPtr createBackend() const override;
 
     boost::variant<TimePoint, TimeInterval> _rotationTime;
 };
@@ -272,9 +269,9 @@ public:
 
     }
 protected:
-    FrontendSinkPtr createSink() override;
-    FrontendSinkPtr createAsyncSink() override;
-    BackendSinkPtr createBackend();
+    FrontendSinkPtr createSink() const override;
+    FrontendSinkPtr createAsyncSink() const override;
+    BackendSinkPtr createBackend() const;
 
     boost::optional<std::string> _targetAddress;
     unsigned short _targetPort{514};
@@ -318,9 +315,9 @@ public:
         _registrationMode = registrationMode;
     }
 protected:
-    FrontendSinkPtr createSink() override;
-    FrontendSinkPtr createAsyncSink() override;
-    BackendSinkPtr createBackend();
+    FrontendSinkPtr createSink() const override;
+    FrontendSinkPtr createAsyncSink() const override;
+    BackendSinkPtr createBackend() const;
 
     std::string _logName;
     std::string _logSource;
@@ -339,21 +336,22 @@ public:
 
     DebuggerSink() = default;
 protected:
-    FrontendSinkPtr createSink() override;
-    FrontendSinkPtr createAsyncSink() override;
-    BackendSinkPtr createBackend();
+    FrontendSinkPtr createSink() const override;
+    FrontendSinkPtr createAsyncSink() const override;
+    BackendSinkPtr createBackend() const;
 };
 
 #endif
 
 
 class BasicSinkFactory: public logging::sink_factory<char> {
-protected:
+public:
     typedef logging::sink_factory<char> base_type;
     typedef typename base_type::char_type char_type;
     typedef typename base_type::string_type string_type;
     typedef typename base_type::settings_section settings_section;
 
+protected:
     static bool paramCastToBool(const string_type &param);
 
     template <typename BackendT>

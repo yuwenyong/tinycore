@@ -7,7 +7,7 @@
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/configuration/configmgr.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 #include "tinycore/utilities/objectmanager.h"
 
 
@@ -36,7 +36,7 @@ void Options::parseCommandLine(int argc, const char * const argv[]) {
 }
 
 void Options::onEnter() {
-    Log::initialize();
+    Logging::init();
     setupWatcherHook();
     setupInterrupter();
 }
@@ -44,7 +44,7 @@ void Options::onEnter() {
 void Options::onExit() {
     sObjectMgr->cleanup();
     sWatcher->dumpAll();
-    Log::close();
+    Logging::close();
 }
 
 Options* Options::instance() {
@@ -55,73 +55,73 @@ Options* Options::instance() {
 void Options::setupWatcherHook() {
 #ifndef NDEBUG
     sWatcher->addIncCallback(SYS_TIMEOUT_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create Timeout,current count:%d", value);
+        LOG_TRACE("Create Timeout,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_TIMEOUT_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy Timeout,current count:%d", value);
+        LOG_TRACE("Destroy Timeout,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_PERIODICCALLBACK_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create PeriodicCallback,current count:%d", value);
+        LOG_TRACE("Create PeriodicCallback,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_PERIODICCALLBACK_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy PeriodicCallback,current count:%d", value);
+        LOG_TRACE("Destroy PeriodicCallback,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_IOSTREAM_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create IOStream,current count:%d", value);
+        LOG_TRACE("Create IOStream,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_IOSTREAM_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy IOStream,current count:%d", value);
+        LOG_TRACE("Destroy IOStream,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_SSLIOSTREAM_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create SSLIOStream,current count:%d", value);
+        LOG_TRACE("Create SSLIOStream,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_SSLIOSTREAM_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy SSLIOStream,current count:%d", value);
+        LOG_TRACE("Destroy SSLIOStream,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_HTTPCONNECTION_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPConnection,current count:%d", value);
+        LOG_TRACE("Create HTTPConnection,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_HTTPCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPConnection,current count:%d", value);
+        LOG_TRACE("Destroy HTTPConnection,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPServerRequest,current count:%d", value);
+        LOG_TRACE("Create HTTPServerRequest,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPServerRequest,current count:%d", value);
+        LOG_TRACE("Destroy HTTPServerRequest,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_REQUESTHANDLER_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create RequestHandler,current count:%d", value);
+        LOG_TRACE("Create RequestHandler,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_REQUESTHANDLER_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy RequestHandler,current count:%d", value);
+        LOG_TRACE("Destroy RequestHandler,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_WEBSOCKETHANDLER_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create WebsocketHandler,current count:%d", value);
+        LOG_TRACE("Create WebsocketHandler,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_WEBSOCKETHANDLER_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy WebsocketHandler,current count:%d", value);
+        LOG_TRACE("Destroy WebsocketHandler,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_HTTPCLIENT_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPClient,current count:%d", value);
+        LOG_TRACE("Create HTTPClient,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_HTTPCLIENT_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPClient,current count:%d", value);
+        LOG_TRACE("Destroy HTTPClient,current count:%d", value);
     });
 
     sWatcher->addIncCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPClientConnection,current count:%d", value);
+        LOG_TRACE("Create HTTPClientConnection,current count:%d", value);
     });
     sWatcher->addDecCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPClientConnection,current count:%d", value);
+        LOG_TRACE("Destroy HTTPClientConnection,current count:%d", value);
     });
 #endif
 }

@@ -6,6 +6,7 @@
 #define TINYCORE_LOGGER_H
 
 #include "tinycore/common/common.h"
+#include <boost/functional/factory.hpp>
 #include <boost/log/sources/channel_feature.hpp>
 #include <boost/log/sources/logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
@@ -118,7 +119,7 @@ class PositionLoggerMT: public src::basic_composite_logger<
 
 class Logger: public boost::noncopyable {
 public:
-    friend class Logging;
+    friend class boost::factory<Logger*>;
 
     const std::string& getName() const {
         return _name;
@@ -253,8 +254,8 @@ protected:
     template <typename... Args>
     void write(const StringLiteral &file, size_t line, const StringLiteral &func, LogLevel level, const char *format,
                Args&&... args) {
-        logging::record rec = _logger.open_record(keywords::severity=level, logger_keywords::file=file,
-                                                  logger_keywords::line=line, logger_keywords::func=func);
+        logging::record rec = _logger.open_record((keywords::severity=level, logger_keywords::file=file,
+                logger_keywords::line=line, logger_keywords::func=func));
         if (rec) {
             logging::record_ostream strm(rec);
             strm << String::format(format, std::forward<Args>(args)...);

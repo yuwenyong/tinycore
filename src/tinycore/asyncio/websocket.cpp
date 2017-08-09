@@ -8,7 +8,7 @@
 #include "tinycore/crypto/base64.h"
 #include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 #include "tinycore/utilities/string.h"
 
 
@@ -111,7 +111,7 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
 
 #define WEBSOCKET_ASYNC() try
 #define WEBSOCKET_ASYNC_END catch (std::exception &e) { \
-    Log::error("Uncaught exception %s in %s", e.what(), _request->getPath().c_str()); \
+    LOG_ERROR("Uncaught exception %s in %s", e.what(), _request->getPath().c_str()); \
     abort(); \
 }
 
@@ -119,7 +119,7 @@ void WebSocketProtocol76::acceptConnection() {
     try {
         handleWebSocketHeaders();
     } catch (ValueError &e) {
-        Log::debug("Malformed WebSocket request received");
+        LOG_DEBUG("Malformed WebSocket request received");
         abort();
         return;
     }
@@ -202,7 +202,7 @@ void WebSocketProtocol76::handleChallenge(ByteArray data) {
         std::string challenge((const char *)data.data(), data.size());
         challengeResp = challengeResponse(challenge);
     } catch (ValueError &e) {
-        Log::debug("Malformed key data in WebSocket request");
+        LOG_DEBUG("Malformed key data in WebSocket request");
         abort();
         return;
     }
@@ -291,7 +291,7 @@ void WebSocketProtocol13::acceptConnection() {
         handleWebSocketHeaders();
         doAcceptConnection();
     } catch (ValueError &e) {
-        Log::debug("Malformed WebSocket request received");
+        LOG_DEBUG("Malformed WebSocket request received");
         abort();
         return;
     }

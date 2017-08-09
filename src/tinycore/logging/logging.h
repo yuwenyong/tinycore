@@ -15,6 +15,7 @@
 
 class TC_COMMON_API Logging {
 public:
+    friend class Logger;
     typedef logging::settings Settings;
     typedef boost::ptr_map<std::string, Logger> LoggerMap;
 
@@ -25,6 +26,7 @@ public:
     static void initFromFile(const std::string &fileName);
 
     static void close() {
+        logging::core::get()->flush();
         logging::core::get()->remove_all_sinks();
     }
 
@@ -48,13 +50,12 @@ public:
         logging::core::get()->reset_filter();
     }
 
-    static Logger* getLogger(const std::string &name="") {
-        std::string loggerName = getLoggerName(name);
-        return getLoggerByName(loggerName);
+    static Logger* getRootLogger() {
+        return _rootLogger;
     }
 
-    static Logger* getChildLogger(const Logger *logger, const std::string &suffix) {
-        std::string loggerName = joinLoggerName(logger->getName(), suffix);
+    static Logger* getLogger(const std::string &name="") {
+        std::string loggerName = getLoggerName(name);
         return getLoggerByName(loggerName);
     }
 
@@ -65,6 +66,10 @@ public:
         } else {
             return prefix + '.' + name;
         }
+    }
+
+    static void addSink(const BaseSink &sink) {
+        logging::core::get()->add_sink(sink.makeSink());
     }
 
     template <typename... Args>
@@ -215,7 +220,12 @@ protected:
 
     static void onPostInit();
 
-    static Logger* getLoggerByName(const std::string &loggerName);
+    static Logger* getLoggerByName(std::string &loggerName);
+
+    static Logger* getChildLogger(const Logger *logger, const std::string &suffix) {
+        std::string loggerName = joinLoggerName(logger->getName(), suffix);
+        return getLoggerByName(loggerName);
+    }
 
     static std::string joinLoggerName(const std::string &name, const std::string &suffix) {
         assert(!name.empty() && !suffix.empty());

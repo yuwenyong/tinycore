@@ -36,7 +36,6 @@ public:
             try {
                 std::rethrow_exception(error);
             } catch (Exception &e) {
-//                Log::error(e.what());
                 if (boost::contains(e.what(), "test exception")) {
                     finish("got expected exception");
                 } else {
@@ -73,7 +72,6 @@ public:
         const std::string *body = _response.getBody();
         BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
         BOOST_CHECK_EQUAL(*body, "got expected exception");
-//        Log::error("SUCCESS");
     }
 
     void handleResponse(HTTPResponse response) {

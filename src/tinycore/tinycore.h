@@ -20,7 +20,7 @@
 #include "tinycore/httputils/cookie.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 #include "tinycore/utilities/container.h"
 #include "tinycore/utilities/messagebuffer.h"
 #include "tinycore/utilities/objectmanager.h"

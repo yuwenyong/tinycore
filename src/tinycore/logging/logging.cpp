@@ -33,8 +33,10 @@ void Logging::onPreInit() {
     logging::core::get()->set_exception_handler(logging::make_exception_suppressor());
     logging::add_common_attributes();
     logging::core::get()->add_global_attribute("Uptime", attrs::timer());
+    logging::register_simple_formatter_factory<logging::trivial::severity_level , char>("Severity");
     logging::register_formatter_factory("TimeStamp", boost::make_shared<TimeStampFormatterFactory>());
     logging::register_formatter_factory("Uptime", boost::make_shared<UptimeFormatterFactory>());
+    logging::register_simple_filter_factory<logging::trivial::severity_level , char>("Severity");
     logging::register_filter_factory("Channel", boost::make_shared<ChannelFilterFactory>());
     logging::register_sink_factory("File", boost::make_shared<FileSinkFactory>());
 }
@@ -43,7 +45,7 @@ void Logging::onPostInit() {
     _rootLogger = getLogger();
 }
 
-Logger* Logging::getLoggerByName(const std::string &loggerName) {
+Logger* Logging::getLoggerByName(std::string &loggerName) {
     std::lock_guard<std::mutex> lock(_lock);
     auto iter  = _loggers.find(loggerName);
     if (iter != _loggers.end()) {

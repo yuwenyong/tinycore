@@ -8,7 +8,7 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 #include "tinycore/utilities/objectmanager.h"
 
 

@@ -5,7 +5,7 @@
 #include "tinycore/asyncio/httputil.h"
 #include <boost/algorithm/string.hpp>
 #include "tinycore/common/errors.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 #include "tinycore/utilities/string.h"
 
 
@@ -119,7 +119,7 @@ void HTTPUtil::parseBodyArguments(const std::string &contentType, const std::str
             }
         }
         if (!found) {
-            Log::warn("Invalid multipart/form-data");
+            LOG_WARNING("Invalid multipart/form-data");
         }
     }
 }
@@ -135,7 +135,7 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &d
     }
     size_t finalBoundaryIndex = data.rfind("--" + boundary + "--");
     if (finalBoundaryIndex == std::string::npos) {
-        Log::warn("Invalid multipart/form-data: no final boundary");
+        LOG_WARNING("Invalid multipart/form-data: no final boundary");
         return;
     }
     StringVector parts = String::split(data.substr(0, finalBoundaryIndex), "--" + boundary + "\r\n");
@@ -150,7 +150,7 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &d
         }
         eoh = part.find("\r\n\r\n");
         if (eoh == std::string::npos) {
-            Log::warn("multipart/form-data missing headers");
+            LOG_WARNING("multipart/form-data missing headers");
             continue;
         }
         headers.clear();
@@ -158,7 +158,7 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &d
         dispHeader = headers.get("Content-Disposition");
         std::tie(disposition, dispParams) = parseHeader(dispHeader);
         if (disposition != "form-data" || !boost::ends_with(part, "\r\n")) {
-            Log::warn("Invalid multipart/form-data");
+            LOG_WARNING("Invalid multipart/form-data");
             continue;
         }
         if (part.length() <= eoh + 6) {
@@ -168,7 +168,7 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &d
         }
         nameIter = dispParams.find("name");
         if (nameIter == dispParams.end()) {
-            Log::warn("multipart/form-data value missing name");
+            LOG_WARNING("multipart/form-data value missing name");
             continue;
         }
         name = nameIter->second;

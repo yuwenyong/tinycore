@@ -110,10 +110,10 @@ void IOLoop::start() {
         try {
             _ioService.run();
         } catch (SystemExit &e) {
-            Log::error(e.what());
+            LOG_ERROR(e.what());
             break;
         } catch (std::exception &e) {
-            Log::error("Unexpected Exception:%s", e.what());
+            LOG_ERROR("Unexpected Exception:%s", e.what());
         }
     }
     _stopped = false;
@@ -151,18 +151,18 @@ _Timeout::CallbackType IOLoop::wrapTimeoutCallback(std::shared_ptr<_Timeout> tim
 
 void IOLoop::setupInterrupter() {
     signal(SIGINT, [this](){
-        Log::info("Capture SIGINT");
+        LOG_INFO("Capture SIGINT");
         stop();
         return false;
     });
     signal(SIGTERM, [this](){
-        Log::info("Capture SIGTERM");
+        LOG_INFO("Capture SIGTERM");
         stop();
         return false;
     });
 #if defined(SIGQUIT)
     signal(SIGQUIT, [this](){
-        Log::info("Capture SIGQUIT");
+        LOG_INFO("Capture SIGQUIT");
         stop();
         return false;
     });
@@ -199,7 +199,7 @@ void PeriodicCallback::run() {
     try {
         _callback();
     } catch (std::exception &e) {
-        Log::error("Error in periodic callback:%s", e.what());
+        LOG_ERROR("Error in periodic callback:%s", e.what());
     }
     scheduleNext();
 }

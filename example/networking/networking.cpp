@@ -87,19 +87,19 @@ public:
 
     void onGet(StringVector args) {
         Asynchronous()
-        Log::info("onGet");
+        LOG_INFO("onGet");
         HTTPClient::create()->fetch("http://www.csdn.net/", std::bind(&HelloWorld::onStep1, this,
                                                                       std::placeholders::_1));
     }
 
     void onStep1(HTTPResponse response) {
-        Log::info("onStep1");
+        LOG_INFO("onStep1");
         HTTPClient::create()->fetch("http://www.csdn.net/", std::bind(&HelloWorld::onStep2, this,
                                                                       std::placeholders::_1));
     }
 
     void onStep2(HTTPResponse response) {
-        Log::info("onStep2");
+        LOG_INFO("onStep2");
         auto name = getArgument("name");
         finish(String::format("Your name is %s", name.c_str()));
     }
@@ -225,6 +225,6 @@ int main(int argc, char **argv) {
     auto server = std::make_shared<HTTPServer>(HTTPServerCB(application));
     server->listen(3080);
     sIOLoop->start();
-    Log::info("After stop");
+    LOG_INFO("After stop");
     return 0;
 }

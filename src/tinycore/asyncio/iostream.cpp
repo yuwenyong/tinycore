@@ -7,7 +7,7 @@
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 
 
 BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBufferSize, size_t readChunkSize)
@@ -163,7 +163,7 @@ void BaseIOStream::onConnect(const boost::system::error_code &ec) {
         _connectCallback = nullptr;
         if (ec != boost::asio::error::operation_aborted) {
             _error = std::make_exception_ptr(boost::system::system_error(ec));
-            Log::warn("Connect error %d :%s", ec.value(), ec.message());
+            LOG_WARNING("Connect error %d :%s", ec.value(), ec.message());
         }
         close();
         return;
@@ -215,7 +215,7 @@ void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferr
         _writeCallback = nullptr;
         if (ec != boost::asio::error::operation_aborted) {
             _error = std::make_exception_ptr(boost::system::system_error(ec));
-            Log::warn("Write error %d :%s", ec.value(), ec.message());
+            LOG_WARNING("Write error %d :%s", ec.value(), ec.message());
         }
         close();
         return;
@@ -247,7 +247,7 @@ void BaseIOStream::onClose(const boost::system::error_code &ec) {
     _closed = true;
     if (ec) {
         _error = std::make_exception_ptr(boost::system::system_error(ec));
-        Log::warn("Close error %d :%s", ec.value(), ec.message());
+        LOG_WARNING("Close error %d :%s", ec.value(), ec.message());
     }
     maybeRunCloseCallback();
 }
@@ -274,7 +274,7 @@ void BaseIOStream::runCallback(CallbackType callback) {
         try {
             callback();
         } catch (std::exception &e) {
-            Log::error("Uncaught exception (%s), closing connection.", e.what());
+            LOG_ERROR("Uncaught exception (%s), closing connection.", e.what());
             close();
             throw;
         }
@@ -286,7 +286,7 @@ void BaseIOStream::runCallback(CallbackType callback) {
         try {
             callback();
         } catch (std::exception &e) {
-            Log::error("Uncaught exception (%s), closing connection.", e.what());
+            LOG_ERROR("Uncaught exception (%s), closing connection.", e.what());
             close();
             throw;
         }
@@ -301,7 +301,7 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t tr
         if (ec != boost::asio::error::operation_aborted) {
             if (ec != boost::asio::error::eof) {
                 _error = std::make_exception_ptr(boost::system::system_error(ec));
-                Log::warn("Read error %d :%s", ec.value(), ec.message());
+                LOG_WARNING("Read error %d :%s", ec.value(), ec.message());
             }
             close();
             if (ec != boost::asio::error::eof) {
@@ -312,7 +312,7 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t tr
     }
     _readBuffer.writeCompleted(transferredBytes);
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
-        Log::error("Reached maximum read buffer size");
+        LOG_ERROR("Reached maximum read buffer size");
         close();
         ThrowException(IOError, "Reached maximum read buffer size");
     }
@@ -654,7 +654,7 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
     if (ec) {
         if (ec != boost::asio::error::operation_aborted) {
             _error = std::make_exception_ptr(boost::system::system_error(ec));
-            Log::warn("SSL error %d :%s, closing connection.", ec.value(), ec.message());
+            LOG_WARNING("SSL error %d :%s, closing connection.", ec.value(), ec.message());
         }
         close();
         if (ec != boost::asio::error::operation_aborted) {
@@ -680,7 +680,7 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
 void SSLIOStream::onShutdown(const boost::system::error_code &ec) {
     _state &= ~S_WRITE;
     if (ec.category() == boost::asio::error::get_ssl_category()) {
-        Log::warn("SSL shutdown error %d :%s", ec.value(), ec.message());
+        LOG_WARNING("SSL shutdown error %d :%s", ec.value(), ec.message());
     }
     doClose();
 }

@@ -11,7 +11,7 @@
 #include "tinycore/httputils/urlparse.h"
 #include "tinycore/utilities/string.h"
 #include "tinycore/common/errors.h"
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 
 
 HTTPServer::HTTPServer(RequestCallbackType requestCallback,
@@ -187,7 +187,7 @@ void HTTPConnection::onHeaders(ByteArray data) {
         _request->setConnection(shared_from_this());
         _requestCallback(std::move(_request));
     } catch (_BadRequestException &e) {
-        Log::info("Malformed HTTP request from %s: %s", _address.c_str(), e.what());
+        LOG_INFO("Malformed HTTP request from %s: %s", _address.c_str(), e.what());
         close();
     }
 }
