@@ -137,12 +137,13 @@ public:
         write(file, line, func, LOG_LEVEL_TRACE, format, std::forward<Args>(args)...);
     }
 
-    void trace(const Byte *data, size_t length) {
-        write(LOG_LEVEL_TRACE, data, length);
+    void trace(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_TRACE, data, length, limit);
     }
 
-    void trace(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length) {
-        write(file, line, func, LOG_LEVEL_TRACE, data, length);
+    void trace(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_TRACE, data, length, limit);
     }
 
     template <typename... Args>
@@ -155,12 +156,13 @@ public:
         write(file, line, func, LOG_LEVEL_DEBUG, format, std::forward<Args>(args)...);
     }
 
-    void debug(const Byte *data, size_t length) {
-        write(LOG_LEVEL_DEBUG, data, length);
+    void debug(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_DEBUG, data, length, limit);
     }
 
-    void debug(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length) {
-        write(file, line, func, LOG_LEVEL_DEBUG, data, length);
+    void debug(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_DEBUG, data, length, limit);
     }
 
     template <typename... Args>
@@ -173,12 +175,13 @@ public:
         write(file, line, func, LOG_LEVEL_INFO, format, std::forward<Args>(args)...);
     }
 
-    void info(const Byte *data, size_t length) {
-        write(LOG_LEVEL_INFO, data, length);
+    void info(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_INFO, data, length, limit);
     }
 
-    void info(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length) {
-        write(file, line, func, LOG_LEVEL_INFO, data, length);
+    void info(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+              size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_INFO, data, length, limit);
     }
 
     template <typename... Args>
@@ -187,16 +190,18 @@ public:
     }
 
     template <typename... Args>
-    void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format, Args&&... args){
+    void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format,
+                 Args&&... args) {
         write(file, line, func, LOG_LEVEL_WARNING, format, std::forward<Args>(args)...);
     }
 
-    void warning(const Byte *data, size_t length) {
-        write(LOG_LEVEL_WARNING, data, length);
+    void warning(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_WARNING, data, length, limit);
     }
 
-    void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length) {
-        write(file, line, func, LOG_LEVEL_WARNING, data, length);
+    void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+                 size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_WARNING, data, length, limit);
     }
 
     template <typename... Args>
@@ -209,12 +214,13 @@ public:
         write(file, line, func, LOG_LEVEL_ERROR, format, std::forward<Args>(args)...);
     }
 
-    void error(const Byte *data, size_t length) {
-        write(LOG_LEVEL_ERROR, data, length);
+    void error(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_ERROR, data, length, limit);
     }
 
-    void error(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length) {
-        write(file, line, func, LOG_LEVEL_ERROR, data, length);
+    void error(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_ERROR, data, length, limit);
     }
 
     template <typename... Args>
@@ -227,12 +233,13 @@ public:
         write(file, line, func, LOG_LEVEL_FATAL, format, std::forward<Args>(args)...);
     }
 
-    void fatal(const Byte *data, size_t length) {
-        write(LOG_LEVEL_FATAL, data, length);
+    void fatal(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_FATAL, data, length, limit);
     }
 
-    void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length) {
-        write(file, line, func, LOG_LEVEL_FATAL, data, length);
+    void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_FATAL, data, length, limit);
     }
 protected:
     explicit Logger(std::string name)
@@ -263,9 +270,9 @@ protected:
         }
     }
 
-    void write(LogLevel level, const Byte *data, size_t length);
+    void write(LogLevel level, const Byte *data, size_t length, size_t limit=0);
     void write(const StringLiteral &file, size_t line, const StringLiteral &func, LogLevel level,
-               const Byte *data, size_t length);
+               const Byte *data, size_t length, size_t limit=0);
 
     std::string _name;
     PositionLoggerMT<LogLevel> _logger;

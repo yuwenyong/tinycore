@@ -85,15 +85,15 @@ public:
         _rootLogger->trace(file, line, func, format, std::forward<Args>(args)...);
     }
 
-    static void trace(const Byte *data, size_t length) {
+    static void trace(const Byte *data, size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->trace(data, length);
+        _rootLogger->trace(data, length, limit);
     }
 
     static void trace(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
+                      size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->trace(file, line, func, data, length);
+        _rootLogger->trace(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -109,15 +109,15 @@ public:
         _rootLogger->debug(file, line, func, format, std::forward<Args>(args)...);
     }
 
-    static void debug(const Byte *data, size_t length) {
+    static void debug(const Byte *data, size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->debug(data, length);
+        _rootLogger->debug(data, length, limit);
     }
 
     static void debug(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
+                      size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->debug(file, line, func, data, length);
+        _rootLogger->debug(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -133,15 +133,15 @@ public:
         _rootLogger->info(file, line, func, format, std::forward<Args>(args)...);
     }
 
-    static void info(const Byte *data, size_t length) {
+    static void info(const Byte *data, size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->info(data, length);
+        _rootLogger->info(data, length, limit);
     }
 
     static void info(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                     size_t length) {
+                     size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->info(file, line, func, data, length);
+        _rootLogger->info(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -157,15 +157,15 @@ public:
         _rootLogger->warning(file, line, func, format, std::forward<Args>(args)...);
     }
 
-    static void warning(const Byte *data, size_t length) {
+    static void warning(const Byte *data, size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->warning(data, length);
+        _rootLogger->warning(data, length, limit);
     }
 
     static void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                        size_t length) {
+                        size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->warning(file, line, func, data, length);
+        _rootLogger->warning(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -181,15 +181,15 @@ public:
         _rootLogger->error(file, line, func, format, std::forward<Args>(args)...);
     }
 
-    static void error(const Byte *data, size_t length) {
+    static void error(const Byte *data, size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->error(data, length);
+        _rootLogger->error(data, length, limit);
     }
 
     static void error(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
+                      size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->error(file, line, func, data, length);
+        _rootLogger->error(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -205,15 +205,15 @@ public:
         _rootLogger->fatal(file, line, func, format, std::forward<Args>(args)...);
     }
 
-    static void fatal(const Byte *data, size_t length) {
+    static void fatal(const Byte *data, size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->fatal(data, length);
+        _rootLogger->fatal(data, length, limit);
     }
 
     static void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
+                      size_t length, size_t limit=0) {
         assert(_rootLogger != nullptr);
-        _rootLogger->fatal(file, line, func, data, length);
+        _rootLogger->fatal(file, line, func, data, length, limit);
     }
 protected:
     static void onPreInit();
@@ -254,13 +254,13 @@ public:
 
 
     static void trace(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
-        Logging::trace(file, line, func, data, length);
+                      size_t length, size_t limit=0) {
+        Logging::trace(file, line, func, data, length, limit);
     }
 
     static void trace(const StringLiteral &file, size_t line, const StringLiteral &func, Logger *logger,
-                      const Byte *data, size_t length) {
-        logger->trace(file, line, func, data, length);
+                      const Byte *data, size_t length, size_t limit=0) {
+        logger->trace(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -277,13 +277,13 @@ public:
 
 
     static void debug(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
-        Logging::debug(file, line, func, data, length);
+                      size_t length, size_t limit=0) {
+        Logging::debug(file, line, func, data, length, limit);
     }
 
     static void debug(const StringLiteral &file, size_t line, const StringLiteral &func, Logger *logger,
-                      const Byte *data, size_t length) {
-        logger->debug(file, line, func, data, length);
+                      const Byte *data, size_t length, size_t limit=0) {
+        logger->debug(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -300,13 +300,13 @@ public:
 
 
     static void info(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                     size_t length) {
-        Logging::info(file, line, func, data, length);
+                     size_t length, size_t limit=0) {
+        Logging::info(file, line, func, data, length, limit);
     }
 
     static void info(const StringLiteral &file, size_t line, const StringLiteral &func, Logger *logger,
-                     const Byte *data, size_t length) {
-        logger->info(file, line, func, data, length);
+                     const Byte *data, size_t length, size_t limit=0) {
+        logger->info(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -323,13 +323,13 @@ public:
 
 
     static void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                        size_t length) {
-        Logging::warning(file, line, func, data, length);
+                        size_t length, size_t limit=0) {
+        Logging::warning(file, line, func, data, length, limit);
     }
 
     static void warning(const StringLiteral &file, size_t line, const StringLiteral &func, Logger *logger,
-                        const Byte *data, size_t length) {
-        logger->warning(file, line, func, data, length);
+                        const Byte *data, size_t length, size_t limit=0) {
+        logger->warning(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -346,13 +346,13 @@ public:
 
 
     static void error(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
-        Logging::error(file, line, func, data, length);
+                      size_t length, size_t limit=0) {
+        Logging::error(file, line, func, data, length, limit);
     }
 
     static void error(const StringLiteral &file, size_t line, const StringLiteral &func, Logger *logger,
-                      const Byte *data, size_t length) {
-        logger->error(file, line, func, data, length);
+                      const Byte *data, size_t length, size_t limit=0) {
+        logger->error(file, line, func, data, length, limit);
     }
 
     template <typename... Args>
@@ -369,13 +369,13 @@ public:
 
 
     static void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data,
-                      size_t length) {
-        Logging::fatal(file, line, func, data, length);
+                      size_t length, size_t limit=0) {
+        Logging::fatal(file, line, func, data, length, limit);
     }
 
     static void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, Logger *logger,
-                      const Byte *data, size_t length) {
-        logger->fatal(file, line, func, data, length);
+                      const Byte *data, size_t length, size_t limit=0) {
+        logger->fatal(file, line, func, data, length, limit);
     }
 };
 

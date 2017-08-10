@@ -41,7 +41,7 @@ int main() {
     ByteArray bytes;
     for (int i = 0; i < 20; ++i) { bytes.push_back((Byte)i); }
     LOG_ERROR("This is log %d", 1);
-    LOG_ERROR(bytes.data(), bytes.size());
+    LOG_ERROR(bytes.data(), bytes.size(), 10);
     LOG_ERROR(accessLogger, "This is log %d", 2);
     LOG_DEBUG(accessLogger, "This is log %d", 3);
     LOG_ERROR(accessLogger, bytes.data(), bytes.size());
