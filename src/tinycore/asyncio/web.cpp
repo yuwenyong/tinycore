@@ -279,7 +279,7 @@ void RequestHandler::sendError(int statusCode, std::exception_ptr error) {
 }
 
 void RequestHandler::writeError(int statusCode, std::exception_ptr error) {
-    const std::string &message = HTTPResponses.at(statusCode);
+    const std::string &message = HTTP_RESPONSES.at(statusCode);
     finish(String::format("<html><title>%d: %s</title><body>%d: %s</body></html>", statusCode, message.c_str(),
                           statusCode, message.c_str()));
 }
@@ -344,7 +344,7 @@ void RequestHandler::execute(TransformsType &transforms, StringVector args) {
 std::string RequestHandler::generateHeaders() const {
     StringVector lines;
     lines.emplace_back(_request->getVersion() + " " + std::to_string(_statusCode) + " "
-                       + HTTPResponses.at(_statusCode));
+                       + HTTP_RESPONSES.at(_statusCode));
     for (auto &header: _headers) {
         lines.emplace_back(header.first + ": " + header.second);
     }
@@ -370,7 +370,7 @@ void RequestHandler::handleRequestException(std::exception_ptr error) {
         std::string summary = requestSummary();
         int statusCode = e.getStatusCode();
         LOG_WARNING("%d %s: %s", statusCode, summary.c_str(), e.what());
-        if (HTTPResponses.find(statusCode) == HTTPResponses.end()) {
+        if (HTTP_RESPONSES.find(statusCode) == HTTP_RESPONSES.end()) {
             LOG_ERROR("Bad HTTP status code: %d", statusCode);
             sendError(500, error);
         } else {
@@ -534,8 +534,8 @@ const char* HTTPError::what() const noexcept {
         _what += "HTTP ";
         _what += std::to_string(_statusCode);
         _what += ": ";
-        ASSERT(HTTPResponses.find(_statusCode) != HTTPResponses.end());
-        _what += HTTPResponses.at(_statusCode);
+        ASSERT(HTTP_RESPONSES.find(_statusCode) != HTTP_RESPONSES.end());
+        _what += HTTP_RESPONSES.at(_statusCode);
         std::string what = std::runtime_error::what();
         if (!what.empty()) {
             _what += " (";

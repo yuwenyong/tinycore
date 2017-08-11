@@ -8,6 +8,30 @@
 
 int main() {
     std::cout << "Init" << std::endl;
+    ConfigParser config;
+    config.read("myconf.ini");
+//    auto sections = config.getSections();
+//    for (auto &s: sections) {
+//        std::cerr << s << std::endl;
+//    }
+//    auto items = config.getItems("Test");
+//    for (auto &i: items) {
+//        std::cerr << i.first << ":" << i.second << std::endl;
+//    }
+//    auto options = config.getOptions("Test3");
+//    for (auto &s: options) {
+//        std::cerr << s << std::endl;
+//    }
+//    std::cerr << config.getString("Test", "Option") << std::endl;
+//    std::cerr << config.getString("Test", "Option2") << std::endl;
+//    std::cerr << config.getString("Test", "Option3", "dd") << std::endl;
+//    std::cerr << config.getString("Test", "Option4") << std::endl;
+    config.removeOption("Test", "Option");
+    config.removeSection("Test2");
+//    config.set("Test", "Option", 1);
+//    config.set("Test", "Option2", "Test");
+//    config.set("Test2", "Option", "Hehe");
+    config.write("myconf.ini");
     Logging::Settings settings;
     settings["Sinks.Console"]["Destination"] = "Console";
     settings["Sinks.Console"]["Asynchronous"] = true;

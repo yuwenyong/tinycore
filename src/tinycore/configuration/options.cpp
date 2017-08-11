@@ -5,7 +5,6 @@
 #include "tinycore/configuration/options.h"
 #include <iostream>
 #include "tinycore/asyncio/ioloop.h"
-#include "tinycore/configuration/configmgr.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/logging.h"
 #include "tinycore/utilities/objectmanager.h"
@@ -30,7 +29,7 @@ void Options::parseCommandLine(int argc, const char * const argv[]) {
         exit(2);
     }
     if (contain("config")) {
-        sConfigMgr->loadInitial(get<std::string>("config"));
+//        sConfigMgr->loadInitial(get<std::string>("config"));
     }
     onEnter();
 }

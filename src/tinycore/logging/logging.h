@@ -56,7 +56,7 @@ public:
 
     static Logger* getLogger(const std::string &name="") {
         std::string loggerName = getLoggerName(name);
-        return getLoggerByName(loggerName);
+        return getLoggerByName(std::move(loggerName));
     }
 
     static std::string getLoggerName(const std::string &name) {
@@ -220,11 +220,11 @@ protected:
 
     static void onPostInit();
 
-    static Logger* getLoggerByName(std::string &loggerName);
+    static Logger* getLoggerByName(std::string loggerName);
 
     static Logger* getChildLogger(const Logger *logger, const std::string &suffix) {
         std::string loggerName = joinLoggerName(logger->getName(), suffix);
-        return getLoggerByName(loggerName);
+        return getLoggerByName(std::move(loggerName));
     }
 
     static std::string joinLoggerName(const std::string &name, const std::string &suffix) {

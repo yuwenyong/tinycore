@@ -45,7 +45,7 @@ void Logging::onPostInit() {
     _rootLogger = getLogger();
 }
 
-Logger* Logging::getLoggerByName(std::string &loggerName) {
+Logger* Logging::getLoggerByName(std::string loggerName) {
     std::lock_guard<std::mutex> lock(_lock);
     auto iter  = _loggers.find(loggerName);
     if (iter != _loggers.end()) {

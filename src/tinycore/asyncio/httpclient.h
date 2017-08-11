@@ -285,7 +285,7 @@ protected:
 class TC_COMMON_API _HTTPError: public Exception {
 public:
     _HTTPError(const char *file, int line, const char *func, int code)
-            : _HTTPError(file, line, func, code, HTTPResponses.at(code)) {
+            : _HTTPError(file, line, func, code, HTTP_RESPONSES.at(code)) {
 
     }
 

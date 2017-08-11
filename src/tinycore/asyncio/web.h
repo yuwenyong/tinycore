@@ -60,7 +60,7 @@ public:
     virtual void setDefaultHeaders();
 
     void setStatus(int statusCode) {
-        ASSERT(HTTPResponses.find(statusCode) != HTTPResponses.end());
+        ASSERT(HTTP_RESPONSES.find(statusCode) != HTTP_RESPONSES.end());
         _statusCode = statusCode;
     }
 
