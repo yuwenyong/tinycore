@@ -69,4 +69,20 @@ BOOST_PARAMETER_NAME(clientCert)
 #define ARG_clientCert opts::_clientCert
 
 
+namespace opts {
+BOOST_PARAMETER_NAME(name)
+BOOST_PARAMETER_NAME(help)
+BOOST_PARAMETER_NAME(group)
+BOOST_PARAMETER_NAME(defaultValue)
+BOOST_PARAMETER_NAME(storeValue)
+}
+
+
+#define ARG_name opts::name
+#define ARG_help opts::help
+#define ARG_group opts::group
+#define ARG_defaultValue opts::defaultValue
+#define ARG_storeValue opts::storeValue
+
+
 #endif //TINYCORE_PARAMS_H

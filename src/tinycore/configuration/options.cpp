@@ -4,18 +4,19 @@
 
 #include "tinycore/configuration/options.h"
 #include <iostream>
+#include <boost/functional/factory.hpp>
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/logging.h"
 #include "tinycore/utilities/objectmanager.h"
 
 
-Options::Options()
-        : _opts("Allowed options") {
-    define("version,v", "print version string");
-    define("help,h", "display help message");
-    define<std::string>("config,c", "specify config file");
-}
+//Options::Options()
+//        : _opts("Allowed options") {
+//    define("version,v", "print version string");
+//    define("help,h", "display help message");
+//    define<std::string>("config,c", "specify config file");
+//}
 
 void Options::parseCommandLine(int argc, const char * const argv[]) {
     po::store(po::parse_command_line(argc, argv, _opts), _vm);
@@ -49,6 +50,17 @@ void Options::onExit() {
 Options* Options::instance() {
     static Options instance;
     return &instance;
+}
+
+po::options_description* Options::getGroup(std::string group) {
+    auto iter = _groups.find(group);
+    if (iter != _groups.end()) {
+        return iter->second;
+    } else {
+        po::options_description *options = boost::factory<po::options_description *>()(group);
+        _groups.insert(group, options);
+        return options;
+    }
 }
 
 void Options::setupWatcherHook() {

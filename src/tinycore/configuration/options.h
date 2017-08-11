@@ -7,14 +7,36 @@
 
 #include "tinycore/common/common.h"
 #include <boost/program_options.hpp>
+#include <boost/ptr_container/ptr_map.hpp>
 #include "tinycore/common/errors.h"
+#include "tinycore/common/params.h"
 
 
 namespace po = boost::program_options;
 
 class TC_COMMON_API Options {
 public:
-    Options();
+    Options(const std::string &caption)
+            : _opts(caption) {
+
+    }
+
+    BOOST_PARAMETER_MEMBER_FUNCTION(
+            (void), add, opts::tag, (
+            required
+                    (name, (const char *))
+    ) (
+            optional
+                    (help, (const char *), nullptr)
+                    (group, (const char *), nullptr)
+    )) {
+        if (group) {
+            auto opt = getGroup(group);
+            opt->add_options()(name, help);
+        } else {
+            _opts.add_options()(name, help);
+        }
+    }
 
     void define(const char *name, const char *help) {
         _opts.add_options()(name, help);
@@ -54,8 +76,10 @@ public:
 protected:
     void setupWatcherHook();
     void setupInterrupter();
+    po::options_description* getGroup(std::string group);
 
     po::options_description _opts;
+    boost::ptr_map<std::string, po::options_description> _groups;
     po::variables_map _vm;
 };
 
