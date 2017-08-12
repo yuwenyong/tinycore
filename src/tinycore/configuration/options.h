@@ -6,31 +6,35 @@
 #define TINYCORE_OPTIONS_H
 
 #include "tinycore/common/common.h"
+#include <iostream>
+#include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <boost/ptr_container/ptr_map.hpp>
 #include "tinycore/common/errors.h"
-#include "tinycore/common/params.h"
 
 
 namespace po = boost::program_options;
 
 class TC_COMMON_API Options {
 public:
-    Options(const std::string &caption)
-            : _opts(caption) {
+    template <typename T>
+    struct IsVector: public std::false_type {
 
+    };
+
+    template <typename T, typename A>
+    struct IsVector<std::vector<T, A>>: public std::true_type {
+
+    };
+
+    explicit Options(const std::string &caption)
+            : _opts(caption) {
+        define("version,v", "print version string");
+        define("help,h", "display help message");
     }
 
-    BOOST_PARAMETER_MEMBER_FUNCTION(
-            (void), add, opts::tag, (
-            required
-                    (name, (const char *))
-    ) (
-            optional
-                    (help, (const char *), nullptr)
-                    (group, (const char *), nullptr)
-    )) {
-        if (group) {
+    void define(const char *name, const char *help, const char *group=nullptr) {
+        if (group != nullptr) {
             auto opt = getGroup(group);
             opt->add_options()(name, help);
         } else {
@@ -38,21 +42,11 @@ public:
         }
     }
 
-    void define(const char *name, const char *help) {
-        _opts.add_options()(name, help);
+    template <typename ArgT>
+    void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue=boost::none,
+                boost::function1<void, const ArgT&> callback = {}, const char *group= nullptr) {
+        define(name, help, defaultValue, std::move(callback), group, IsVector<ArgT>());
     }
-
-    template <typename T>
-    void define(const char *name, const char *help) {
-        _opts.add_options()(name, po::value<T>(), help);
-    }
-
-    template <typename  T>
-    void define(const char *name, T&& def, const char *help) {
-        _opts.add_options()(name, po::value<T>()->default_value(std::forward<T>(def)), help);
-    }
-
-    void parseCommandLine(int argc, const char * const argv[]);
 
     bool contain(const char *name) const {
         return _vm.count(name) != 0;
@@ -61,41 +55,87 @@ public:
     template <typename T>
     const T& get(const char *name) const {
         if (!contain(name)) {
-            std::string error = "Unrecognized option ";
-            error += name;
-            ThrowException(KeyError, std::move(error));
+            ThrowException(KeyError, std::string("Unrecognized option ") + name);
         }
         auto value = _vm[name];
         return value.as<T>();
     }
 
-    void onEnter();
-    void onExit();
+    void parseCommandLine(int argc, const char * const argv[], bool final=true);
+
+    void parseConfigFile(const char *path, bool final=true);
+
+    template <typename CallbackT>
+    void addParseCallback(CallbackT &&calback) {
+        _parseCallbacks.emplace_back(std::forward<CallbackT>(calback));
+    }
 
     static Options * instance();
 protected:
-    void setupWatcherHook();
-    void setupInterrupter();
+    template <typename ArgT>
+    void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue,
+                boost::function1<void, const ArgT&> callback, const char *group, std::true_type) {
+        po::typed_value<ArgT> *value= po::value<ArgT>();
+        if (defaultValue) {
+            value->default_value(defaultValue.get());
+        }
+        if (callback) {
+            value->notifier(std::move(callback));
+        }
+        value->composing();
+        if (group) {
+            auto opt = getGroup(group);
+            opt->add_options()(name, value, help);
+        } else {
+            _opts.add_options()(name, value, help);
+        }
+    }
+
+    template <typename ArgT>
+    void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue,
+                boost::function1<void, const ArgT&> callback, const char *group, std::false_type) {
+        po::typed_value<ArgT> *value= po::value<ArgT>();
+        if (defaultValue) {
+            value->default_value(defaultValue.get());
+        }
+        if (callback) {
+            value->notifier(std::move(callback));
+        }
+        if (group) {
+            auto opt = getGroup(group);
+            opt->add_options()(name, value, help);
+        } else {
+            _opts.add_options()(name, value, help);
+        }
+    }
+
+    void runParseCallbacks() const {
+        for (auto &callback: _parseCallbacks) {
+            callback();
+        }
+    }
+
     po::options_description* getGroup(std::string group);
+
+    po::options_description composeOptions() const;
+
+    void helpCallback() const {
+        auto opts = composeOptions();
+        std::cout << opts << std::endl;
+        exit(1);
+    }
+
+    void versionCallback() {
+        std::cout << TINYCORE_VER << std::endl;
+        exit(2);
+    }
 
     po::options_description _opts;
     boost::ptr_map<std::string, po::options_description> _groups;
     po::variables_map _vm;
+    std::vector<std::function<void()>> _parseCallbacks;
 };
 
 #define sOptions Options::instance()
-
-class _OptionsGuard {
-public:
-    _OptionsGuard(int argc, const char * const argv[]) {
-        sOptions->parseCommandLine(argc, argv);
-    }
-
-    ~_OptionsGuard() {
-        sOptions->onExit();
-    }
-};
-
-#define ParseCommandLine(argc, argv) _OptionsGuard _opts(argc, argv)
 
 #endif //TINYCORE_OPTIONS_H
