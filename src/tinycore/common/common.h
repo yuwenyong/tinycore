@@ -147,15 +147,5 @@ using Duration = TimestampClock::duration;
 #define HAS_CPP_FORMAT
 #define HAS_RAPID_JSON
 
-#define SYS_TIMEOUT_COUNT                   "TinyCore.Timeout.Count"
-#define SYS_PERIODICCALLBACK_COUNT          "TinyCore.PeriodicCallback.Count"
-#define SYS_IOSTREAM_COUNT                  "TinyCore.IOStream.Count"
-#define SYS_SSLIOSTREAM_COUNT               "TinyCore.SSLIOStream.Count"
-#define SYS_HTTPCONNECTION_COUNT            "TinyCore.HTTPConnection.Count"
-#define SYS_HTTPSERVERREQUEST_COUNT         "TinyCore.HTTPServerRequest.Count"
-#define SYS_REQUESTHANDLER_COUNT            "TinyCore.RequestHandler.Count"
-#define SYS_WEBSOCKETHANDLER_COUNT          "TinyCore.WebSocketHandler.Count"
-#define SYS_HTTPCLIENT_COUNT                "TinyCore.HTTPClient.Count"
-#define SYS_HTTPCLIENTCONNECTION_COUNT      "TinyCore.HTTPClientConnection.Count"
 
 #endif //TINYCORE_COMMON_H

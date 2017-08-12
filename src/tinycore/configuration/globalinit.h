@@ -11,7 +11,7 @@
 class TC_COMMON_API GlobalInit {
 public:
     GlobalInit() {
-        init();
+        initFromEnvironment();
     }
 
     GlobalInit(int argc, const char * const argv[]) {
@@ -26,7 +26,7 @@ public:
         cleanup();
     }
 
-    static void init();
+    static void initFromEnvironment();
     static void initFromCommandLine(int argc, const char * const argv[]);
     static void initFromConfigFile(const char *path);
     static void cleanup();

@@ -9,10 +9,10 @@
 void Options::parseCommandLine(int argc, const char * const argv[], bool final) {
     auto opts = composeOptions();
     po::store(po::parse_command_line(argc, argv, opts), _vm);
-    if (contain("help")) {
+    if (has("help")) {
         helpCallback();
     }
-    if (contain("version")) {
+    if (has("version")) {
         versionCallback();
     }
     if (final) {
@@ -24,10 +24,25 @@ void Options::parseCommandLine(int argc, const char * const argv[], bool final) 
 void Options::parseConfigFile(const char *path, bool final) {
     auto opts = composeOptions();
     po::store(po::parse_config_file(path, opts, true), _vm);
-    if (contain("help")) {
+    if (has("help")) {
         helpCallback();
     }
-    if (contain("version")) {
+    if (has("version")) {
+        versionCallback();
+    }
+    if (final) {
+        po::notify(_vm);
+        runParseCallbacks();
+    }
+}
+
+void Options::praseEnvironment(const boost::function1<std::string, std::string> &name_mapper, bool final) {
+    auto opts = composeOptions();
+    po::store(po::parse_environment(opts, name_mapper), _vm);
+    if (has("help")) {
+        helpCallback();
+    }
+    if (has("version")) {
         versionCallback();
     }
     if (final) {

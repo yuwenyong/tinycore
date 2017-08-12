@@ -5,11 +5,21 @@
 #include "tinycore/logging/logging.h"
 #include <boost/functional/factory.hpp>
 #include <boost/log/utility/exception_handler.hpp>
+#include "tinycore/common/errors.h"
 
 
 std::mutex Logging::_lock;
 Logging::LoggerMap Logging::_loggers;
 Logger* Logging::_rootLogger = nullptr;
+const std::map<std::string, LogLevel> Logging::_severityMapping = {
+        {"trace",   LOG_LEVEL_TRACE},
+        {"debug",   LOG_LEVEL_DEBUG},
+        {"info",    LOG_LEVEL_INFO},
+        {"warning", LOG_LEVEL_WARNING},
+        {"error",   LOG_LEVEL_ERROR},
+        {"fatal",   LOG_LEVEL_FATAL},
+};
+
 
 void Logging::init() {
     onPreInit();
@@ -23,13 +33,25 @@ void Logging::initFromSettings(const Settings &settings) {
 }
 
 void Logging::initFromFile(const std::string &fileName) {
-    std::ifstream file(fileName);
     onPreInit();
+    std::ifstream file(fileName);
     logging::init_from_stream(file);
     onPostInit();
 }
 
+LogLevel Logging::toSeverity(std::string severity) {
+    boost::to_lower(severity);
+    auto iter  = _severityMapping.find(severity);
+    if (iter == _severityMapping.end()) {
+        ThrowException(ValueError, "Invalid severity name:" + severity);
+    }
+    return iter->second;
+}
+
 void Logging::onPreInit() {
+    if (isInitialized()) {
+        return;
+    }
     logging::core::get()->set_exception_handler(logging::make_exception_suppressor());
     logging::add_common_attributes();
     logging::core::get()->add_global_attribute("Uptime", attrs::timer());
@@ -42,6 +64,9 @@ void Logging::onPreInit() {
 }
 
 void Logging::onPostInit() {
+    if (isInitialized()) {
+        return;
+    }
     _rootLogger = getLogger();
 }
 

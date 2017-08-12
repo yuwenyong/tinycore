@@ -113,12 +113,12 @@ public:
     typedef sinks::text_file_backend BackendSink;
     typedef boost::shared_ptr<BackendSink> BackendSinkPtr;
 
-    explicit RotatingFileSink(std::string fileName,
+    explicit RotatingFileSink(std::string fileName, size_t maxFileSize = 5 * 1024 * 1024,
                               std::ios_base::openmode mode = std::ios_base::app|std::ios_base::out,
-                              size_t maxFileSize = 5 * 1024 * 1024, bool autoFlush = true)
+                              bool autoFlush = true)
             : _fileName(std::move(fileName))
-            , _mode(mode)
             , _maxFileSize(maxFileSize)
+            , _mode(mode)
             , _autoFlush(autoFlush) {
 
     }
@@ -140,8 +140,8 @@ protected:
     virtual BackendSinkPtr createBackend() const;
 
     std::string _fileName;
-    std::ios_base::openmode _mode;
     size_t _maxFileSize;
+    std::ios_base::openmode _mode;
     bool _autoFlush;
 };
 
@@ -153,11 +153,10 @@ public:
 
     class RotationTimeVisitor: public boost::static_visitor<BackendSinkPtr> {
     public:
-        RotationTimeVisitor(std::string fileName, std::ios_base::openmode mode, size_t maxFileSize,
-                            bool autoFlush)
+        RotationTimeVisitor(std::string fileName, size_t maxFileSize, std::ios_base::openmode mode, bool autoFlush)
                 : _fileName(std::move(fileName))
-                , _mode(mode)
                 , _maxFileSize(maxFileSize)
+                , _mode(mode)
                 , _autoFlush(autoFlush) {
 
         }
@@ -165,8 +164,8 @@ public:
         BackendSinkPtr operator()(const TimePoint &timePoint) const {
             auto backend = boost::make_shared<BackendSink>(
                     keywords::file_name = _fileName,
-                    keywords::open_mode = _mode,
                     keywords::rotation_size = _maxFileSize,
+                    keywords::open_mode = _mode,
                     keywords::auto_flush = _autoFlush,
                     keywords::time_based_rotation = timePoint
             );
@@ -176,8 +175,8 @@ public:
         BackendSinkPtr operator()(const TimeInterval &timeInterval) const {
             auto backend = boost::make_shared<BackendSink>(
                     keywords::file_name = _fileName,
-                    keywords::open_mode = _mode,
                     keywords::rotation_size = _maxFileSize,
+                    keywords::open_mode = _mode,
                     keywords::auto_flush = _autoFlush,
                     keywords::time_based_rotation = timeInterval
             );
@@ -186,24 +185,26 @@ public:
 
     protected:
         std::string _fileName;
-        std::ios_base::openmode _mode;
         size_t _maxFileSize;
+        std::ios_base::openmode _mode;
         bool _autoFlush;
     };
 
     explicit TimedRotatingFileSink(std::string fileName,
                                    const TimePoint &timePoint = sinks::file::rotation_at_time_point(0, 0, 0),
+                                   size_t maxFileSize = 5 * 1024 * 1024,
                                    std::ios_base::openmode mode = std::ios_base::app | std::ios_base::out,
-                                   size_t maxFileSize = 5 * 1024 * 1024, bool autoFlush = true)
-            : RotatingFileSink(std::move(fileName), mode, maxFileSize, autoFlush)
+                                   bool autoFlush = true)
+            : RotatingFileSink(std::move(fileName), maxFileSize, mode, autoFlush)
             , _rotationTime(timePoint) {
 
     }
 
     TimedRotatingFileSink(std::string fileName, const TimeInterval &timeInterval,
+                          size_t maxFileSize = 5 * 1024 * 1024,
                           std::ios_base::openmode mode = std::ios_base::app | std::ios_base::out,
-                          size_t maxFileSize = 5 * 1024 * 1024, bool autoFlush = true)
-            : RotatingFileSink(std::move(fileName), mode, maxFileSize, autoFlush)
+                          bool autoFlush = true)
+            : RotatingFileSink(std::move(fileName), maxFileSize, mode, autoFlush)
             , _rotationTime(timeInterval) {
 
     }

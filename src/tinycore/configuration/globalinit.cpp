@@ -3,6 +3,7 @@
 //
 
 #include "tinycore/configuration/globalinit.h"
+#include "tinycore/asyncio/logutil.h"
 #include "tinycore/configuration/options.h"
 #include "tinycore/debugging/watcher.h"
 #include "tinycore/logging/logging.h"
@@ -11,9 +12,14 @@
 
 GlobalInit::_inited = false;
 
-void GlobalInit::init() {
+void GlobalInit::initFromEnvironment() {
     assert(!_inited);
-    if (Logging::getRootLogger() == nullptr) {
+    LogUtil::initGlobalLoggers();
+    LogUtil::enablePrettyLogging(sOptions);
+    sOptions->praseEnvironment([](std::string name){
+        return name;
+    });
+    if (!Logging::isInitialized()) {
         Logging::init();
     }
     setupWatcherHook();
@@ -22,8 +28,10 @@ void GlobalInit::init() {
 
 void GlobalInit::initFromCommandLine(int argc, const char *const *argv) {
     assert(!_inited);
+    LogUtil::initGlobalLoggers();
+    LogUtil::defineLoggingOptions(sOptions);
     sOptions->parseCommandLine(argc, argv);
-    if (Logging::getRootLogger() == nullptr) {
+    if (!Logging::isInitialized()) {
         Logging::init();
     }
     setupWatcherHook();
@@ -32,8 +40,10 @@ void GlobalInit::initFromCommandLine(int argc, const char *const *argv) {
 
 void GlobalInit::initFromConfigFile(const char *path) {
     assert(!_inited);
+    LogUtil::initGlobalLoggers();
+    LogUtil::defineLoggingOptions(sOptions);
     sOptions->parseConfigFile(path);
-    if (Logging::getRootLogger() == nullptr) {
+    if (!Logging::isInitialized()) {
         Logging::init();
     }
     setupWatcherHook();

@@ -7,6 +7,7 @@
 
 #include "tinycore/common/common.h"
 #include <iostream>
+#include <boost/function.hpp>
 #include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <boost/ptr_container/ptr_map.hpp>
@@ -44,26 +45,28 @@ public:
 
     template <typename ArgT>
     void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue=boost::none,
-                boost::function1<void, const ArgT&> callback = {}, const char *group= nullptr) {
+                boost::function1<void, const ArgT&> callback= {}, const char *group= nullptr) {
         define(name, help, defaultValue, std::move(callback), group, IsVector<ArgT>());
     }
 
-    bool contain(const char *name) const {
+    bool has(const char *name) const {
         return _vm.count(name) != 0;
     }
 
-    template <typename T>
-    const T& get(const char *name) const {
-        if (!contain(name)) {
+    template <typename ValueT>
+    const ValueT& get(const char *name) const {
+        if (!has(name)) {
             ThrowException(KeyError, std::string("Unrecognized option ") + name);
         }
         auto value = _vm[name];
-        return value.as<T>();
+        return value.as<ValueT>();
     }
 
     void parseCommandLine(int argc, const char * const argv[], bool final=true);
 
     void parseConfigFile(const char *path, bool final=true);
+
+    void praseEnvironment(const boost::function1<std::string, std::string> &name_mapper, bool final=true);
 
     template <typename CallbackT>
     void addParseCallback(CallbackT &&calback) {

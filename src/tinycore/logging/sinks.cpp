@@ -98,7 +98,7 @@ RotatingFileSink::BackendSinkPtr RotatingFileSink::createBackend() const {
 
 
 TimedRotatingFileSink::BackendSinkPtr TimedRotatingFileSink::createBackend() const {
-    return boost::apply_visitor(RotationTimeVisitor(_fileName, _mode, _maxFileSize, _autoFlush), _rotationTime);
+    return boost::apply_visitor(RotationTimeVisitor(_fileName, _maxFileSize, _mode, _autoFlush), _rotationTime);
 }
 
 #ifndef BOOST_LOG_WITHOUT_SYSLOG

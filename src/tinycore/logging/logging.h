@@ -54,6 +54,10 @@ public:
         return _rootLogger;
     }
 
+    static bool  isInitialized() {
+        return _rootLogger != nullptr;
+    }
+
     static Logger* getLogger(const std::string &name="") {
         std::string loggerName = getLoggerName(name);
         return getLoggerByName(std::move(loggerName));
@@ -71,6 +75,8 @@ public:
     static void addSink(const BaseSink &sink) {
         logging::core::get()->add_sink(sink.makeSink());
     }
+
+    static LogLevel toSeverity(std::string severity);
 
     template <typename... Args>
     static void trace(const char *format, Args&&... args) {
@@ -235,6 +241,7 @@ protected:
     static std::mutex _lock;
     static LoggerMap _loggers;
     static Logger *_rootLogger;
+    static const std::map<std::string, LogLevel> _severityMapping;
 };
 
 
