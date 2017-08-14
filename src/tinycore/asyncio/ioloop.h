@@ -8,7 +8,7 @@
 #include "tinycore/common/common.h"
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include "tinycore/logging/logging.h"
+#include "tinycore/asyncio/logutil.h"
 #include "tinycore/utilities/objectmanager.h"
 
 
@@ -65,6 +65,11 @@ public:
     IOLoop& operator=(const IOLoop&) = delete;
     IOLoop();
     ~IOLoop();
+
+    void makeCurrent() {
+        _current = this;
+    }
+
     void start();
 
     Timeout addTimeout(const Timestamp &deadline, TimeoutCallbackType callback) {
@@ -104,8 +109,27 @@ public:
         }
     }
 
+    void runSync(CallbackType func) {
+        addCallback(std::move(func));
+        start();
+    }
+
+    void runSync(CallbackType func, const Timestamp &deadline);
+
+    void runSync(CallbackType func, const Duration &deadline);
+
+    void runSync(CallbackType func, float deadline);
+
     ServiceType& getService() {
         return _ioService;
+    }
+
+    static IOLoop * current() {
+        return _current;
+    }
+
+    static void clearCurrent() {
+        _current = nullptr;
     }
 protected:
     _Timeout::CallbackType wrapTimeoutCallback(std::shared_ptr<_Timeout> timeout, TimeoutCallbackType callback);
@@ -114,6 +138,7 @@ protected:
     ServiceType _ioService;
     _SignalSet _signalSet;
     volatile bool _stopped{false};
+    thread_local static IOLoop *_current;
 };
 
 

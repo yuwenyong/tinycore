@@ -174,6 +174,11 @@ public:
     static void parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                        HTTPFileListMap &files);
 
+    static std::string formatTimestamp(const DateTime &ts);
+
+    static std::string formatTimestamp(time_t ts) {
+        return formatTimestamp(boost::posix_time::from_time_t(ts));
+    }
 protected:
     static StringVector parseParam(std::string s);
     static std::tuple<std::string, StringMap> parseHeader(const std::string &line);
