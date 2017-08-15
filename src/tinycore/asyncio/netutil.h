@@ -143,4 +143,14 @@ protected:
 };
 
 
+class NetUtil {
+public:
+    static bool isValidIP(const std::string &ip) {
+        boost::system::error_code ec;
+        boost::asio::ip::address::from_string(ip, ec);
+        return !ec;
+    }
+};
+
+
 #endif //TINYCORE_NETUTIL_H

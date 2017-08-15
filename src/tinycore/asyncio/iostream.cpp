@@ -5,14 +5,14 @@
 #include "tinycore/asyncio/iostream.h"
 #include "tinycore/asyncio/httpserver.h"
 #include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/logutil.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/logging.h"
 
 
 BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBufferSize, size_t readChunkSize)
         : _socket(std::move(socket))
-        , _ioloop(ioloop)
+        , _ioloop(ioloop ? ioloop : IOLoop::current())
         , _maxBufferSize(maxBufferSize)
         , _readBuffer(readChunkSize) {
 
@@ -93,10 +93,7 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
         return;
     }
     _readUntilClose = true;
-
-    if ((_state & S_READ) == S_NONE) {
-        readFromSocket();
-    }
+    tryInlineRead();
 }
 
 void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType callback) {
@@ -134,8 +131,11 @@ void BaseIOStream::setCloseCallback(CloseCallbackType callback) {
     _closeCallback = StackContext::wrap(std::move(callback));
 }
 
-void BaseIOStream::close() {
+void BaseIOStream::close(std::exception_ptr error) {
     if (!closed()) {
+        if (error) {
+            _error = error;
+        }
         if (_readUntilClose) {
             ReadCallbackType callback(std::move(_readCallback));
             _readCallback = nullptr;
@@ -162,10 +162,9 @@ void BaseIOStream::onConnect(const boost::system::error_code &ec) {
     if (ec) {
         _connectCallback = nullptr;
         if (ec != boost::asio::error::operation_aborted) {
-            _error = std::make_exception_ptr(boost::system::system_error(ec));
-            LOG_WARNING("Connect error %d :%s", ec.value(), ec.message());
+            LOG_WARNING(gGenLog, "Connect error %d :%s", ec.value(), ec.message());
+            close(std::make_exception_ptr(boost::system::system_error(ec)));
         }
-        close();
         return;
     } else {
         if (_connectCallback) {
@@ -214,10 +213,9 @@ void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferr
     if (ec) {
         _writeCallback = nullptr;
         if (ec != boost::asio::error::operation_aborted) {
-            _error = std::make_exception_ptr(boost::system::system_error(ec));
-            LOG_WARNING("Write error %d :%s", ec.value(), ec.message());
+            LOG_WARNING(gGenLog, "Write error %d :%s", ec.value(), ec.message());
+            close(std::make_exception_ptr(boost::system::system_error(ec)));
         }
-        close();
         return;
     }
     if (transferredBytes > 0) {
@@ -246,8 +244,10 @@ void BaseIOStream::onClose(const boost::system::error_code &ec) {
     _closing = false;
     _closed = true;
     if (ec) {
-        _error = std::make_exception_ptr(boost::system::system_error(ec));
-        LOG_WARNING("Close error %d :%s", ec.value(), ec.message());
+        if (!_error) {
+            _error = std::make_exception_ptr(boost::system::system_error(ec));
+        }
+        LOG_WARNING(gGenLog, "Close error %d :%s", ec.value(), ec.message());
     }
     maybeRunCloseCallback();
 }
@@ -274,9 +274,12 @@ void BaseIOStream::runCallback(CallbackType callback) {
         try {
             callback();
         } catch (std::exception &e) {
-            LOG_ERROR("Uncaught exception (%s), closing connection.", e.what());
-            close();
+            LOG_ERROR(gAppLog, "Uncaught exception (%s), closing connection.", e.what());
+            close(std::current_exception());
             throw;
+        } catch (...) {
+            LOG_ERROR(gAppLog, "Unknown exception, closing connection.");
+            close(std::current_exception());
         }
         maybeAddErrorListener();
     });
@@ -286,9 +289,12 @@ void BaseIOStream::runCallback(CallbackType callback) {
         try {
             callback();
         } catch (std::exception &e) {
-            LOG_ERROR("Uncaught exception (%s), closing connection.", e.what());
-            close();
+            LOG_ERROR(gAppLog, "Uncaught exception (%s), closing connection.", e.what());
+            close(std::current_exception());
             throw;
+        } catch (...) {
+            LOG_ERROR(gAppLog, "Unknown exception, closing connection.");
+            close(std::current_exception());
         }
         maybeAddErrorListener();
     }, std::move(callback)));
@@ -300,19 +306,15 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t tr
     if (ec) {
         if (ec != boost::asio::error::operation_aborted) {
             if (ec != boost::asio::error::eof) {
-                _error = std::make_exception_ptr(boost::system::system_error(ec));
-                LOG_WARNING("Read error %d :%s", ec.value(), ec.message());
+                LOG_WARNING(gGenLog, "Read error %d :%s", ec.value(), ec.message());
             }
-            close();
-            if (ec != boost::asio::error::eof) {
-                std::rethrow_exception(_error);
-            }
+            close(std::make_exception_ptr(boost::system::system_error(ec)));
         }
         return 0;
     }
     _readBuffer.writeCompleted(transferredBytes);
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
-        LOG_ERROR("Reached maximum read buffer size");
+        LOG_ERROR(gGenLog, "Reached maximum read buffer size");
         close();
         ThrowException(IOError, "Reached maximum read buffer size");
     }
@@ -653,12 +655,8 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
     _sslAccepting = false;
     if (ec) {
         if (ec != boost::asio::error::operation_aborted) {
-            _error = std::make_exception_ptr(boost::system::system_error(ec));
-            LOG_WARNING("SSL error %d :%s, closing connection.", ec.value(), ec.message());
-        }
-        close();
-        if (ec != boost::asio::error::operation_aborted) {
-            std::rethrow_exception(_error);
+            LOG_WARNING(gGenLog, "SSL error %d :%s, closing connection.", ec.value(), ec.message());
+            close(std::make_exception_ptr(boost::system::system_error(ec)));
         }
     } else {
         _sslAccepted = true;
@@ -680,7 +678,7 @@ void SSLIOStream::onHandshake(const boost::system::error_code &ec) {
 void SSLIOStream::onShutdown(const boost::system::error_code &ec) {
     _state &= ~S_WRITE;
     if (ec.category() == boost::asio::error::get_ssl_category()) {
-        LOG_WARNING("SSL shutdown error %d :%s", ec.value(), ec.message());
+        LOG_WARNING(gGenLog, "SSL shutdown error %d :%s", ec.value(), ec.message());
     }
     doClose();
 }

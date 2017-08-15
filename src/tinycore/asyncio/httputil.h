@@ -52,7 +52,7 @@ public:
     void add(const std::string &name, const std::string &value);
     StringVector getList(const std::string &name) const;
 
-    void getAll(CallbackType callback) const {
+    void getAll(const CallbackType &callback) const {
         for (auto &name: _asList) {
             for (auto &value: name.second) {
                 callback(name.first, value);

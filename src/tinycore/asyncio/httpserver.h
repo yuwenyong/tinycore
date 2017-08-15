@@ -8,7 +8,7 @@
 #include "tinycore/common/common.h"
 #include <chrono>
 #include "tinycore/asyncio/httputil.h"
-#include "tinycore/asyncio/netutil.h"
+#include "tinycore/asyncio/tcpserver.h"
 #include "tinycore/httputils/cookie.h"
 #include "tinycore/httputils/urlparse.h"
 
@@ -27,6 +27,7 @@ public:
                bool noKeepAlive = false,
                IOLoop *ioloop = nullptr,
                bool xheaders = false,
+               const std::string &protocol = "",
                std::shared_ptr<SSLOption> sslOption = nullptr);
 
     virtual ~HTTPServer();
@@ -36,6 +37,7 @@ protected:
     RequestCallbackType _requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
+    std::string _protocol;
 };
 
 
@@ -43,6 +45,7 @@ class HTTPConnection : public std::enable_shared_from_this<HTTPConnection> {
 public:
     typedef HTTPServer::RequestCallbackType RequestCallbackType;
     typedef std::function<void ()> WriteCallbackType;
+    typedef BaseIOStream::CloseCallbackType CloseCallbackType;
     typedef std::function<void (ByteArray)> HeaderCallbackType;
 
     template <typename... Args>
@@ -89,13 +92,17 @@ public:
     HTTPConnection(std::shared_ptr<BaseIOStream> stream, std::string address,
                    RequestCallbackType &requestCallback,
                    bool noKeepAlive = false,
-                   bool xheaders = false);
+                   bool xheaders = false,
+                   const std::string &protocol="");
 
     ~HTTPConnection();
 
     void clearCallbacks() {
         _writeCallback = nullptr;
+        _closeCallback = nullptr;
     }
+
+    void setCloseCallback(CloseCallbackType callback);
 
     void close() {
         _stream->close();
@@ -125,6 +132,8 @@ public:
         return std::make_shared<HTTPConnection>(std::forward<Args>(args)...);
     }
 protected:
+    void onConnectionClose();
+
     void onWriteComplete();
 
     void finishRequest();
@@ -138,10 +147,12 @@ protected:
     RequestCallbackType &_requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
+    std::string _protocol;
     std::shared_ptr<HTTPServerRequest> _request;
     std::weak_ptr<HTTPServerRequest> _requestObserver;
     bool _requestFinished{false};
     WriteCallbackType _writeCallback;
+    CloseCallbackType _closeCallback;
     HeaderCallbackType _headerCallback;
 };
 
@@ -285,12 +296,6 @@ public:
         return std::make_shared<HTTPServerRequest>(std::forward<Args>(args)...);
     }
 protected:
-    bool validIp(const std::string &ip) {
-        boost::system::error_code ec;
-        boost::asio::ip::address::from_string(ip, ec);
-        return !ec;
-    }
-
     std::string _method;
     std::string _uri;
     std::string _version;

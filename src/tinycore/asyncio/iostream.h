@@ -6,11 +6,10 @@
 #define TINYCORE_IOSTREAM_H
 
 #include "tinycore/common/common.h"
-#include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
 #include <boost/optional.hpp>
 #include <boost/regex.hpp>
 #include "tinycore/asyncio/ioloop.h"
+#include "tinycore/asyncio/netutil.h"
 #include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/trace.h"
@@ -22,84 +21,8 @@
 #endif
 
 
-enum class SSLVerifyMode {
-    CERT_NONE,
-    CERT_OPTIONAL,
-    CERT_REQUIRED,
-};
+DECLARE_EXCEPTION(StreamClosedError, IOError);
 
-
-class SSLOption {
-public:
-    typedef boost::asio::ssl::context SSLContextType;
-
-    SSLOption(bool serverSide)
-            : _serverSide(serverSide)
-            , _context(boost::asio::ssl::context::sslv23) {
-        boost::system::error_code ec;
-        _context.set_options(boost::asio::ssl::context::no_sslv3, ec);
-    }
-
-    ~SSLOption() {
-
-    }
-
-    void setCertFile(const std::string &certFile) {
-        _context.use_certificate_chain_file(certFile);
-    }
-
-    void setKeyFile(const std::string &keyFile) {
-        _context.use_private_key_file(keyFile, boost::asio::ssl::context::pem);
-    }
-
-    void setPassword(const std::string &password) {
-        _context.set_password_callback([password](size_t, boost::asio::ssl::context::password_purpose) {
-            return password;
-        });
-    }
-
-    void setVerifyMode(SSLVerifyMode verifyMode) {
-        if (verifyMode == SSLVerifyMode::CERT_NONE) {
-            _context.set_verify_mode(boost::asio::ssl::verify_none);
-        } else if (verifyMode == SSLVerifyMode::CERT_OPTIONAL) {
-            _context.set_verify_mode(boost::asio::ssl::verify_peer);
-        } else {
-            _context.set_verify_mode(boost::asio::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert);
-        }
-    }
-
-    void setVerifyFile(const std::string &verifyFile) {
-        _context.load_verify_file(verifyFile);
-    }
-
-    void setDefaultVerifyPath() {
-        _context.set_default_verify_paths();
-    }
-
-    void setCheckHost(const std::string &hostName) {
-        _context.set_verify_callback(boost::asio::ssl::rfc2818_verification(hostName));
-    }
-
-    bool isClientSide() const {
-        return !_serverSide;
-    }
-
-    bool isServerSide() const {
-        return _serverSide;
-    }
-
-    SSLContextType &context() {
-        return _context;
-    }
-
-    static std::shared_ptr<SSLOption>  create(bool serverSide= false) {
-        auto sslOption = std::make_shared<SSLOption>(serverSide);
-        return sslOption;
-    }
-protected:
-    bool _serverSide;
-    SSLContextType _context;
-};
 
 constexpr size_t DEFAULT_READ_CHUNK_SIZE = 4096;
 constexpr size_t DEFAULT_MAX_BUFFER_SIZE = 104857600;
@@ -206,7 +129,7 @@ public:
     void readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
     void write(const Byte *data, size_t length, WriteCallbackType callback=nullptr);
     void setCloseCallback(CloseCallbackType callback);
-    void close();
+    void close(std::exception_ptr error= nullptr);
 
     bool reading() const {
         return static_cast<bool>(_readCallback);
@@ -257,7 +180,7 @@ protected:
 
     void checkClosed() const {
         if (closed()) {
-            ThrowException(IOError, "Stream is closed");
+            ThrowException(StreamClosedError, "Stream is closed");
         }
     }
 

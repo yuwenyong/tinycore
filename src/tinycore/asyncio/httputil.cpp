@@ -83,7 +83,6 @@ void HTTPHeaders::parseLines(const std::string &headers) {
 }
 
 std::string HTTPHeaders::normalizeName(const std::string &name) {
-
     if (boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
         return name;
     }
