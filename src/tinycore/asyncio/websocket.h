@@ -49,7 +49,18 @@ public:
     }
 
     virtual void onOpen(const StringVector &args);
-    virtual void onMessage(const ByteArray data) = 0;
+    virtual void onMessage(ByteArray data) = 0;
+
+    void ping(const Byte *data, size_t length);
+
+    void ping(const char *data= nullptr);
+
+    void ping(const std::string &data);
+
+    void ping(const ByteArray &data);
+
+    virtual void onPong(ByteArray data);
+
     virtual void onClose();
 
     void close();
@@ -98,7 +109,8 @@ public:
     }
 
     virtual void acceptConnection() = 0;
-    virtual void writeMessage(const Byte *message, size_t length, bool binary=false) = 0;
+    virtual void writeMessage(const Byte *message, size_t length, bool binary) = 0;
+    virtual void writePing(const Byte *data, size_t length) = 0;
     virtual void close() = 0;
 
     void onConnectionClose() {
@@ -129,7 +141,8 @@ public:
 
     void acceptConnection() override;
     std::string challengeResponse(const std::string &challenge) const;
-    void writeMessage(const Byte *message, size_t length, bool binary=false) override;
+    void writeMessage(const Byte *message, size_t length, bool binary) override;
+    void writePing(const Byte *data, size_t length) override;
     void close() override;
 protected:
     void handleChallenge(ByteArray data);
@@ -156,18 +169,27 @@ protected:
 
 class TC_COMMON_API WebSocketProtocol13: public WebSocketProtocol {
 public:
-    WebSocketProtocol13(WebSocketHandler *handler)
-            : WebSocketProtocol(handler) {
+    WebSocketProtocol13(WebSocketHandler *handler, bool maskOutgoing=false)
+            : WebSocketProtocol(handler)
+            , _maskOutgoing(maskOutgoing) {
 
     }
 
     void acceptConnection() override;
-    void writeMessage(const Byte *message, size_t length, bool binary=false) override;
+    void writeMessage(const Byte *message, size_t length, bool binary) override;
+    void writePing(const Byte *data, size_t length) override;
     void close() override;
+
+    static std::string computeAcceptValue(const std::string &key);
 protected:
     void handleWebSocketHeaders() const;
-    std::string challengeResponse() const;
-    void doAcceptConnection();
+
+    std::string challengeResponse() const {
+        return computeAcceptValue(_request->getHTTPHeaders()->get("Sec-Websocket-Key"));
+    }
+
+    void _acceptConnection();
+
     void writeFrame(bool fin, Byte opcode, const Byte *data, size_t length);
 
     void receiveFrame() {
@@ -177,14 +199,32 @@ protected:
     }
 
     void onFrameStart(ByteArray data);
+
     void onFrameLength16(ByteArray data);
+
     void onFrameLength64(ByteArray data);
-    void onMaskKey(ByteArray data);
+
+    void onMaskingKey(ByteArray data);
+
+    void applyMask(const std::array<Byte, 4> &mask, Byte *data, size_t length) {
+        for (size_t i = 0; i != length; ++i) {
+            data[i] ^= mask[i % 4];
+        }
+    }
+
+    void onMaskedFrameData(ByteArray data) {
+        applyMask(_frameMask, data.data(), data.size());
+        onFrameData(std::move(data));
+    }
+
     void onFrameData(ByteArray data);
+
     void handleMessage(Byte opcode, ByteArray data);
 
+    bool _maskOutgoing{false};
     bool _finalFrame{false};
     bool _frameOpcodeIsControl{false};
+    bool _maskedFrame{false};
     Byte _frameOpcode{0};
     std::array<Byte, 4> _frameMask;
     uint64_t _frameLength{0};
@@ -192,5 +232,9 @@ protected:
     Byte _fragmentedMessageOpcode{0};
     Timeout _waiting;
 };
+
+
+
+
 
 #endif //TINYCORE_WEBSOCKET_H

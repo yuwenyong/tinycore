@@ -431,7 +431,7 @@ public:
     using RequestHandler::RequestHandler;
 
     void initialize(ArgsType &args) override;
-    void onGet(StringVector args) override;
+    void onGet(const StringVector &args) override;
 protected:
     std::string _url;
     bool _permanent{true};

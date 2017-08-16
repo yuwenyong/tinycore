@@ -9,6 +9,7 @@
 #include <boost/regex.hpp>
 #include "tinycore/compress/zlib.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
 
 
@@ -178,6 +179,10 @@ public:
 
     static std::string formatTimestamp(time_t ts) {
         return formatTimestamp(boost::posix_time::from_time_t(ts));
+    }
+
+    static std::string getHTTPReason(int statusCode) {
+        return HTTP_RESPONSES.find(statusCode) != HTTP_RESPONSES.end() ? HTTP_RESPONSES.at(statusCode) : "Unknown";
     }
 protected:
     static StringVector parseParam(std::string s);

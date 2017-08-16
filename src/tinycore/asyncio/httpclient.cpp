@@ -5,11 +5,10 @@
 #include "tinycore/asyncio/httpclient.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
-#include "tinycore/asyncio/stackcontext.h"
+#include "tinycore/asyncio/logutil.h"
 #include "tinycore/crypto/base64.h"
 #include "tinycore/debugging/trace.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/logging.h"
 
 
 const char* _HTTPError::what() const noexcept {
@@ -32,7 +31,7 @@ const char* _HTTPError::what() const noexcept {
 
 
 HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping, size_t maxBufferSize)
-        : _ioloop(ioloop ? ioloop : sIOLoop)
+        : _ioloop(ioloop ? ioloop : IOLoop::current())
         , _hostnameMapping(std::move(hostnameMapping))
         , _maxBufferSize(maxBufferSize) {
 #ifndef NDEBUG
@@ -50,7 +49,8 @@ void HTTPClient::fetch(std::shared_ptr<HTTPRequest> request, CallbackType callba
     callback = StackContext::wrap<HTTPResponse>(std::move(callback));
     do {
         NullContext ctx;
-        auto connection = _HTTPConnection::create(_ioloop, shared_from_this(), std::move(request), std::move(callback));
+        auto connection = _HTTPConnection::create(_ioloop, shared_from_this(), std::move(request), std::move(callback),
+                                                  _maxBufferSize);
         connection->start();
     } while(false);
 }
@@ -59,11 +59,13 @@ void HTTPClient::fetch(std::shared_ptr<HTTPRequest> request, CallbackType callba
 _HTTPConnection::_HTTPConnection(IOLoop *ioloop,
                                  std::shared_ptr<HTTPClient> client,
                                  std::shared_ptr<HTTPRequest> request,
-                                 CallbackType callback)
+                                 CallbackType callback, 
+                                 size_t maxBufferSize)
         : _ioloop(ioloop)
         , _client(std::move(client))
         , _request(std::move(request))
-        , _callback(std::move(callback)) {
+        , _callback(std::move(callback))
+        , _maxBufferSize(maxBufferSize) {
     _startTime = TimestampClock::now();
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPCLIENTCONNECTION_COUNT);
@@ -80,16 +82,17 @@ _HTTPConnection::~_HTTPConnection() {
 void _HTTPConnection::start() {
     std::exception_ptr error;
     try {
-        ExceptionStackContext ctx(std::bind(&_HTTPConnection::cleanup, shared_from_this(), std::placeholders::_1));
-        auto parsed = URLParse::urlSplit(_request->getURL());
-        const std::string &scheme = parsed.getScheme();
+        ExceptionStackContext ctx(std::bind(&_HTTPConnection::handleException, shared_from_this(),
+                                            std::placeholders::_1));
+        _parsed = URLParse::urlSplit(_request->getURL());
+        const std::string &scheme = _parsed.getScheme();
         if (scheme != "http" && scheme != "https") {
             ThrowException(ValueError, String::format("Unsupported url scheme: %s", _request->getURL().c_str()));
         }
-        std::string netloc = parsed.getNetloc();
+        std::string netloc = _parsed.getNetloc();
         if (netloc.find('@') != std::string::npos) {
-            std::string userpass, _;
-            std::tie(userpass, _, netloc) = String::rpartition(netloc, "@");
+            std::string userpass;
+            std::tie(userpass, std::ignore, netloc) = String::rpartition(netloc, "@");
         }
         const boost::regex hostPort(R"(^(.+):(\d+)$)");
         boost::smatch match;
@@ -106,39 +109,37 @@ void _HTTPConnection::start() {
         if (boost::regex_match(host, ipv6)) {
             host = host.substr(1, host.size() - 2);
         }
+        _parsedHostname = host;
         const StringMap &hostnameMapping = _client->getHostnameMapping();
         auto iter = hostnameMapping.find(host);
         if (iter != hostnameMapping.end()) {
             host = iter->second;
         }
-        std::string parsedHostname = host;
         BaseIOStream::SocketType socket(_ioloop->getService());
         if (scheme == "https") {
-            auto sslOption = SSLOption::create(false);
+            SSLParams sslParams(false);
             if (_request->isValidateCert()) {
-                sslOption->setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
-                sslOption->setCheckHost(parsedHostname);
+                sslParams.setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
+                sslParams.setCheckHost(_parsedHostname);
             } else {
-                sslOption->setVerifyMode(SSLVerifyMode::CERT_NONE);
+                sslParams.setVerifyMode(SSLVerifyMode::CERT_NONE);
             }
             auto caCerts = _request->getCACerts();
             if (caCerts) {
-                sslOption->setVerifyFile(*caCerts);
-            } else {
-                sslOption->setDefaultVerifyPath();
+                sslParams.setVerifyFile(*caCerts);
             }
             auto clientKey = _request->getClientKey();
             if (clientKey) {
-                sslOption->setKeyFile(*clientKey);
+                sslParams.setKeyFile(*clientKey);
             }
             auto clientCert = _request->getClientCert();
             if (clientCert) {
-                sslOption->setCertFile(*clientCert);
+                sslParams.setCertFile(*clientCert);
             }
-            _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop,
-                                          _client->getMaxBufferSize());
+            auto sslOption = SSLOption::create(sslParams);
+            _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop, _maxBufferSize);
         } else {
-            _stream = IOStream::create(std::move(socket), _ioloop, _client->getMaxBufferSize());
+            _stream = IOStream::create(std::move(socket), _ioloop, _maxBufferSize);
         }
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout > 0.000001f) {
@@ -148,20 +149,12 @@ void _HTTPConnection::start() {
             _timeout = _ioloop->addTimeout(timeout, StackContext::wrap(std::move(timeoutCallback)));
         }
         _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        _stream->connect(host, port, [this, parsed=std::move(parsed), parsedHostname=std::move(parsedHostname)](){
-            onConnect(std::move(parsed), std::move(parsedHostname));
-        });
-#else
-        _stream->connect(host, port, std::bind([this](URLSplitResult &parsed, std::string &parsedHostname){
-            onConnect(std::move(parsed), std::move(parsedHostname));
-        }, std::move(parsed), std::move(parsedHostname)));
-#endif
+        _stream->connect(host, port, std::bind(&_HTTPConnection::onConnect, this));
     } catch (...) {
         error = std::current_exception();
     }
     if (error) {
-        cleanup(error);
+        handleException(error);
     }
 }
 
@@ -174,11 +167,15 @@ void _HTTPConnection::onTimeout() {
     }
 }
 
-void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostname) {
+void _HTTPConnection::removeTimeout() {
     if (!_timeout.expired()) {
         _ioloop->removeTimeout(_timeout);
         _timeout.reset();
     }
+}
+
+void _HTTPConnection::onConnect() {
+    removeTimeout();
     float requestTimeout = _request->getRequestTimeout();
     if (requestTimeout > 0.000001f) {
         IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
@@ -210,18 +207,18 @@ void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostnam
         headers["Connection"] = "close";
     }
     if (!headers.has("Host")) {
-        if (parsed.getNetloc().find('@') != std::string::npos) {
+        if (_parsed.getNetloc().find('@') != std::string::npos) {
             std::string host;
-            std::tie(std::ignore, std::ignore, host) = String::rpartition(parsed.getNetloc(), "@");
+            std::tie(std::ignore, std::ignore, host) = String::rpartition(_parsed.getNetloc(), "@");
             headers["Host"] = host;
         } else {
-            headers["Host"] = parsed.getNetloc();
+            headers["Host"] = _parsed.getNetloc();
         }
     }
     std::string userName, password;
-    if (parsed.getUserName()) {
-        userName = *parsed.getUserName();
-        password = *parsed.getPassword();
+    if (_parsed.getUserName()) {
+        userName = *_parsed.getUserName();
+        password = *_parsed.getPassword();
     } else if (_request->getAuthUserName()) {
         userName = *_request->getAuthUserName();
         password = _request->getAuthPassword();
@@ -252,8 +249,8 @@ void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostnam
     if (_request->isUseGzip()) {
         headers["Accept-Encoding"] = "gzip";
     }
-    const std::string &parsedPath = parsed.getPath();
-    const std::string &parsedQuery = parsed.getQuery();
+    const std::string &parsedPath = _parsed.getPath();
+    const std::string &parsedQuery = _parsed.getQuery();
     std::string reqPath = parsedPath.empty() ? "/" : parsedPath;
     if (!parsedQuery.empty()) {
         reqPath += '?';
@@ -277,17 +274,36 @@ void _HTTPConnection::onConnect(URLSplitResult parsed, std::string parsedHostnam
     _stream->readUntilRegex("\r?\n\r?\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
 }
 
-void _HTTPConnection::cleanup(std::exception_ptr error) {
-    try {
-        std::rethrow_exception(error);
-    } catch (std::exception &e) {
-        LOG_WARNING("uncaught exception:%s", e.what());
-    } catch (...) {
-        LOG_WARNING("unknown exception");
+void _HTTPConnection::runCallback(HTTPResponse response) {
+    if (_callback) {
+        CallbackType callback(std::move(_callback));
+        _callback = nullptr;
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        _ioloop->addCallback([callback=std::move(callback), response=std::move(response)]() {
+            callback(std::move(response));
+        });
+#else
+        _ioloop->addCallback(std::bind([](CallbackType &callback, HTTPResponse &response) {
+            callback(std::move(response));
+        }, std::move(callback), std::move(response)));
+#endif
     }
-    runCallback(HTTPResponse(_request, 599, error, TimestampClock::now() - _startTime));
-    if (_stream) {
-        _stream->close();
+}
+
+void _HTTPConnection::handleException(std::exception_ptr error) {
+    if (_callback) {
+        removeTimeout();
+        try {
+            std::rethrow_exception(error);
+        } catch (std::exception &e) {
+            LOG_WARNING(gGenLog, "uncaught exception:%s", e.what());
+        } catch (...) {
+            LOG_WARNING(gGenLog, "unknown exception");
+        }
+        runCallback(HTTPResponse(_request, 599, error, TimestampClock::now() - _startTime));
+        if (_stream) {
+            _stream->close();
+        }
     }
 }
 
@@ -305,25 +321,31 @@ void _HTTPConnection::onClose() {
     }
 }
 
+void _HTTPConnection::handle1xx(int code) {
+    _stream->readUntilRegex("\r?\n\r?\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
+}
+
 void _HTTPConnection::onHeaders(ByteArray data) {
     const char *content = (const char *)data.data();
     const char *eol = StrNStr(content, data.size(), "\n");
-    std::string firstLine, headerData;
+    std::string firstLine, _, headerData;
     if (eol) {
         firstLine.assign(content, eol);
+        _ = "\n";
         headerData.assign(eol + 1, content + data.size());
     } else {
         firstLine.assign(content, data.size());
     }
-    const boost::regex firstLinePattern("HTTP/1.[01] ([0-9]+) .*");
+    const boost::regex firstLinePattern("HTTP/1.[01] ([0-9]+) ([^\r]*).*");
     boost::smatch match;
     if (boost::regex_match(firstLine, match, firstLinePattern)) {
         int code = std::stoi(match[1]);
         if (code >= 100 && code < 200) {
-            _stream->readUntilRegex("\r?\n\r?\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
+            handle1xx(code);
             return;
         } else {
             _code = code;
+            _reason = match[2];
         }
     } else {
         ThrowException(Exception, "Unexpected first line");
@@ -348,15 +370,17 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     }
     auto &headerCallback = _request->getHeaderCallback();
     if (headerCallback) {
+        headerCallback(firstLine + _);
         _headers->getAll([&headerCallback](const std::string &k, const std::string &v){
             headerCallback(k + ": " + v + "\r\n");
         });
+        headerCallback("\r\n");
     }
-    if (_request->getMethod() == "HEAD") {
+    if (_request->getMethod() == "HEAD" || _code == 304) {
         onBody({});
         return;
     }
-    if ((100 <= _code && _code < 200) || _code == 204 || _code == 304) {
+    if ((100 <= _code && _code < 200) || _code == 204) {
         if (_headers->has("Transfer-Encoding") || (contentLength && *contentLength != 0)) {
             ThrowException(ValueError, String::format("Response with code %d should not have body", *_code));
         }
@@ -393,7 +417,7 @@ void _HTTPConnection::onBody(ByteArray data) {
         newRequest->setURL(std::move(url));
         newRequest->setMaxRedirects(_request->getMaxRedirects() - 1);
         newRequest->headers().erase("Host");
-        if (_code == 303) {
+        if (_code == 302 || _code == 303) {
             newRequest->setMethod("GET");
             newRequest->setBody(boost::none);
             const std::array<std::string, 4> fields = {"Content-Length", "Content-Type", "Content-Encoding",
@@ -429,7 +453,7 @@ void _HTTPConnection::onBody(ByteArray data) {
     } else {
         buffer.assign((const char*)data.data(), data.size());
     }
-    HTTPResponse response(originalRequest, _code.get(), *_headers, std::move(buffer), _request->getURL(),
+    HTTPResponse response(originalRequest, _code.get(), _reason, *_headers, std::move(buffer), _request->getURL(),
                           TimestampClock::now() - _startTime);
     runCallback(std::move(response));
     _stream->close();

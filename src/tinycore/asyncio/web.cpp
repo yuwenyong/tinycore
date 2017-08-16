@@ -605,7 +605,7 @@ void RedirectHandler::initialize(ArgsType &args) {
     }
 }
 
-void RedirectHandler::onGet(StringVector args) {
+void RedirectHandler::onGet(const StringVector &args) {
     redirect(_url, _permanent);
 }
 

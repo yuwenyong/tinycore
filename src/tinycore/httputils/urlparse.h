@@ -15,6 +15,11 @@ using URLSplitResultBase = std::tuple<std::string, std::string, std::string, std
 
 class TC_COMMON_API URLSplitResult: public URLSplitResultBase {
 public:
+    URLSplitResult()
+            : URLSplitResultBase() {
+
+    }
+
     URLSplitResult(std::string scheme,
                    std::string netloc,
                    std::string path,
@@ -61,6 +66,11 @@ using URLParseResultBase = std::tuple<std::string, std::string, std::string, std
 
 class TC_COMMON_API URLParseResult : public URLParseResultBase {
 public:
+    URLParseResult()
+            : URLParseResultBase() {
+
+    }
+
     URLParseResult(std::string scheme,
                    std::string netloc,
                    std::string path,

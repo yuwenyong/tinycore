@@ -12,6 +12,7 @@
 #include "tinycore/asyncio/httputil.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/iostream.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
 #include "tinycore/utilities/string.h"
@@ -27,8 +28,7 @@ public:
         _headers = args[opts::_headers | HTTPHeaders()];
         boost::optional<DateTime> ifModifiedSince = args[opts::_ifModifiedSince | boost::none];
         if (ifModifiedSince) {
-            std::string timestamp = String::formatUTCDate(ifModifiedSince.get(), true);
-            _headers["If-Modified-Since"] = timestamp;
+            _headers["If-Modified-Since"] = HTTPUtil::formatTimestamp(ifModifiedSince.get());
         }
 //        if (!_headers.has("Pragma")) {
 //            _headers["Pragma"] = "";
@@ -53,7 +53,9 @@ public:
         _useGzip = args[opts::_useGzip | true];
         _networkInterface = args[opts::_networkInterface | boost::none];
         _streamingCallback = args[opts::_streamingCallback | nullptr];
+        _streamingCallback = StackContext::wrap<ByteArray>(std::move(_streamingCallback));
         _headerCallback = args[opts::_headerCallback | nullptr];
+        _headerCallback = StackContext::wrap<std::string>(std::move(_headerCallback));
         _allowNonstandardMethods = args[opts::_allowNonstandardMethods | false];
         _validateCert = args[opts::_validateCert | true];
         _caCerts = args[opts::_caCerts | boost::none];
@@ -167,7 +169,7 @@ public:
     }
 
     void setStreamingCallback(StreamingCallbackType streamingCallback) {
-        _streamingCallback = std::move(streamingCallback);
+        _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     }
 
     const StreamingCallbackType& getStreamingCallback() const {
@@ -175,7 +177,7 @@ public:
     }
 
     void setHeaderCallback(HeaderCallbackType headerCallback) {
-        _headerCallback = std::move(headerCallback);
+        _headerCallback = StackContext::wrap<std::string>(std::move(headerCallback));
     }
 
     const HeaderCallbackType& getHeaderCallback() const {
@@ -285,7 +287,7 @@ protected:
 class TC_COMMON_API _HTTPError: public Exception {
 public:
     _HTTPError(const char *file, int line, const char *func, int code)
-            : _HTTPError(file, line, func, code, HTTP_RESPONSES.at(code)) {
+            : _HTTPError(file, line, func, code, HTTPUtil::getHTTPReason(code)) {
 
     }
 
@@ -367,14 +369,19 @@ class HTTPResponse {
 public:
     HTTPResponse() = default; 
     
-    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, HTTPHeaders headers, std::string body,
-                 std::string effectiveURL, Duration requestTime)
+    HTTPResponse(std::shared_ptr<HTTPRequest> request, int code, std::string reason, HTTPHeaders headers,
+                 std::string body, std::string effectiveURL, Duration requestTime)
             : _request(std::move(request))
             , _code(code)
             , _headers(std::move(headers))
             , _body(std::move(body))
             , _effectiveURL(std::move(effectiveURL))
             , _requestTime(std::move(requestTime)) {
+        if (reason.empty()) {
+            _reason = HTTPUtil::getHTTPReason(code);
+        } else {
+            _reason = std::move(reason);
+        }
         if (!_error) {
             if (_code < 200 || _code >= 300) {
                 _error = MakeExceptionPtr(_HTTPError, _code);
@@ -387,6 +394,7 @@ public:
             , _code(code)
             , _error(std::move(error))
             , _requestTime(std::move(requestTime)) {
+        _reason = HTTPUtil::getHTTPReason(code);
         if (!_error) {
             if (_code < 200 || _code >= 300) {
                 _error = MakeExceptionPtr(_HTTPError, _code);
@@ -400,6 +408,10 @@ public:
 
     int getCode() const {
         return _code;
+    }
+
+    const std::string& getReason() const {
+        return _reason;
     }
 
     const HTTPHeaders& getHeaders() const {
@@ -430,6 +442,7 @@ public:
 protected:
     std::shared_ptr<HTTPRequest> _request;
     int _code{200};
+    std::string _reason;
     HTTPHeaders _headers;
     boost::optional<std::string> _body;
     std::string _effectiveURL;
@@ -484,8 +497,10 @@ public:
     typedef HTTPClient::CallbackType CallbackType;
 
     _HTTPConnection(IOLoop *ioloop, std::shared_ptr<HTTPClient> client, std::shared_ptr<HTTPRequest> request,
-                    CallbackType callback);
-    ~_HTTPConnection();
+                    CallbackType callback, size_t maxBufferSize);
+
+    virtual ~_HTTPConnection();
+
     void start();
 
     template <typename ...Args>
@@ -497,21 +512,24 @@ public:
 protected:
     void onTimeout();
 
-    void onConnect(URLSplitResult parsed, std::string parsedHostname);
+    void removeTimeout();
 
-    void runCallback(HTTPResponse response) {
-        if (_callback) {
-            CallbackType callback(std::move(_callback));
-            _callback = nullptr;
-            callback(std::move(response));
-        }
-    }
+    void onConnect();
 
-    void cleanup(std::exception_ptr error);
-    void onClose();
+    void runCallback(HTTPResponse response);
+
+    void handleException(std::exception_ptr error);
+
+    virtual void onClose();
+
+    virtual void handle1xx(int code);
+
     void onHeaders(ByteArray data);
+
     void onBody(ByteArray data);
+
     void onChunkLength(ByteArray data);
+
     void onChunkData(ByteArray data);
 
     Timestamp _startTime;
@@ -519,12 +537,16 @@ protected:
     std::shared_ptr<HTTPClient> _client;
     std::shared_ptr<HTTPRequest> _request;
     CallbackType _callback;
+    size_t _maxBufferSize;
     boost::optional<int> _code;
     std::unique_ptr<HTTPHeaders> _headers;
     boost::optional<ByteArray> _chunks;
     std::unique_ptr<GzipDecompressor> _decompressor;
+    URLSplitResult _parsed;
+    std::string _parsedHostname;
     Timeout _timeout;
     std::shared_ptr<BaseIOStream> _stream;
+    std::string _reason;
 };
 
 #endif //TINYCORE_HTTPCLIENT_H
