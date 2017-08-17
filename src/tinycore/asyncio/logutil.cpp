@@ -39,9 +39,9 @@ void LogUtil::enablePrettyLogging(const Options *options) {
 
 void LogUtil::defineLoggingOptions(Options *options) {
 #ifdef NDEBUG
-    options->define<std::string>("log_level", "Set the log level", {"info"}, {}, "logging");
+    options->define<std::string>("log_level", "Set the log level", std::string("info"), {}, "logging");
 #else
-    options->define<std::string>("log_level", "Set the log level", {"trace"}, {}, "logging");
+    options->define<std::string>("log_level", "Set the log level", std::string("trace"), {}, "logging");
 #endif
     options->define("log_to_console", "Send log output to stderr", "logging");
     options->define<std::string>("log_file_prefix", "Path prefix for log files", {}, {}, "logging");

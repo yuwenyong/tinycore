@@ -33,7 +33,7 @@ public:
 
     static void enablePrettyLogging(const Options *options);
 
-    static void defineLoggingOptions(Options *options)
+    static void defineLoggingOptions(Options *options);
 };
 
 

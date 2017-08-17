@@ -70,10 +70,8 @@ HTTPConnection::~HTTPConnection() {
 
 void HTTPConnection::setCloseCallback(CloseCallbackType callback) {
     _closeCallback = StackContext::wrap(std::move(callback));
-    auto wrapper = std::make_shared<Wrapper<>>(shared_from_this(), [this]() {
-        onConnectionClose();
-    });
-    _stream->setCloseCallback(std::move(wrapper));
+    auto wrapper = std::make_shared<CloseCallbackWrapper>(shared_from_this());
+    _stream->setCloseCallback(std::bind(&CloseCallbackWrapper::operator(), std::move(wrapper)));
 }
 
 void HTTPConnection::start() {
@@ -90,10 +88,8 @@ void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType c
     if (!_stream->closed()) {
         _writeCallback = StackContext::wrap(std::move(callback));
         if (_writeCallback) {
-            auto wrapper = std::make_shared<Wrapper<>>(shared_from_this(), [this]() {
-               onWriteComplete();
-            });
-            _stream->write(chunk, length, std::bind(&Wrapper<>::operator(), std::move(wrapper)));
+            auto wrapper = std::make_shared<WriteCallbackWrapper>(shared_from_this());
+            _stream->write(chunk, length, std::bind(&WriteCallbackWrapper::operator(), std::move(wrapper)));
         } else {
             _stream->write(chunk, length, std::bind(&HTTPConnection::onWriteComplete, shared_from_this()));
         }

@@ -399,7 +399,7 @@ public:
         BOOST_CHECK_EQUAL(res, ok);
         server->close();
         client->readUntil("\r\n", [](ByteArray data) {});
-        auto result = Base::waitAny();
+        auto result = Base::wait();
         BOOST_CHECK(result.empty());
         server->close();
         client->close();

@@ -5,4 +5,4 @@
 #include "tinycore/common/random.h"
 
 
-std::default_random_engine Random::_engine(std::random_device()());
+std::default_random_engine Random::_engine((unsigned int)time(nullptr));

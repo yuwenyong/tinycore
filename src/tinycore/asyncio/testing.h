@@ -11,16 +11,16 @@
 #include "tinycore/asyncio/httpclient.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/web.h"
-#include "tinycore/configuration/options.h"
+#include "tinycore/configuration/globalinit.h"
 
 
 struct GlobalFixture {
     GlobalFixture() {
-        sOptions->onEnter();
+        GlobalInit::initFromEnvironment();
     }
 
     ~GlobalFixture() {
-        sOptions->onExit();
+        GlobalInit::cleanup();
     }
 };
 
@@ -49,20 +49,14 @@ public:
         stopImpl();
     }
 
-    void wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
+    boost::any wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
 
     template <typename T>
     T waitResult(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
-        wait(std::move(timeout), std::move(condition));
-        boost::any result(std::move(_stopArgs));
+        boost::any result = wait(std::move(timeout), std::move(condition));
         return boost::any_cast<T>(result);
     }
 
-    boost::any waitAny(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
-        wait(std::move(timeout), std::move(condition));
-        boost::any result(std::move(_stopArgs));
-        return result;
-    }
 
     void rethrow() {
         if (_failure) {
@@ -126,13 +120,15 @@ public:
     }
 protected:
     unsigned short getHTTPPort() const {
-        if (!_port) {
-            _port = getUnusedPort();
-        }
-        return _port.get();
+        return _port;
     }
 
-    mutable boost::optional<unsigned short> _port;
+    unsigned short bindUnusedPort() const {
+        static unsigned short nextPort = 10000;
+        return ++nextPort;
+    }
+
+    unsigned short _port;
     std::shared_ptr<HTTPClient> _httpClient;
     std::unique_ptr<Application> _app;
     std::shared_ptr<HTTPServer> _httpServer;

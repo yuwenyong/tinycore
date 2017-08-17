@@ -23,7 +23,7 @@ void Options::parseCommandLine(int argc, const char * const argv[], bool final) 
 
 void Options::parseConfigFile(const char *path, bool final) {
     auto opts = composeOptions();
-    po::store(po::parse_config_file(path, opts, true), _vm);
+    po::store(po::parse_config_file<char>(path, opts, true), _vm);
     if (has("help")) {
         helpCallback();
     }
@@ -38,7 +38,13 @@ void Options::parseConfigFile(const char *path, bool final) {
 
 void Options::praseEnvironment(const boost::function1<std::string, std::string> &name_mapper, bool final) {
     auto opts = composeOptions();
-    po::store(po::parse_environment(opts, name_mapper), _vm);
+    if (!name_mapper.empty()) {
+        po::store(po::parse_environment(opts, name_mapper), _vm);
+    } else {
+        po::store(po::parse_environment(opts, [](std::string name){
+            return name;
+        }), _vm);
+    }
     if (has("help")) {
         helpCallback();
     }
@@ -69,7 +75,7 @@ po::options_description* Options::getGroup(std::string group) {
 
 po::options_description Options::composeOptions() const {
     po::options_description opts(_opts);
-    for (auto &group: _groups) {
+    for (const auto &group: _groups) {
         opts.add(*group->second);
     }
     return opts;

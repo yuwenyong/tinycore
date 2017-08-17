@@ -10,15 +10,13 @@
 #include "tinycore/utilities/objectmanager.h"
 
 
-GlobalInit::_inited = false;
+bool GlobalInit::_inited = false;
 
-void GlobalInit::initFromEnvironment() {
+void GlobalInit::initFromEnvironment(const boost::function1<std::string, std::string> &name_mapper) {
     assert(!_inited);
     LogUtil::initGlobalLoggers();
     LogUtil::enablePrettyLogging(sOptions);
-    sOptions->praseEnvironment([](std::string name){
-        return name;
-    });
+    sOptions->praseEnvironment(name_mapper);
     if (!Logging::isInitialized()) {
         Logging::init();
     }

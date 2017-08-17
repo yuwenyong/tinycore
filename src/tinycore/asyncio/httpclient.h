@@ -496,6 +496,42 @@ class _HTTPConnection: public std::enable_shared_from_this<_HTTPConnection> {
 public:
     typedef HTTPClient::CallbackType CallbackType;
 
+    class CloseCallbackWrapper {
+    public:
+        explicit CloseCallbackWrapper(_HTTPConnection *connection)
+                : _connection(connection)
+                , _needClear(true) {
+
+        }
+
+        CloseCallbackWrapper(CloseCallbackWrapper &&rhs) noexcept
+                : _connection(rhs._connection)
+                , _needClear(rhs._needClear) {
+            rhs._needClear = false;
+        }
+
+        CloseCallbackWrapper& operator=(CloseCallbackWrapper &&rhs) noexcept {
+            _connection = rhs._connection;
+            _needClear = rhs._needClear;
+            rhs._needClear = false;
+            return *this;
+        }
+
+        ~CloseCallbackWrapper() {
+            if (_needClear) {
+                _connection->_callback = nullptr;
+            }
+        }
+
+        void operator()() {
+            _needClear = false;
+            _connection->onClose();
+        }
+    protected:
+        _HTTPConnection *_connection;
+        bool _needClear;
+    };
+
     _HTTPConnection(IOLoop *ioloop, std::shared_ptr<HTTPClient> client, std::shared_ptr<HTTPRequest> request,
                     CallbackType callback, size_t maxBufferSize);
 
@@ -506,6 +542,16 @@ public:
     template <typename ...Args>
     static std::shared_ptr<_HTTPConnection> create(Args&& ...args) {
         return std::make_shared<_HTTPConnection>(std::forward<Args>(args)...);
+    }
+
+    template <typename T>
+    std::shared_ptr<T> getSelf() {
+        return std::static_pointer_cast<T>(shared_from_this());
+    }
+
+    template <typename T>
+    std::shared_ptr<const T> getSelf() const {
+        return std::static_pointer_cast<const T>(shared_from_this());
     }
 
     static const StringSet supportedMethods;
@@ -519,6 +565,8 @@ protected:
     void runCallback(HTTPResponse response);
 
     void handleException(std::exception_ptr error);
+
+    virtual void prepare();
 
     virtual void onClose();
 

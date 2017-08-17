@@ -27,6 +27,11 @@ public:
         accept();
     }
 
+    unsigned short getLocalPort() const {
+        auto endpoint = _acceptor.local_endpoint();
+        return endpoint.port();
+    }
+
     void stop();
 
     virtual void handleStream(std::shared_ptr<BaseIOStream> stream, std::string address) = 0;

@@ -84,6 +84,7 @@ void _HTTPConnection::start() {
     try {
         ExceptionStackContext ctx(std::bind(&_HTTPConnection::handleException, shared_from_this(),
                                             std::placeholders::_1));
+        prepare();
         _parsed = URLParse::urlSplit(_request->getURL());
         const std::string &scheme = _parsed.getScheme();
         if (scheme != "http" && scheme != "https") {
@@ -110,10 +111,12 @@ void _HTTPConnection::start() {
             host = host.substr(1, host.size() - 2);
         }
         _parsedHostname = host;
-        const StringMap &hostnameMapping = _client->getHostnameMapping();
-        auto iter = hostnameMapping.find(host);
-        if (iter != hostnameMapping.end()) {
-            host = iter->second;
+        if (_client) {
+            const StringMap &hostnameMapping = _client->getHostnameMapping();
+            auto iter = hostnameMapping.find(host);
+            if (iter != hostnameMapping.end()) {
+                host = iter->second;
+            }
         }
         BaseIOStream::SocketType socket(_ioloop->getService());
         if (scheme == "https") {
@@ -148,7 +151,12 @@ void _HTTPConnection::start() {
             };
             _timeout = _ioloop->addTimeout(timeout, StackContext::wrap(std::move(timeoutCallback)));
         }
-        _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
+        if (_client) {
+            _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
+        } else {
+            auto wrapper = std::make_shared<CloseCallbackWrapper>(this);
+            _stream->setCloseCallback(std::bind(&CloseCallbackWrapper::operator(), std::move(wrapper)));
+        }
         _stream->connect(host, port, std::bind(&_HTTPConnection::onConnect, this));
     } catch (...) {
         error = std::current_exception();
@@ -279,11 +287,11 @@ void _HTTPConnection::runCallback(HTTPResponse response) {
         CallbackType callback(std::move(_callback));
         _callback = nullptr;
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        _ioloop->addCallback([callback=std::move(callback), response=std::move(response)]() {
+        _ioloop->spawnCallback([callback=std::move(callback), response=std::move(response)]() {
             callback(std::move(response));
         });
 #else
-        _ioloop->addCallback(std::bind([](CallbackType &callback, HTTPResponse &response) {
+        _ioloop->spawnCallback(std::bind([](CallbackType &callback, HTTPResponse &response) {
             callback(std::move(response));
         }, std::move(callback), std::move(response)));
 #endif
@@ -305,6 +313,10 @@ void _HTTPConnection::handleException(std::exception_ptr error) {
             _stream->close();
         }
     }
+}
+
+void _HTTPConnection::prepare() {
+
 }
 
 void _HTTPConnection::onClose() {
@@ -433,7 +445,11 @@ void _HTTPConnection::onBody(ByteArray data) {
         newRequest->setOriginalRequest(std::move(originalRequest));
         CallbackType callback;
         callback.swap(_callback);
-        _client->fetch(std::move(newRequest), std::move(callback));
+        if (_client) {
+            _client->fetch(std::move(newRequest), std::move(callback));
+        } else {
+            ThrowException(ValueError, "WebSocketClientConnection has no HTTPClient");
+        }
         _stream->close();
         return;
     }

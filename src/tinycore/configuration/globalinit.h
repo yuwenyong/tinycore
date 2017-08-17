@@ -6,12 +6,13 @@
 #define TINYCORE_GLOBALINIT_H
 
 #include "tinycore/common/common.h"
+#include <boost/function.hpp>
 
 
 class TC_COMMON_API GlobalInit {
 public:
-    GlobalInit() {
-        initFromEnvironment();
+    GlobalInit(const boost::function1<std::string, std::string> &name_mapper) {
+        initFromEnvironment(name_mapper);
     }
 
     GlobalInit(int argc, const char * const argv[]) {
@@ -26,7 +27,7 @@ public:
         cleanup();
     }
 
-    static void initFromEnvironment();
+    static void initFromEnvironment(const boost::function1<std::string, std::string> &name_mapper={});
     static void initFromCommandLine(int argc, const char * const argv[]);
     static void initFromConfigFile(const char *path);
     static void cleanup();

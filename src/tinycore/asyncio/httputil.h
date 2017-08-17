@@ -42,7 +42,7 @@ public:
 
     HTTPHeaders() {}
 
-    explicit HTTPHeaders(std::initializer_list<NameValueType> nameValues) {
+    HTTPHeaders(std::initializer_list<NameValueType> nameValues) {
         update(nameValues);
     }
 

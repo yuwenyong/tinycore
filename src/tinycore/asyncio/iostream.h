@@ -102,12 +102,12 @@ public:
     }
 
     std::string getRemoteAddress() const {
-        const auto & endpoint = _socket.remote_endpoint();
+        auto endpoint = _socket.remote_endpoint();
         return endpoint.address().to_string();
     }
 
     unsigned short getRemotePort() const {
-        const auto & endpoint = _socket.remote_endpoint();
+        auto endpoint = _socket.remote_endpoint();
         return endpoint.port();
     }
 

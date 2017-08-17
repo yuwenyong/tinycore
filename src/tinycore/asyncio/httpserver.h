@@ -48,41 +48,76 @@ public:
     typedef BaseIOStream::CloseCallbackType CloseCallbackType;
     typedef std::function<void (ByteArray)> HeaderCallbackType;
 
-    template <typename... Args>
-    class Wrapper {
+    class CloseCallbackWrapper {
     public:
-        Wrapper(std::shared_ptr<HTTPConnection> connection, std::function<void(Args...)> callback)
+        explicit CloseCallbackWrapper(std::shared_ptr<HTTPConnection> connection)
                 : _connection(std::move(connection))
-                , _callback(std::move(callback)) {
+                , _needClear(true) {
 
         }
 
-        Wrapper(Wrapper &&rhs)
+        CloseCallbackWrapper(CloseCallbackWrapper &&rhs) noexcept
                 : _connection(std::move(rhs._connection))
-                , _callback(std::move(rhs._callback)) {
-            rhs._callback = nullptr;
+                , _needClear(rhs._needClear) {
+            rhs._needClear = false;
         }
 
-        Wrapper& operator=(Wrapper &&rhs) {
+        CloseCallbackWrapper& operator=(CloseCallbackWrapper &&rhs) noexcept {
             _connection = std::move(rhs._connection);
-            _callback = std::move(rhs._callback);
-            rhs._callback = nullptr;
+            _needClear = rhs._needClear;
+            rhs._needClear = false;
+            return *this;
         }
 
-        ~Wrapper() {
-            if (_callback) {
-                _connection->clearCallbacks();
+        ~CloseCallbackWrapper() {
+            if (_needClear) {
+                _connection->_closeCallback = nullptr;
             }
         }
 
-        void operator()(Args... args) {
-            std::function<void(Args...)> callback = std::move(_callback);
-            _callback = nullptr;
-            callback(args...);
+        void operator()() {
+            _needClear = false;
+            _connection->onConnectionClose();
         }
     protected:
         std::shared_ptr<HTTPConnection> _connection;
-        std::function<void(Args...)> _callback;
+        bool _needClear;
+    };
+
+    class WriteCallbackWrapper {
+    public:
+        explicit WriteCallbackWrapper(std::shared_ptr<HTTPConnection> connection)
+                : _connection(std::move(connection))
+                , _needClear(true) {
+
+        }
+
+        WriteCallbackWrapper(WriteCallbackWrapper &&rhs) noexcept
+                : _connection(std::move(rhs._connection))
+                , _needClear(rhs._needClear) {
+            rhs._needClear = false;
+        }
+
+        WriteCallbackWrapper& operator=(WriteCallbackWrapper &&rhs) noexcept {
+            _connection = std::move(rhs._connection);
+            _needClear = rhs._needClear;
+            rhs._needClear = false;
+            return *this;
+        }
+
+        ~WriteCallbackWrapper() {
+            if (_needClear) {
+                _connection->_writeCallback = nullptr;
+            }
+        }
+
+        void operator()() {
+            _needClear = false;
+            _connection->onWriteComplete();
+        }
+    protected:
+        std::shared_ptr<HTTPConnection> _connection;
+        bool _needClear;
     };
 
     HTTPConnection(const HTTPConnection &) = delete;

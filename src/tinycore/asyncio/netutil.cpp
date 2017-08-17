@@ -52,15 +52,15 @@ std::shared_ptr<SSLOption> SSLOption::create(const SSLParams &sslParams) {
     }
     const std::string &certFile = sslParams.getCertFile();
     if (!certFile.empty() && !boost::filesystem::exists(certFile)) {
-        ThrowException(ValueError, "cert file \"%s\" does not exist", certFile.c_str());
+        ThrowException(ValueError, String::format("cert file \"%s\" does not exist", certFile.c_str()));
     }
     const std::string &keyFile = sslParams.getKeyFile();
     if (!keyFile.empty() && !boost::filesystem::exists(keyFile)) {
-        ThrowException(ValueError, "key file \"%s\" does not exist", certFile.c_str());
+        ThrowException(ValueError, String::format("key file \"%s\" does not exist", certFile.c_str()));
     }
     const std::string &verifyFile = sslParams.getVerifyFile();
     if (!verifyFile.empty() && !boost::filesystem::exists(verifyFile)) {
-        ThrowException(ValueError, "verify file \"%s\" does not exist", certFile.c_str());
+        ThrowException(ValueError, String::format("verify file \"%s\" does not exist", certFile.c_str()));
     }
     auto sslOption = std::make_shared<SSLOption>(sslParams);
     return sslOption;

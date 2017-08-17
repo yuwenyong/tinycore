@@ -94,6 +94,10 @@ public:
 
     void addCallback(CallbackType callback);
 
+    void spawnCallback(CallbackType callback) {
+        _ioService.post(std::move(callback));
+    }
+
     void signal(int signalNumber, SignalCallbackType callback= nullptr) {
         _signalSet.signal(signalNumber, std::move(callback));
     }

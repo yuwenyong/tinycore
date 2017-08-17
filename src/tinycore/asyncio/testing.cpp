@@ -12,19 +12,16 @@ AsyncTestCase::~AsyncTestCase() {
 }
 
 void AsyncTestCase::setUp() {
-
+    _ioloop.makeCurrent();
 }
 
 void AsyncTestCase::tearDown() {
-
+    _ioloop.clearCurrent();
+    rethrow();
 }
 
-void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
+boost::any AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
     if (!_stopped) {
-        if (!_timeout.expired()) {
-            _ioloop.removeTimeout(_timeout);
-            _timeout.reset();
-        }
         if (timeout) {
             _timeout = _ioloop.addTimeout(*timeout, [this, timeout](){
                 try {
@@ -39,17 +36,22 @@ void AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condi
         while (true) {
             _running = true;
             do {
-                NullContext ctx;
                 _ioloop.start();
             } while (false);
             if (_failure || !condition || condition()) {
                 break;
             }
         }
+        if (!_timeout.expired()) {
+            _ioloop.removeTimeout(_timeout);
+            _timeout.reset();
+        }
     }
     ASSERT(_stopped);
     _stopped = false;
     rethrow();
+    boost::any result(std::move(_stopArgs));
+    return result;
 }
 
 void AsyncTestCase::stopImpl() {
@@ -70,7 +72,8 @@ void AsyncHTTPTestCase::setUp() {
     _httpClient = getHTTPClient();
     _app = getApp();
     _httpServer = getHTTPServer();
-    _httpServer->listen(getHTTPPort(), "127.0.0.1");
+    _httpServer->listen(0, "127.0.0.1");
+    _port = _httpServer->getLocalPort();
 }
 
 void AsyncHTTPTestCase::tearDown() {
@@ -92,7 +95,7 @@ std::shared_ptr<HTTPClient> AsyncHTTPTestCase::getHTTPClient() {
 
 std::shared_ptr<HTTPServer> AsyncHTTPTestCase::getHTTPServer() {
     return std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
-                                        getHTTPServerXHeaders(), getHTTPServerSSLOption());
+                                        getHTTPServerXHeaders(), "", getHTTPServerSSLOption());
 }
 
 bool AsyncHTTPTestCase::getHTTPServerNoKeepAlive() const {
@@ -118,9 +121,10 @@ HTTPResponse AsyncHTTPSTestCase::fetchImpl(std::shared_ptr<HTTPRequest> request)
 }
 
 std::shared_ptr<SSLOption> AsyncHTTPSTestCase::getHTTPServerSSLOption() const {
-    auto sslOption = SSLOption::create(true);
-    sslOption->setKeyFile("test.key");
-    sslOption->setCertFile("test.crt");
+    SSLParams sslParams(true);
+    sslParams.setKeyFile("test.key");
+    sslParams.setCertFile("test.crt");
+    auto sslOption = SSLOption::create(sslParams);
     return sslOption;
 }
 
