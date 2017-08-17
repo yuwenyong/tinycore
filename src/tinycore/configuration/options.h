@@ -58,7 +58,7 @@ public:
         if (!has(name)) {
             ThrowException(KeyError, std::string("Unrecognized option ") + name);
         }
-        auto value = _vm[name];
+        auto &value = _vm[name];
         return value.as<ValueT>();
     }
 
@@ -122,9 +122,8 @@ protected:
 
     po::options_description composeOptions() const;
 
-    void helpCallback() const {
-        auto opts = composeOptions();
-        std::cout << opts << std::endl;
+    void helpCallback() {
+        std::cout << composeOptions() << std::endl;
         exit(1);
     }
 

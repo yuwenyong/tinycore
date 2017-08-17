@@ -168,3 +168,8 @@ BOOST_AUTO_TEST_CASE(TestMultiLine) {
                                       {"Foo",  "even more lines"}};
     BOOST_CHECK_EQUAL(collectValues, targetValues);
 }
+
+BOOST_AUTO_TEST_CASE(TestUnixTime) {
+    time_t timestamp = 1359312200;
+    BOOST_CHECK_EQUAL(HTTPUtil::formatTimestamp(timestamp), "Sun, 27 Jan 2013 18:43:20 GMT");
+}

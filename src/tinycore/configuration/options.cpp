@@ -42,7 +42,7 @@ void Options::praseEnvironment(const boost::function1<std::string, std::string> 
         po::store(po::parse_environment(opts, name_mapper), _vm);
     } else {
         po::store(po::parse_environment(opts, [](std::string name){
-            return name;
+            return "";
         }), _vm);
     }
     if (has("help")) {
