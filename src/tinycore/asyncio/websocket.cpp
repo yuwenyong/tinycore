@@ -554,16 +554,16 @@ void WebSocketClientConnection::writeMessage(const Byte *message, size_t length,
 
 void WebSocketClientConnection::readMessage(ReadCallbackType callback) {
     ASSERT(!_readCallback);
-    callback = StackContext::wrap<ReadResult>(std::move(callback));
+    callback = StackContext::wrap<boost::optional<ByteArray>>(std::move(callback));
     if (!_readQueue.empty()) {
-        ReadResult message = std::move(_readQueue[0]);
+        boost::optional<ByteArray> message = std::move(_readQueue[0]);
         _readQueue.pop_front();
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
         _ioloop->spawnCallback([callback = std::move(callback), message=std::move(message)]() {
             callback(std::move(message));
         });
 #else
-        _ioloop->spawnCallback(std::bind([](ReadCallbackType &callback, ReadResult &message) {
+        _ioloop->spawnCallback(std::bind([](ReadCallbackType &callback, boost::optional<ByteArray> &message) {
             callback(std::move(message));
         }, std::move(callback), std::move(message)));
 #endif
@@ -637,22 +637,23 @@ void WebSocketClientConnection::onHTTPResponse(HTTPResponse response) {
     if (_connectCallback) {
         ConnectCallbackType callback(std::move(_connectCallback));
         _connectCallback = nullptr;
-        std::exception_ptr error;
         if (response.getError()) {
+            _error = response.getError();
+        }
+        auto self = getSelf<WebSocketClientConnection>();
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            _ioloop->spawnCallback([callback = std::move(callback), error]() {
-                callback(error);
-            });
+        _ioloop->spawnCallback([callback = std::move(callback), self]() {
+            callback(std::move(self));
+        });
 #else
-            _ioloop->spawnCallback(std::bind([error](ConnectCallbackType &callback) {
-                callback(error);
+        _ioloop->spawnCallback(std::bind([self](ConnectCallbackType &callback) {
+                callback(std::move(self));
             }, std::move(callback)));
 #endif
-        }
     }
 }
 
-void WebSocketClientConnection::onMessage(ReadResult message) {
+void WebSocketClientConnection::onMessage(boost::optional<ByteArray> message) {
     if (_readCallback) {
         ReadCallbackType callback = std::move(_readCallback);
         _readCallback = nullptr;
@@ -661,7 +662,7 @@ void WebSocketClientConnection::onMessage(ReadResult message) {
             callback(std::move(message));
         });
 #else
-        _ioloop->spawnCallback(std::bind([](ReadCallbackType &callback, ReadResult &message) {
+        _ioloop->spawnCallback(std::bind([](ReadCallbackType &callback, boost::optional<ByteArray> &message) {
             callback(std::move(message));
         }, std::move(callback), std::move(message)));
 #endif

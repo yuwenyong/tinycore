@@ -16,7 +16,7 @@
 
 namespace po = boost::program_options;
 
-class TC_COMMON_API Options {
+class TC_COMMON_API OptionParser {
 public:
     template <typename T>
     struct IsVector: public std::false_type {
@@ -28,7 +28,7 @@ public:
 
     };
 
-    explicit Options(const std::string &caption)
+    explicit OptionParser(const std::string &caption)
             : _opts(caption) {
         define("version,v", "print version string");
         define("help,h", "display help message");
@@ -73,7 +73,7 @@ public:
         _parseCallbacks.emplace_back(std::forward<CallbackT>(calback));
     }
 
-    static Options * instance();
+    static OptionParser * instance();
 protected:
     template <typename ArgT>
     void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue,
@@ -138,6 +138,6 @@ protected:
     std::vector<std::function<void()>> _parseCallbacks;
 };
 
-#define sOptions Options::instance()
+#define sOptions OptionParser::instance()
 
 #endif //TINYCORE_OPTIONS_H

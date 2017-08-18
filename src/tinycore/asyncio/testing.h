@@ -25,18 +25,39 @@ struct GlobalFixture {
 };
 
 
-class TC_COMMON_API AsyncTestCase {
+class TC_COMMON_API TestCase {
+public:
+    virtual ~TestCase();
+
+    virtual void setUp();
+
+    virtual void tearDown();
+
+    virtual void handleException(std::exception_ptr error);
+
+    void rethrow() {
+        if (_failure) {
+            std::exception_ptr failure;
+            failure.swap(_failure);
+            std::rethrow_exception(failure);
+        }
+    }
+protected:
+    std::exception_ptr _failure;
+};
+
+
+class TC_COMMON_API AsyncTestCase: public TestCase {
 public:
     typedef std::function<bool ()> ConditionCallback;
 
     virtual ~AsyncTestCase();
-    virtual void setUp();
-    virtual void tearDown();
 
-    void handleException(std::exception_ptr error) {
-        _failure = std::move(error);
-        stop();
-    }
+    void setUp() override;
+
+    void tearDown() override;
+
+    void handleException(std::exception_ptr error) override;
 
     void stop() {
         _stopArgs.clear();
@@ -49,22 +70,13 @@ public:
         stopImpl();
     }
 
-    boost::any wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
-
-    template <typename T>
-    T waitResult(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
+    template <typename ResultT>
+    ResultT wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
         boost::any result = wait(std::move(timeout), std::move(condition));
-        return boost::any_cast<T>(result);
+        return boost::any_cast<ResultT>(result);
     }
 
-
-    void rethrow() {
-        if (_failure) {
-            std::exception_ptr failure;
-            failure.swap(_failure);
-            std::rethrow_exception(failure);
-        }
-    }
+    boost::any wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
 protected:
     const IOLoop* ioloop() const {
         return &_ioloop;
@@ -84,7 +96,6 @@ protected:
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
-    std::exception_ptr _failure;
     boost::any _stopArgs;
     Timeout _timeout;
 };

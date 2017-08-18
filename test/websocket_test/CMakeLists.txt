@@ -1,0 +1,4 @@
+
+add_executable(websocket_test websocket_test.cpp)
+add_dependencies(websocket_test tinycore)
+target_link_libraries(websocket_test tinycore)

@@ -7,6 +7,23 @@
 #include "tinycore/debugging/trace.h"
 
 
+TestCase::~TestCase() {
+
+}
+
+void TestCase::setUp() {
+
+}
+
+void TestCase::tearDown() {
+
+}
+
+void TestCase::handleException(std::exception_ptr error) {
+    _failure = error;
+}
+
+
 AsyncTestCase::~AsyncTestCase() {
 
 }
@@ -18,6 +35,11 @@ void AsyncTestCase::setUp() {
 void AsyncTestCase::tearDown() {
     _ioloop.clearCurrent();
     rethrow();
+}
+
+void AsyncTestCase::handleException(std::exception_ptr error) {
+    TestCase::handleException(error);
+    stop();
 }
 
 boost::any AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
@@ -86,7 +108,7 @@ HTTPResponse AsyncHTTPTestCase::fetchImpl(std::shared_ptr<HTTPRequest> request) 
     _httpClient->fetch(std::move(request), [this](HTTPResponse response){
         stop(std::move(response));
     });
-    return waitResult<HTTPResponse>();
+    return wait<HTTPResponse>();
 }
 
 std::shared_ptr<HTTPClient> AsyncHTTPTestCase::getHTTPClient() {

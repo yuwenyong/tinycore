@@ -28,7 +28,7 @@ public:
         _ioloop.addTimeout(0.03f, [this]() {
             stop();
         });
-        wait(0.1f);
+        wait(0.15f);
     }
 };
 

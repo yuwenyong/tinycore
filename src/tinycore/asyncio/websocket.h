@@ -7,7 +7,6 @@
 
 #include "tinycore/common/common.h"
 #include <boost/optional.hpp>
-#include <boost/variant.hpp>
 #include "tinycore/asyncio/httpclient.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/web.h"
@@ -258,15 +257,13 @@ class TC_COMMON_API WebSocketClientConnection: public _HTTPConnection {
 public:
     friend class WebSocketClientProtocol;
 
-    using ConnectResult = boost::variant<std::shared_ptr<WebSocketClientConnection>, std::exception_ptr>;
-    using ConnectCallbackType = std::function<void (ConnectResult)>;
-    using ReadResult = boost::optional<ByteArray>;
-    using ReadCallbackType = std::function<void (ReadResult)>;
+    using ConnectCallbackType = std::function<void (std::shared_ptr<WebSocketClientConnection>)>;
+    using ReadCallbackType = std::function<void (boost::optional<ByteArray>)>;
     using SimpleJSONType = boost::property_tree::ptree;
 
     WebSocketClientConnection(IOLoop *ioloop, std::shared_ptr<HTTPRequest> request, ConnectCallbackType callback)
             : _HTTPConnection(ioloop, nullptr, std::move(request), nullptr, 104857600)
-            , _connectCallback(StackContext::wrap<ConnectResult>(std::move(callback))) {
+            , _connectCallback(StackContext::wrap<std::shared_ptr<WebSocketClientConnection>>(std::move(callback))) {
 
     }
 
@@ -276,6 +273,10 @@ public:
 
     std::shared_ptr<BaseIOStream> getStream() const {
         return _stream;
+    }
+
+    std::exception_ptr getError() const {
+        return _error;
     }
 
     void close();
@@ -314,7 +315,7 @@ protected:
 
     void onHTTPResponse(HTTPResponse response);
 
-    void onMessage(ReadResult message);
+    void onMessage(boost::optional<ByteArray> message);
 
     void onPong(ByteArray data) {
 
@@ -322,9 +323,10 @@ protected:
 
     ConnectCallbackType _connectCallback;
     ReadCallbackType _readCallback;
-    std::deque<ReadResult> _readQueue;
+    std::deque<boost::optional<ByteArray>> _readQueue;
     std::string _key;
     std::unique_ptr<WebSocketClientProtocol> _protocol;
+    std::exception_ptr _error;
 };
 
 

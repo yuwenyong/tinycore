@@ -31,9 +31,9 @@ class LogUtil {
 public:
     static void initGlobalLoggers();
 
-    static void enablePrettyLogging(const Options *options);
+    static void enablePrettyLogging(const OptionParser *options);
 
-    static void defineLoggingOptions(Options *options);
+    static void defineLoggingOptions(OptionParser *options);
 };
 
 

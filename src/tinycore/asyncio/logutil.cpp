@@ -16,7 +16,7 @@ void LogUtil::initGlobalLoggers() {
     gGenLog = Logging::getLogger("general");
 }
 
-void LogUtil::enablePrettyLogging(const Options *options) {
+void LogUtil::enablePrettyLogging(const OptionParser *options) {
     const auto &logLevel = options->get<std::string>("log_level");
     if (logLevel == "none") {
         return;
@@ -37,11 +37,11 @@ void LogUtil::enablePrettyLogging(const Options *options) {
     }
 }
 
-void LogUtil::defineLoggingOptions(Options *options) {
+void LogUtil::defineLoggingOptions(OptionParser *options) {
 #ifdef NDEBUG
     options->define<std::string>("log_level", "Set the log level", std::string("info"), {}, "logging");
 #else
-    options->define<std::string>("log_level", "Set the log level", std::string("trace"), {}, "logging");
+    options->define<std::string>("log_level", "Set the log level", std::string("debug"), {}, "logging");
 #endif
     options->define("log_to_console", "Send log output to stderr", "logging");
     options->define<std::string>("log_file_prefix", "Path prefix for log files", {}, {}, "logging");
