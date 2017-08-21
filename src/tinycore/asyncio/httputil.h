@@ -51,6 +51,7 @@ public:
     }
 
     void add(const std::string &name, const std::string &value);
+    
     StringVector getList(const std::string &name) const;
 
     void getAll(const CallbackType &callback) const {
@@ -98,6 +99,8 @@ public:
     }
 
     void parseLines(const std::string &headers);
+
+    std::string toString() const;
 
     static std::unique_ptr<HTTPHeaders> parse(const std::string &headers) {
         auto h = HTTPHeaders::create();

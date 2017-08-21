@@ -30,6 +30,31 @@ const char* _HTTPError::what() const noexcept {
 }
 
 
+std::string HTTPResponse::toString() const {
+    StringVector args;
+    args.emplace_back(String::format("code=%d", _code));
+    args.emplace_back(String::format("reason=\"%s\"", _reason.c_str()));
+    args.emplace_back(String::format("headers=\"%s\"", _headers.toString().c_str()));
+    if (_body) {
+        args.emplace_back(String::format("body=\"%s\"", _body->c_str()));
+    }
+    args.emplace_back(String::format("effectiveURL=\"%s\"", _effectiveURL.c_str()));
+    if (_error) {
+        try {
+            std::rethrow_exception(_error);
+        } catch (std::exception &e) {
+            args.emplace_back(String::format("error=\"%s\"", e.what()));
+        } catch (...) {
+            args.emplace_back(String::format("error=\"Unknown exception\""));
+        }
+    }
+    auto elapse = std::chrono::duration_cast<std::chrono::microseconds>(_requestTime);
+    double requestTime = elapse.count() / 1000000 + elapse.count() % 1000000 / 1000000.0;
+    args.emplace_back(String::format("requestTime=\"%0.6fs\"", requestTime));
+    return "HTTPResponse(" + boost::join(args, ",") + ")";
+}
+
+
 HTTPClient::HTTPClient(IOLoop *ioloop, StringMap hostnameMapping, size_t maxBufferSize)
         : _ioloop(ioloop ? ioloop : IOLoop::current())
         , _hostnameMapping(std::move(hostnameMapping))

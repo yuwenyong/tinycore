@@ -439,6 +439,8 @@ public:
             std::rethrow_exception(_error);
         }
     }
+
+    std::string toString() const;
 protected:
     std::shared_ptr<HTTPRequest> _request;
     int _code{200};

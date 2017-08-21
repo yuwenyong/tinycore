@@ -82,6 +82,23 @@ void HTTPHeaders::parseLines(const std::string &headers) {
     }
 }
 
+std::string HTTPHeaders::toString() const {
+    std::string headers = "{";
+    for (auto &nameValue: _items) {
+        if (headers.size() == 1) {
+            headers.append(1, '\'');
+        } else {
+            headers.append(", \'");
+        }
+        headers.append(nameValue.first);
+        headers.append("\': \'");
+        headers.append(nameValue.second);
+        headers.append(", \'");
+    }
+    headers.append(1, '}');
+    return headers;
+}
+
 std::string HTTPHeaders::normalizeName(const std::string &name) {
     if (boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
         return name;
