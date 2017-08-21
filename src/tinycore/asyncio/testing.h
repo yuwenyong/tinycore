@@ -134,11 +134,6 @@ protected:
         return _port;
     }
 
-    unsigned short bindUnusedPort() const {
-        static unsigned short nextPort = 10000;
-        return ++nextPort;
-    }
-
     unsigned short _port;
     std::shared_ptr<HTTPClient> _httpClient;
     std::unique_ptr<Application> _app;

@@ -15,14 +15,14 @@ class HelloHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         write("Hello");
     }
 };
 
 
-template<typename Base>
-class TestIOStreamWebMixin: public Base {
+template<typename BaseT>
+class TestIOStreamWebMixin: public BaseT {
 public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
@@ -34,42 +34,42 @@ public:
     void testConnectionClosed() {
         HTTPHeaders headers;
         headers["Connection"] = "close";
-        HTTPResponse response = Base::fetch("/", ARG_headers=headers);
+        HTTPResponse response = this->fetch("/", ARG_headers=headers);
         response.rethrow();
     }
 
     void testReadUntilClose() {
-        auto stream = Base::makeClientIOStream();
-        stream->connect("localhost", Base::getHTTPPort(), [this]() {
-            Base::stop();
+        auto stream = this->makeClientIOStream();
+        stream->connect("localhost", this->getHTTPPort(), [this]() {
+            this->stop();
         });
-        Base::wait();
+        this->wait();
         const char *line = "GET / HTTP/1.0\r\n\r\n";
         stream->write((const Byte*)line, strlen(line));
         stream->readUntilClose([this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        ByteArray bytes = Base::template waitResult<ByteArray>();
+        ByteArray bytes = this->template wait<ByteArray>();
         std::string readString((char *)bytes.data(), bytes.size());
         BOOST_CHECK(boost::starts_with(readString, "HTTP/1.0 200"));
         BOOST_CHECK(boost::ends_with(readString, "Hello"));
     }
 
     void testReadZeroBytes() {
-        auto stream = Base::makeClientIOStream();
-        stream->connect("localhost", Base::getHTTPPort(), [this] {
-            Base::stop();
+        auto stream = this->makeClientIOStream();
+        stream->connect("localhost", this->getHTTPPort(), [this] {
+            this->stop();
         });
-        Base::wait();
+        this->wait();
         const char * data = "GET / HTTP/1.0\r\n\r\n";
         stream->write((const Byte *)data, strlen(data));
 
         // normal read
         do  {
             stream->readBytes(9, [this](ByteArray d){
-                Base::stop(std::move(d));
+                this->stop(std::move(d));
             });
-            ByteArray bytes = Base::template waitResult<ByteArray>();
+            ByteArray bytes = this->template wait<ByteArray>();
             std::string readString((char *)bytes.data(), bytes.size());
             BOOST_REQUIRE_EQUAL(readString, "HTTP/1.0 ");
         } while (false);
@@ -77,18 +77,18 @@ public:
         // zero bytes
         do {
             stream->readBytes(0, [this](ByteArray d){
-                Base::stop(std::move(d));
+                this->stop(std::move(d));
             });
-            ByteArray bytes = Base::template waitResult<ByteArray>();
+            ByteArray bytes = this->template wait<ByteArray>();
             BOOST_REQUIRE_EQUAL(bytes.size(), 0);
         } while (false);
 
         // another normal read
         do {
             stream->readBytes(3, [this](ByteArray d){
-                Base::stop(std::move(d));
+                this->stop(std::move(d));
             });
-            ByteArray bytes = Base::template waitResult<ByteArray>();
+            ByteArray bytes = this->template wait<ByteArray>();
             std::string readString((char *)bytes.data(), bytes.size());
             BOOST_REQUIRE_EQUAL(readString, "200");
         } while (false);
@@ -97,35 +97,35 @@ public:
     }
 
     void testWriteWhileConnecting() {
-        auto stream = Base::makeClientIOStream();
+        auto stream = this->makeClientIOStream();
         std::vector<bool> connected(1, false);
-        stream->connect("localhost", Base::getHTTPPort(), [this, &connected]() {
+        stream->connect("localhost", this->getHTTPPort(), [this, &connected]() {
             connected[0] = true;
-            Base::stop();
+            this->stop();
         });
 
         std::vector<bool> written(1, false);
         const char * line = "GET / HTTP/1.0\r\nConnection: close\r\n\r\n";
         stream->write((const Byte *)line, strlen(line), [this, &written]() {
             written[0] = true;
-            Base::stop();
+            this->stop();
         });
         BOOST_CHECK(!connected[0]);
-        Base::wait(5.0f, [&connected, &written]()->bool {
+        this->wait(5.0f, [&connected, &written]()->bool {
             return connected[0] && written[0];
         });
         stream->readUntilClose([this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        ByteArray bytes = Base::template waitResult<ByteArray>();
+        ByteArray bytes = this->template wait<ByteArray>();
         std::string data((char *)bytes.data(), bytes.size());
         BOOST_CHECK(boost::ends_with(data, "Hello"));
     }
 };
 
 
-template <typename Base>
-class TestIOStreamMixin: public Base {
+template <typename BaseT>
+class TestIOStreamMixin: public BaseT {
 public:
     using IOStreamPair = std::pair<std::shared_ptr<BaseIOStream>, std::shared_ptr<BaseIOStream>>;
 
@@ -151,28 +151,52 @@ public:
         };
 
         IOStreamPair streams;
-        auto port = Base::getUnusedPort();
-        auto server = std::make_shared<_Server>(Base::ioloop(), Base::getServerSSLOption(), this, streams);
-        server->listen(port);
-        auto clientStream = Base::makeClientIOStream(readChunkSize);
+        auto server = std::make_shared<_Server>(this->ioloop(), this->getServerSSLOption(), this, streams);
+        server->listen(0);
+        auto port = server->getLocalPort();
+        auto clientStream = this->makeClientIOStream(readChunkSize);
         clientStream->connect("127.0.0.1", port, [this, &clientStream, &streams] {
             streams.second = std::move(clientStream);
-            Base::stop();
+            this->stop();
         });
-        Base::wait(5, [&streams]() {
+        this->wait(5, [&streams]() {
             return streams.first && streams.second;
         });
         server->stop();
         return streams;
     }
 
+    void testStreamingCallbackWithDataInBuffer() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        const char *line = "abcd\r\nefgh";
+        client->write((const Byte *)line, strlen(line));
+        server->readUntil("\r\n", [this](ByteArray data) {
+            this->stop(std::move(data));
+        });
+        ByteArray data = this->template wait<ByteArray>();
+        BOOST_CHECK_EQUAL(String::toString(data), "abcd\r\n");
+        server->readUntilClose([this](ByteArray) {
+            BOOST_CHECK(false);
+        }, [this](ByteArray data) {
+           this->stop(std::move(data));
+        });
+        this->ioloop()->addTimeout(0.01f, [this]() {
+            this->stop();
+        });
+        data = this->template wait<ByteArray>();
+        BOOST_CHECK_EQUAL(String::toString(data), "efgh");
+        server->close();
+        client->close();
+    }
+
     void testWriteZeroBytes() {
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
         server->write(nullptr, 0, [this]() {
-            Base::stop();
+            this->stop();
         });
-        Base::wait();
+        this->wait();
         BOOST_CHECK(!server->writing());
 
         server->close();
@@ -181,28 +205,55 @@ public:
 
     void testConnectionRefused() {
         bool connectCalled = false;
-        BaseIOStream::SocketType socket(Base::ioloop()->getService());
-        std::shared_ptr<IOStream> stream = IOStream::create(std::move(socket), Base::ioloop());
+        BaseIOStream::SocketType socket(this->ioloop()->getService());
+        std::shared_ptr<IOStream> stream = IOStream::create(std::move(socket), this->ioloop());
         stream->setCloseCallback([this](){
-            Base::stop();
+            this->stop();
         });
-        stream->connect("localhost", Base::getUnusedPort(), [&connectCalled](){
+        stream->connect("localhost", this->getUnusedPort(), [&connectCalled](){
             connectCalled = true;
         });
-        Base::wait();
+        this->wait();
         BOOST_CHECK(!connectCalled);
         BOOST_CHECK(stream->getError());
     }
 
     void testGaierror() {
-        BaseIOStream::SocketType socket(Base::ioloop()->getService());
-        std::shared_ptr<IOStream> stream = IOStream::create(std::move(socket), Base::ioloop());
+        BaseIOStream::SocketType socket(this->ioloop()->getService());
+        std::shared_ptr<IOStream> stream = IOStream::create(std::move(socket), this->ioloop());
         stream->setCloseCallback([this](){
-            Base::stop();
+            this->stop();
         });
         stream->connect("an invalid domain", 54321);
-        Base::wait();
+        this->wait();
         BOOST_CHECK(stream->getError());
+    }
+
+    void testReadCallbackError() {
+        std::shared_ptr<BaseIOStream> server, client;
+        std::tie(server, client) = makeIOStreamPair();
+        server->setCloseCallback([this]() {
+            this->stop();
+        });
+        {
+            NullContext ctx;
+            server->readBytes(1, [](ByteArray data) {
+               ThrowException(ZeroDivisionError, "");
+            });
+        }
+        const char *line = "1";
+        client->write((const Byte *)line, strlen(line));
+        this->wait();
+        BOOST_CHECK(server->getError());
+        try {
+            std::rethrow_exception(server->getError());
+        } catch (ZeroDivisionError &e) {
+
+        } catch (...) {
+            BOOST_CHECK(false);
+        }
+        server->close();
+        client->close();
     }
 
     void testStreamingCallback() {
@@ -213,27 +264,27 @@ public:
         server->readBytes(6, [this, &finalCalled] (ByteArray data) {
             BOOST_CHECK(data.empty());
             finalCalled.push_back(true);
-            Base::stop();
+            this->stop();
         }, [this, &chunks] (ByteArray data) {
             chunks.emplace_back(std::move(data));
-            Base::stop();
+            this->stop();
         });
         const char *data1 = "1234", *data2 = "5678", *data3 = "56";
         client->write((const Byte *)data1, strlen(data1));
-        Base::wait(5, [&chunks]() {
+        this->wait(5, [&chunks]() {
             return !chunks.empty();
         });
         client->write((const Byte *)data2, strlen(data2));
-        Base::wait(5, [&finalCalled]() {
+        this->wait(5, [&finalCalled]() {
             return !finalCalled.empty();
         });
         targetChunks.emplace_back((const Byte *)data1, (const Byte *)data1 + strlen(data1));
         targetChunks.emplace_back((const Byte *)data3, (const Byte *)data3 + strlen(data3));
         BOOST_CHECK_EQUAL(chunks, targetChunks);
         server->readBytes(2, [this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        ByteArray data = Base::template waitResult<ByteArray>();
+        ByteArray data = this->template wait<ByteArray>();
         ByteArray targetData {'7', '8'};
         BOOST_CHECK_EQUAL(data, targetData);
         server->close();
@@ -246,18 +297,18 @@ public:
         std::vector<ByteArray> chunks, targetChunks;
         client->readUntilClose([this, &chunks](ByteArray data) {
             chunks.emplace_back(std::move(data));
-            Base::stop();
+            this->stop();
         }, [this, &chunks](ByteArray data) {
             chunks.emplace_back(std::move(data));
-            Base::stop();
+            this->stop();
         });
         const char *data1 = "1234", *data2 = "5678";
         server->write((const Byte *)data1, strlen(data1));
-        Base::wait();
+        this->wait();
         server->write((const Byte *)data2, strlen(data2));
-        Base::wait();
+        this->wait();
         server->close();
-        Base::wait();
+        this->wait();
         targetChunks.emplace_back((const Byte *)data1, (const Byte *)data1 + strlen(data1));
         targetChunks.emplace_back((const Byte *)data2, (const Byte *)data2 + strlen(data2));
         targetChunks.emplace_back();
@@ -269,7 +320,7 @@ public:
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
         client->setCloseCallback([this]() {
-            Base::stop();
+            this->stop();
         });
         const char *data1 = "12";
         server->write((const Byte *)data1, strlen(data1));
@@ -281,7 +332,7 @@ public:
             });
             server->close();
         });
-        Base::wait();
+        this->wait();
         targetChunks.emplace_back(1, (Byte)'1');
         targetChunks.emplace_back(1, (Byte)'2');
         BOOST_CHECK_EQUAL(chunks, targetChunks);
@@ -294,19 +345,19 @@ public:
         ByteArray data(512, (Byte)'A');
         server->write(data.data(), data.size());
         client->readBytes(256, [this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        data = Base::template waitResult<ByteArray>();
+        data = this->template wait<ByteArray>();
         BOOST_CHECK_EQUAL(data, ByteArray(256, (Byte)'A'));
         server->close();
-        Base::ioloop()->addTimeout(0.01f, [this]() {
-            Base::stop();
+        this->ioloop()->addTimeout(0.01f, [this]() {
+            this->stop();
         });
-        Base::wait();
+        this->wait();
         client->readBytes(256, [this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        data = Base::template waitResult<ByteArray>();
+        data = this->template wait<ByteArray>();
         BOOST_CHECK_EQUAL(data, ByteArray(256, (Byte)'A'));
         client->close();
     }
@@ -315,18 +366,18 @@ public:
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
         client->setCloseCallback([this]() {
-            Base::stop();
+            this->stop();
         });
         const char *line = "1234";
         server->write((const Byte *)line, strlen(line), [&server] () {
             server->close();
         });
 //        server->close();
-        Base::wait(boost::none);
+        this->wait(boost::none);
         client->readUntilClose([this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        ByteArray data = Base::template waitResult<ByteArray>();
+        ByteArray data = this->template wait<ByteArray>();
         BOOST_CHECK_EQUAL(String::toString(data), line);
         server->close();
         client->close();
@@ -336,21 +387,21 @@ public:
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
         client->setCloseCallback([this]() {
-            Base::stop();
+            this->stop();
         });
         const char *line = "1234";
         server->write((const Byte *)line, strlen(line), [&server](){
             server->close();
         });
 //        server->close();
-        Base::wait();
+        this->wait();
         std::vector<ByteArray> streamingChunks;
         client->readUntilClose([this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         }, [this, &streamingChunks](ByteArray data) {
             streamingChunks.push_back(std::move(data));
         });
-        ByteArray data = Base::template waitResult<ByteArray>();
+        ByteArray data = this->template wait<ByteArray>();
         BOOST_CHECK_EQUAL(data.size(), 0);
         std::string streamingData;
         for (auto &streamingChunk: streamingChunks) {
@@ -373,9 +424,9 @@ public:
         const char *end = "\r\n";
         client->write((const Byte *)end, strlen(end));
         server->readUntil(end, [this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        data = Base::template waitResult<ByteArray>();
+        data = this->template wait<ByteArray>();
         BOOST_CHECK_EQUAL(data.size(), 1024 * 4096 + 2);
         server->close();
         client->close();
@@ -389,17 +440,17 @@ public:
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
         client->setCloseCallback([this]() {
-            Base::stop();
+            this->stop();
         });
         server->write((const Byte *)ok, strlen(ok));
         client->readUntil("\r\n", [this](ByteArray data) {
-            Base::stop(std::move(data));
+            this->stop(std::move(data));
         });
-        std::string res = String::toString(Base::template waitResult<ByteArray>());
+        std::string res = String::toString(this->template wait<ByteArray>());
         BOOST_CHECK_EQUAL(res, ok);
         server->close();
         client->readUntil("\r\n", [](ByteArray data) {});
-        auto result = Base::wait();
+        auto result = this->wait();
         BOOST_CHECK(result.empty());
         server->close();
         client->close();
@@ -420,8 +471,9 @@ class TestIOStreamWebHTTPSImpl: public AsyncHTTPSTestCase {
 public:
     std::shared_ptr<BaseIOStream> makeClientIOStream() {
         BaseIOStream::SocketType socket(_ioloop.getService());
-        auto sslOption = SSLOption::create(false);
-        sslOption->setVerifyMode(SSLVerifyMode::CERT_NONE);
+        SSLParams sslParams(false);
+        sslParams.setVerifyMode(SSLVerifyMode::CERT_NONE);
+        auto sslOption = SSLOption::create(sslParams);
         return SSLIOStream::create(std::move(socket), std::move(sslOption), &_ioloop);
     }
 };
@@ -448,16 +500,18 @@ class TestIOStreamSSLImpl: public AsyncTestCase {
 public:
     std::shared_ptr<BaseIOStream> makeClientIOStream(size_t readChunkSize=0) {
         BaseIOStream::SocketType socket(_ioloop.getService());
-        auto sslOption = SSLOption::create(false);
-        sslOption->setVerifyMode(SSLVerifyMode::CERT_NONE);
+        SSLParams sslParams(false);
+        sslParams.setVerifyMode(SSLVerifyMode::CERT_NONE);
+        auto sslOption = SSLOption::create(sslParams);
         return SSLIOStream::create(std::move(socket), std::move(sslOption), &_ioloop, DEFAULT_MAX_BUFFER_SIZE,
                                    readChunkSize != 0 ? readChunkSize : DEFAULT_READ_CHUNK_SIZE);
     }
 
     std::shared_ptr<SSLOption> getServerSSLOption() const {
-        auto sslOption = SSLOption::create(true);
-        sslOption->setKeyFile("test.key");
-        sslOption->setCertFile("test.crt");
+        SSLParams sslParams(true);
+        sslParams.setKeyFile("test.key");
+        sslParams.setCertFile("test.crt");
+        auto sslOption = SSLOption::create(sslParams);
         return sslOption;
     }
 };
@@ -478,9 +532,11 @@ TINYCORE_TEST_CASE(TestIOStreamWebHTTPS, testReadUntilClose)
 TINYCORE_TEST_CASE(TestIOStreamWebHTTPS, testReadZeroBytes)
 TINYCORE_TEST_CASE(TestIOStreamWebHTTPS, testWriteWhileConnecting)
 
+TINYCORE_TEST_CASE(TestIOStream, testStreamingCallbackWithDataInBuffer)
 TINYCORE_TEST_CASE(TestIOStream, testWriteZeroBytes)
 TINYCORE_TEST_CASE(TestIOStream, testConnectionRefused)
 TINYCORE_TEST_CASE(TestIOStream, testGaierror)
+TINYCORE_TEST_CASE(TestIOStream, testReadCallbackError)
 TINYCORE_TEST_CASE(TestIOStream, testStreamingCallback)
 TINYCORE_TEST_CASE(TestIOStream, testStreamingUntilClose)
 TINYCORE_TEST_CASE(TestIOStream, testDelayedCloseCallback)
@@ -490,9 +546,11 @@ TINYCORE_TEST_CASE(TestIOStream, testStreamingReadUntilCloseAfterClose)
 TINYCORE_TEST_CASE(TestIOStream, testLargeReadUntil)
 TINYCORE_TEST_CASE(TestIOStream, testCloseCallbackWithPendingRead)
 
+TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingCallbackWithDataInBuffer)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testWriteZeroBytes)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testConnectionRefused)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testGaierror)
+TINYCORE_TEST_CASE(TestIOStreamSSL, testReadCallbackError)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingCallback)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testStreamingUntilClose)
 TINYCORE_TEST_CASE(TestIOStreamSSL, testDelayedCloseCallback)
