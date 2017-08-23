@@ -214,7 +214,7 @@ public:
 
     ~HTTPServerRequest();
 
-    bool supportsHTTP1_1() const {
+    bool supportsHTTP11() const {
         return _version == "HTTP/1.1";
     }
 

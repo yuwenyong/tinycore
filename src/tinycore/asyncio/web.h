@@ -477,7 +477,7 @@ protected:
 class TC_COMMON_API ChunkedTransferEncoding: public OutputTransform {
 public:
     explicit ChunkedTransferEncoding(std::shared_ptr<HTTPServerRequest> request) {
-        _chunking = request->supportsHTTP1_1();
+        _chunking = request->supportsHTTP11();
     }
 
     void transformFirstChunk(int &statusCode, HTTPHeaders &headers, ByteArray &chunk, bool finishing) override;

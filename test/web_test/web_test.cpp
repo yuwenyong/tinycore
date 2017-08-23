@@ -16,7 +16,7 @@ class SetCookieHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("str", "asdf");
         setCookie("unicode", "qwer");
         setCookie("bytes", "zxcv");
@@ -28,7 +28,7 @@ class GetCookieHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         write(getCookie("foo", "default"));
     }
 };
@@ -38,7 +38,7 @@ class SetCookieDomainHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("unicode_args", "blah", "foo.com", nullptr, "/foo");
     }
 };
@@ -48,7 +48,7 @@ class SetCookieSpecialCharHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("equals", "a=b");
         setCookie("semicolon", "a;b");
         setCookie("quote", "a\"b");
@@ -60,7 +60,7 @@ class SetCookieOverwriteHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("a", "b", "example.com");
         setCookie("c", "d", "example.com");
         setCookie("a", "e");
@@ -172,7 +172,7 @@ public:
         _test = boost::any_cast<ConnectionCloseTest *>(args["test"]);
     }
 
-    void onGet(StringVector args) override;
+    void onGet(const StringVector &args) override;
     void onConnectionClose() override;
 protected:
     ConnectionCloseTest *_test;
@@ -218,7 +218,7 @@ protected:
 };
 
 
-void ConnectionCloseHandler::onGet(StringVector args) {
+void ConnectionCloseHandler::onGet(const StringVector &args) {
     Asynchronous()
     _test->onHandlerWaiting();
 }
@@ -232,7 +232,7 @@ class EchoHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         Document doc;
         Document::AllocatorType &a = doc.GetAllocator();
         doc.SetObject();
@@ -381,7 +381,7 @@ class OptionalPathHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string path;
         if (!args.empty()) {
             path = std::move(args[0]);
@@ -399,7 +399,7 @@ class FlowControlHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         Asynchronous()
         write("1");
         flush(false, std::bind(&FlowControlHandler::step2, this));
@@ -421,7 +421,7 @@ class MultiHeaderHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setHeader("x-overwrite", "1");
         setHeader("x-overwrite", 2);
         addHeader("x-multi", 3);
@@ -430,11 +430,11 @@ public:
 };
 
 
-class TestRedirectHandler: public RequestHandler {
+class _RedirectHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string permanent, status;
         permanent = getArgument("permanent", "");
         status = getArgument("status", "");
@@ -453,7 +453,7 @@ class EmptyFlushCallbackHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         Asynchronous()
         flush(false, [this]() {
             step2();
@@ -489,7 +489,7 @@ class HeaderInjectHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         try {
             setHeader("X-Foo", "foo\r\nX-Bar: baz");
             ThrowException(Exception, "Didn't get expected exception");
@@ -510,7 +510,7 @@ public:
         Application::HandlersType handlers = {
                 url<OptionalPathHandler>(R"(/optional_path/(.+)?)", "optional_path"),
                 url<MultiHeaderHandler>("/multi_header"),
-                url<TestRedirectHandler>("/redirect"),
+                url<_RedirectHandler>("/redirect"),
                 url<HeaderInjectHandler>("/header_injection"),
                 url<FlowControlHandler>("/flow_control"),
                 url<EmptyFlushCallbackHandler>("/empty_flush"),
@@ -614,7 +614,7 @@ class DefaultHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string status = getArgument("status", "");
         if (!status.empty()) {
             ThrowException(HTTPError, std::stoi(status));
@@ -629,7 +629,7 @@ class WriteErrorHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string status = getArgument("status", "");
         if (!status.empty()) {
             sendError(std::stoi(status));
@@ -657,7 +657,7 @@ class FailedWriteErrorHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         ThrowException(ZeroDivisionError, "integer division or modulo by zero");
     }
 
@@ -732,7 +732,7 @@ public:
     public:
         using RequestHandler::RequestHandler;
 
-        void onGet(StringVector args) override {
+        void onGet(const StringVector &args) override {
             setHeader("h1", "foo");
             setHeader("h2", "bar");
             clearHeader("h1");
@@ -770,7 +770,7 @@ public:
     public:
         using RequestHandler::RequestHandler;
 
-        void onGet(StringVector args) override {
+        void onGet(const StringVector &args) override {
             setHeader("Content-Language", "en_US");
             write("hello");
         }

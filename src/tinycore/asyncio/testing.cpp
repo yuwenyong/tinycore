@@ -117,7 +117,7 @@ std::shared_ptr<HTTPClient> AsyncHTTPTestCase::getHTTPClient() {
 
 std::shared_ptr<HTTPServer> AsyncHTTPTestCase::getHTTPServer() {
     return std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
-                                        getHTTPServerXHeaders(), "", getHTTPServerSSLOption());
+                                        getHTTPServerXHeaders(), getHTTPServerProtocol(), getHTTPServerSSLOption());
 }
 
 bool AsyncHTTPTestCase::getHTTPServerNoKeepAlive() const {
@@ -126,6 +126,10 @@ bool AsyncHTTPTestCase::getHTTPServerNoKeepAlive() const {
 
 bool AsyncHTTPTestCase::getHTTPServerXHeaders() const {
     return false;
+}
+
+std::string AsyncHTTPTestCase::getHTTPServerProtocol() const {
+    return "";
 }
 
 std::shared_ptr<SSLOption> AsyncHTTPTestCase::getHTTPServerSSLOption() const {

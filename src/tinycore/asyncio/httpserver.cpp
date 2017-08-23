@@ -135,7 +135,7 @@ void HTTPConnection::finishRequest() {
         if (!connectionHeader.empty()) {
             boost::to_lower(connectionHeader);
         }
-        if (_request->supportsHTTP1_1()) {
+        if (_request->supportsHTTP11()) {
             disconnect = connectionHeader == "close";
         } else if (headers->has("Content-Length")
                    || _request->getMethod() == "HEAD"
@@ -324,7 +324,7 @@ std::string HTTPServerRequest::dump() const {
     argsList.emplace_back("uri=" + _uri);
     argsList.emplace_back("version=" + _version);
     argsList.emplace_back("remoteIp=" + _remoteIp);
-    argsList.emplace_back("body=" + std::string((const char *)_body.data(), _body.size()));
+    argsList.emplace_back("body=" + _body);
     std::string args = boost::join(argsList, ",");
     StringVector headersList;
     _headers->getAll([&headersList](const std::string &name, const std::string &value){

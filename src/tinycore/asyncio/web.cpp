@@ -88,7 +88,7 @@ void RequestHandler::clear() {
             {"Date", HTTPUtil::formatTimestamp(time(nullptr))},
     });
     setDefaultHeaders();
-    if (!_request->supportsHTTP1_1()) {
+    if (!_request->supportsHTTP11()) {
         if (_request->getHTTPHeaders()->get("Connection") == "Keep-Alive") {
             setHeader("Connection", "Keep-Alive");
         }
@@ -621,7 +621,7 @@ void FallbackHandler::prepare() {
 
 
 GZipContentEncoding::GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request) {
-    if (request->supportsHTTP1_1()) {
+    if (request->supportsHTTP11()) {
         auto headers = request->getHTTPHeaders();
         std::string acceptEncoding = headers->get("Accept-Encoding");
         _gzipping = acceptEncoding.find("gzip") != std::string::npos;

@@ -123,6 +123,7 @@ public:
     virtual std::unique_ptr<Application> getApp() const =0;
     virtual bool getHTTPServerNoKeepAlive() const;
     virtual bool getHTTPServerXHeaders() const;
+    virtual std::string getHTTPServerProtocol() const;
     virtual std::shared_ptr<SSLOption> getHTTPServerSSLOption() const;
     virtual std::string getProtocol() const;
 
