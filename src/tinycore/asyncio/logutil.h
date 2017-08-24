@@ -20,6 +20,7 @@
 #define SYS_WEBSOCKETHANDLER_COUNT          "TinyCore.WebSocketHandler.Count"
 #define SYS_HTTPCLIENT_COUNT                "TinyCore.HTTPClient.Count"
 #define SYS_HTTPCLIENTCONNECTION_COUNT      "TinyCore.HTTPClientConnection.Count"
+#define SYS_WEBSOCKETCLIENTCONNECTION_COUNT "TinyCore.WebSocketClientConnection.Count"
 
 
 extern Logger *gAccessLog;

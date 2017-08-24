@@ -375,19 +375,18 @@ void _HTTPConnection::onHeaders(ByteArray data) {
     }
     const boost::regex firstLinePattern("HTTP/1.[01] ([0-9]+) ([^\r]*).*");
     boost::smatch match;
-    if (boost::regex_match(firstLine, match, firstLinePattern)) {
-        int code = std::stoi(match[1]);
-        if (code >= 100 && code < 200) {
-            handle1xx(code);
-            return;
-        } else {
-            _code = code;
-            _reason = match[2];
-        }
-    } else {
+    if (!boost::regex_match(firstLine, match, firstLinePattern)) {
         ThrowException(Exception, "Unexpected first line");
     }
+    int code = std::stoi(match[1]);
     _headers = HTTPHeaders::parse(headerData);
+    if (code >= 100 && code < 200) {
+        handle1xx(code);
+        return;
+    } else {
+        _code = code;
+        _reason = match[2];
+    }
     boost::optional<size_t> contentLength;
     if (_headers->has("Content-Length")) {
         if (_headers->at("Content-Length").find(',') != std::string::npos) {

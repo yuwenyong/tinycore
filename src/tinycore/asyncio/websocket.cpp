@@ -394,11 +394,14 @@ void WebSocketProtocol13::writeFrame(bool fin, Byte opcode, const Byte *data, si
         frame.insert(frame.end(), (Byte *)&frameLength, (Byte *)&frameLength + sizeof(frameLength));
     }
     if (length) {
-        frame.insert(frame.end(), data, data + length);
         if (_maskOutgoing) {
             std::array<Byte, 4> mask;
             Random::randBytes(mask);
+            frame.insert(frame.end(), mask.begin(), mask.end());
+            frame.insert(frame.end(), data, data + length);
             applyMask(mask, frame.data() + frame.size() - length, length);
+        } else {
+            frame.insert(frame.end(), data, data + length);
         }
     }
     _stream->write(frame.data(), frame.size());
@@ -541,6 +544,21 @@ void WebSocketProtocol13::handleMessage(Byte opcode, ByteArray data) {
     }
 }
 
+
+WebSocketClientConnection::WebSocketClientConnection(IOLoop *ioloop, std::shared_ptr<HTTPRequest> request,
+                                                     ConnectCallbackType callback)
+        : _HTTPConnection(ioloop, nullptr, std::move(request), nullptr, 104857600)
+        , _connectCallback(StackContext::wrap<std::shared_ptr<WebSocketClientConnection>>(std::move(callback))) {
+#ifndef NDEBUG
+    sWatcher->inc(SYS_WEBSOCKETCLIENTCONNECTION_COUNT);
+#endif
+}
+
+WebSocketClientConnection::~WebSocketClientConnection() {
+#ifndef NDEBUG
+    sWatcher->dec(SYS_WEBSOCKETCLIENTCONNECTION_COUNT);
+#endif
+}
 
 void WebSocketClientConnection::close() {
     if (_protocol) {
@@ -730,11 +748,14 @@ void WebSocketClientProtocol::writeFrame(bool fin, Byte opcode, const Byte *data
         frame.insert(frame.end(), (Byte *)&frameLength, (Byte *)&frameLength + sizeof(frameLength));
     }
     if (length) {
-        frame.insert(frame.end(), data, data + length);
         if (_maskOutgoing) {
             std::array<Byte, 4> mask;
             Random::randBytes(mask);
+            frame.insert(frame.end(), mask.begin(), mask.end());
+            frame.insert(frame.end(), data, data + length);
             applyMask(mask, frame.data() + frame.size() - length, length);
+        } else {
+            frame.insert(frame.end(), data, data + length);
         }
     }
     _stream->write(frame.data(), frame.size());

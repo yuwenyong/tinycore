@@ -125,5 +125,12 @@ void GlobalInit::setupWatcherHook() {
     sWatcher->addDecCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
         LOG_TRACE("Destroy HTTPClientConnection,current count:%d", value);
     });
+
+    sWatcher->addIncCallback(SYS_WEBSOCKETCLIENTCONNECTION_COUNT, [](int oldValue, int increment, int value) {
+        LOG_TRACE("Create WebSocketClientConnection,current count:%d", value);
+    });
+    sWatcher->addDecCallback(SYS_WEBSOCKETCLIENTCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
+        LOG_TRACE("Destroy WebSocketClientConnection,current count:%d", value);
+    });
 #endif
 }

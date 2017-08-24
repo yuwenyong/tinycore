@@ -261,11 +261,9 @@ public:
     using ReadCallbackType = std::function<void (boost::optional<ByteArray>)>;
     using SimpleJSONType = boost::property_tree::ptree;
 
-    WebSocketClientConnection(IOLoop *ioloop, std::shared_ptr<HTTPRequest> request, ConnectCallbackType callback)
-            : _HTTPConnection(ioloop, nullptr, std::move(request), nullptr, 104857600)
-            , _connectCallback(StackContext::wrap<std::shared_ptr<WebSocketClientConnection>>(std::move(callback))) {
+    WebSocketClientConnection(IOLoop *ioloop, std::shared_ptr<HTTPRequest> request, ConnectCallbackType callback);
 
-    }
+    ~WebSocketClientConnection();
 
     std::shared_ptr<HTTPRequest> getRequest() const {
         return _request;
