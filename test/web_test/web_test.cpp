@@ -9,6 +9,7 @@
 
 BOOST_TEST_DONT_PRINT_LOG_VALUE(StringVector)
 BOOST_TEST_DONT_PRINT_LOG_VALUE(rapidjson::Document)
+BOOST_TEST_DONT_PRINT_LOG_VALUE(Time)
 
 using namespace rapidjson;
 
@@ -16,7 +17,7 @@ class SetCookieHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("str", "asdf");
         setCookie("unicode", "qwer");
         setCookie("bytes", "zxcv");
@@ -28,7 +29,7 @@ class GetCookieHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         write(getCookie("foo", "default"));
     }
 };
@@ -38,7 +39,7 @@ class SetCookieDomainHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("unicode_args", "blah", "foo.com", nullptr, "/foo");
     }
 };
@@ -48,7 +49,7 @@ class SetCookieSpecialCharHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("equals", "a=b");
         setCookie("semicolon", "a;b");
         setCookie("quote", "a\"b");
@@ -60,7 +61,7 @@ class SetCookieOverwriteHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setCookie("a", "b", "example.com");
         setCookie("c", "d", "example.com");
         setCookie("a", "e");
@@ -142,7 +143,7 @@ public:
                           {R"(foo="a\073b")", "a;b"},
                           {R"(foo="a\"b")", "a\"b"}};
         for (auto &kv: data) {
-            Log::info("trying %s", kv.first.c_str());
+            LOG_DEBUG("trying %s", kv.first.c_str());
             HTTPHeaders requestHeaders{{"Cookie", kv.first}};
             HTTPResponse response = fetch("/get", ARG_headers=requestHeaders);
             const std::string *body = response.getBody();
@@ -172,7 +173,7 @@ public:
         _test = boost::any_cast<ConnectionCloseTest *>(args["test"]);
     }
 
-    void onGet(StringVector args) override;
+    void onGet(const StringVector &args) override;
     void onConnectionClose() override;
 protected:
     ConnectionCloseTest *_test;
@@ -205,12 +206,12 @@ public:
     }
 
     void onHandlerWaiting() {
-        Log::info("handler waiting");
+        LOG_DEBUG("handler waiting");
         _stream->close();
     }
 
     void onConnectionClose() {
-        Log::info("connection closed");
+        LOG_DEBUG("connection closed");
         stop();
     }
 protected:
@@ -218,7 +219,7 @@ protected:
 };
 
 
-void ConnectionCloseHandler::onGet(StringVector args) {
+void ConnectionCloseHandler::onGet(const StringVector &args) {
     Asynchronous()
     _test->onHandlerWaiting();
 }
@@ -232,7 +233,7 @@ class EchoHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         Document doc;
         Document::AllocatorType &a = doc.GetAllocator();
         doc.SetObject();
@@ -381,10 +382,10 @@ class OptionalPathHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string path;
         if (!args.empty()) {
-            path = std::move(args[0]);
+            path = args[0];
         }
         Document doc;
         Document::AllocatorType &a = doc.GetAllocator();
@@ -399,7 +400,7 @@ class FlowControlHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         Asynchronous()
         write("1");
         flush(false, std::bind(&FlowControlHandler::step2, this));
@@ -421,20 +422,20 @@ class MultiHeaderHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         setHeader("x-overwrite", "1");
-        setHeader("x-overwrite", 2);
+        setHeader("X-Overwrite", 2);
         addHeader("x-multi", 3);
-        addHeader("x-multi", "4");
+        addHeader("X-Multi", "4");
     }
 };
 
 
-class TestRedirectHandler: public RequestHandler {
+class _RedirectHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string permanent, status;
         permanent = getArgument("permanent", "");
         status = getArgument("status", "");
@@ -453,7 +454,7 @@ class EmptyFlushCallbackHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         Asynchronous()
         flush(false, [this]() {
             step2();
@@ -489,7 +490,7 @@ class HeaderInjectHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         try {
             setHeader("X-Foo", "foo\r\nX-Bar: baz");
             ThrowException(Exception, "Didn't get expected exception");
@@ -504,14 +505,25 @@ public:
 };
 
 
+class GetArgumentHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(const StringVector &args) override {
+        write(getArgument("foo", "default"));
+    }
+};
+
+
 class WebTest: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
                 url<OptionalPathHandler>(R"(/optional_path/(.+)?)", "optional_path"),
                 url<MultiHeaderHandler>("/multi_header"),
-                url<TestRedirectHandler>("/redirect"),
+                url<_RedirectHandler>("/redirect"),
                 url<HeaderInjectHandler>("/header_injection"),
+                url<GetArgumentHandler>("/get_argument"),
                 url<FlowControlHandler>("/flow_control"),
                 url<EmptyFlushCallbackHandler>("/empty_flush"),
         };
@@ -590,6 +602,40 @@ public:
         } while (false);
     }
 
+    void testGetArgument() {
+        do {
+            HTTPResponse response = fetch("/get_argument?foo=bar");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "bar");
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/get_argument?foo=");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "");
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/get_argument");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "default");
+        } while (false);
+    }
+
+    void testNoGzip() {
+        do {
+            HTTPResponse response = fetch("/get_argument");
+            std::string vary = response.getHeaders().get("Vary", "");
+//            std::cerr << "Vary:" << vary << std::endl;
+            BOOST_CHECK(!boost::contains(vary, "Accept-Encoding"));
+            std::string contentEncoding = response.getHeaders().get("Content-Encoding", "");
+            BOOST_CHECK(!boost::contains(contentEncoding, "gzip"));
+        } while (false);
+    }
+
     void testFlowControl() {
         do {
             HTTPResponse response = fetch("/flow_control");
@@ -614,7 +660,7 @@ class DefaultHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string status = getArgument("status", "");
         if (!status.empty()) {
             ThrowException(HTTPError, std::stoi(status));
@@ -629,7 +675,7 @@ class WriteErrorHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         std::string status = getArgument("status", "");
         if (!status.empty()) {
             sendError(std::stoi(status));
@@ -638,7 +684,7 @@ public:
         }
     }
 
-    void writeError(int statusCode = 500, std::exception_ptr error= nullptr) override {
+    void writeError(int statusCode, std::exception_ptr error) override {
         setHeader("Content-Type", "text/plain");
         if (error) {
             try {
@@ -657,11 +703,11 @@ class FailedWriteErrorHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(StringVector args) override {
+    void onGet(const StringVector &args) override {
         ThrowException(ZeroDivisionError, "integer division or modulo by zero");
     }
 
-    void writeError(int statusCode = 500, std::exception_ptr error= nullptr) override {
+    void writeError(int statusCode, std::exception_ptr error) override {
         ThrowException(Exception, "exception in write_error");
     }
 };
@@ -726,13 +772,109 @@ public:
 };
 
 
+class HostMatchingTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void initialize(ArgsType &args) override {
+            _reply = boost::any_cast<std::string>(args["reply"]);
+        }
+
+        void onGet(const StringVector &args) override {
+            write(_reply);
+        }
+    protected:
+        std::string _reply;
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        RequestHandler::ArgsType args = {
+                {"reply", std::string("wildcard") }
+        };
+        Application::HandlersType handlers = {
+                url<Handler>("/foo", args),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testHostMatching() {
+        RequestHandler::ArgsType args1 = {
+                {"reply", std::string("[0]") }
+        };
+        Application::HandlersType handlers1 = {
+                url<Handler>("/foo", args1),
+        };
+        _app->addHandlers("www.example.com", std::move(handlers1));
+
+        RequestHandler::ArgsType args2 = {
+                {"reply", std::string("[1]") }
+        };
+        Application::HandlersType handlers2 = {
+                url<Handler>("/bar", args2),
+        };
+        _app->addHandlers(R"(www\.example\.com)", std::move(handlers2));
+
+        RequestHandler::ArgsType args3 = {
+                {"reply", std::string("[2]") }
+        };
+        Application::HandlersType handlers3 = {
+                url<Handler>("/baz", args3),
+        };
+        _app->addHandlers("www.example.com", std::move(handlers3));
+
+        do {
+            HTTPResponse response = fetch("/foo");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "wildcard");
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/bar");
+            BOOST_CHECK_EQUAL(response.getCode(), 404);
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/baz");
+            BOOST_CHECK_EQUAL(response.getCode(), 404);
+        } while (false);
+
+        do {
+            HTTPHeaders headers{{"Host", "www.example.com"}};
+            HTTPResponse response = fetch("/foo", ARG_headers=headers);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "[0]");
+        } while (false);
+
+        do {
+            HTTPHeaders headers{{"Host", "www.example.com"}};
+            HTTPResponse response = fetch("/bar", ARG_headers=headers);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "[1]");
+        } while (false);
+
+        do {
+            HTTPHeaders headers{{"Host", "www.example.com"}};
+            HTTPResponse response = fetch("/baz", ARG_headers=headers);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "[2]");
+        } while (false);
+    }
+};
+
+
 class ClearHeaderTest: public AsyncHTTPTestCase {
 public:
     class Handler: public RequestHandler {
     public:
         using RequestHandler::RequestHandler;
 
-        void onGet(StringVector args) override {
+        void onGet(const StringVector &args) override {
             setHeader("h1", "foo");
             setHeader("h2", "bar");
             clearHeader("h1");
@@ -746,12 +888,11 @@ public:
         };
         std::string defaultHost;
         Application::TransformsType transforms;
-        Application::LogFunctionType logFunction = [](RequestHandler *) {};
-        Application::SettingsType settings = {
-                {"logFunction", std::move(logFunction)},
-        };
-        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms),
-                                        std::move(settings));
+//        Application::LogFunctionType logFunction = [](RequestHandler *) {};
+//        Application::SettingsType settings = {
+//                {"logFunction", std::move(logFunction)},
+//        };
+        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms));
     }
 
     void testClearHeader() {
@@ -770,7 +911,7 @@ public:
     public:
         using RequestHandler::RequestHandler;
 
-        void onGet(StringVector args) override {
+        void onGet(const StringVector &args) override {
             setHeader("Content-Language", "en_US");
             write("hello");
         }
@@ -782,12 +923,11 @@ public:
         };
         std::string defaultHost;
         Application::TransformsType transforms;
-        Application::LogFunctionType logFunction = [](RequestHandler *) {};
-        Application::SettingsType settings = {
-                {"logFunction", std::move(logFunction)},
-        };
-        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms),
-                                        std::move(settings));
+//        Application::LogFunctionType logFunction = [](RequestHandler *) {};
+//        Application::SettingsType settings = {
+//                {"logFunction", std::move(logFunction)},
+//        };
+        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms));
     }
 
     void test304Headers() {
@@ -806,6 +946,269 @@ public:
 };
 
 
+class StatusReasonTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            StringVector reason;
+            if (_request->getArguments().find("reason") != _request->getArguments().end()) {
+                reason = _request->getArguments().at("reason");
+            }
+            if (reason.empty()) {
+                setStatus(std::stoi(getArgument("code")));
+            } else {
+                setStatus(std::stoi(getArgument("code")), reason[0]);
+            }
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testStatus() {
+        do {
+            HTTPResponse response = fetch("/?code=304");
+            BOOST_CHECK_EQUAL(response.getCode(), 304);
+            BOOST_CHECK_EQUAL(response.getReason(), "Not Modified");
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/?code=304&reason=Foo");
+            BOOST_CHECK_EQUAL(response.getCode(), 304);
+            BOOST_CHECK_EQUAL(response.getReason(), "Foo");
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/?code=682&reason=Bar");
+            BOOST_CHECK_EQUAL(response.getCode(), 682);
+            BOOST_CHECK_EQUAL(response.getReason(), "Bar");
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/?code=682");
+            BOOST_CHECK_EQUAL(response.getCode(), 500);
+        } while (false);
+    }
+};
+
+
+class DateHeaderTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            write("Hello");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testDateHeader() {
+        do {
+            HTTPResponse response = fetch("/");
+            std::stringstream ss(response.getHeaders().at("Date"));
+            auto *timeInput = new boost::posix_time::time_input_facet("%a, %d %b %Y %H:%M:%S GMT");
+            ss.imbue(std::locale(ss.getloc(), timeInput));
+            DateTime dt;
+            ss >> dt;
+            DateTime now = boost::posix_time::second_clock::universal_time();
+            BOOST_CHECK_LT(dt - now, boost::posix_time::seconds(2));
+//            std::cerr << "SUCCESS\n";
+        } while (false);
+    }
+};
+
+
+class RaiseWithReasonTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            ThrowException(HTTPError, 682, "", "Foo");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testRaiseWithReason() {
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getCode(), 682);
+            BOOST_CHECK_EQUAL(response.getReason(), "Foo");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+//            std::cerr << ">>" << *body << std::endl;
+            BOOST_CHECK(boost::contains(*body, "682: Foo"));
+        } while (false);
+    }
+};
+
+
+class GzipTestCase: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            if (hasArgument("vary")) {
+                setHeader("Vary", getArgument("vary"));
+            }
+            write("hello world");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        std::string defaultHost;
+        Application::TransformsType transforms;
+        Application::SettingsType settings = {
+                {"gzip", true},
+        };
+        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms),
+                                        std::move(settings));
+    }
+
+    void testGzip() {
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getHeaders().at("Content-Encoding"), "gzip");
+            BOOST_CHECK_EQUAL(response.getHeaders().at("Vary"), "Accept-Encoding");
+        } while (false);
+    }
+
+    void testGzipNotRequested() {
+        do {
+            HTTPResponse response = fetch("/", ARG_useGzip=false);
+            BOOST_CHECK(!response.getHeaders().has("Content-Encoding"));
+            BOOST_CHECK_EQUAL(response.getHeaders().at("Vary"), "Accept-Encoding");
+        } while (false);
+    }
+
+    void testVaryAlreadyPresent() {
+        do {
+            HTTPResponse response = fetch("/?vary=Accept-Language");
+            BOOST_CHECK_EQUAL(response.getHeaders().at("Vary"), "Accept-Language, Accept-Encoding");
+        } while (false);
+    }
+};
+
+
+class PathArgsInPrepareTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void prepare() override {
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+
+            Value pathArgs;
+            pathArgs.SetArray();
+            for (auto &val: _pathArgs) {
+                pathArgs.PushBack(StringRef(val.c_str(), val.size()), a);
+            }
+            doc.AddMember(StringRef("args"), pathArgs, a);
+
+            write(doc);
+        }
+
+        void onGet(const StringVector &args) override {
+            ASSERT(args.size() == 1 && args[0] == "foo");
+            finish();
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/pos/(.*)"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testPos() {
+        do {
+            HTTPResponse response = fetch("/pos/foo");
+            response.rethrow();
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+
+            Document data;
+            data.Parse(body->c_str(), body->size());
+
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+
+            Value pathArgs;
+            pathArgs.SetArray();
+            pathArgs.PushBack(StringRef("foo"), a);
+            doc.AddMember(StringRef("args"), pathArgs, a);
+            BOOST_CHECK_EQUAL(data, doc);
+        } while (false);
+    }
+};
+
+
+class ClearAllCookiesTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+//            std::cerr << "Clear Cookies" << std::endl;
+            clearAllCookies();
+            write("ok");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testClearAllCookies() {
+        do {
+            HTTPHeaders headers = {{"Cookie", "foo=bar; baz=xyzzy"}};
+            HTTPResponse response = fetch("/", ARG_headers=headers);
+            auto setCookies = response.getHeaders().getList("Set-Cookie");
+            std::sort(setCookies.begin(), setCookies.end());
+//            std::cerr << "Cookies:" << setCookies.size() << std::endl;
+            BOOST_CHECK(boost::starts_with(setCookies[0], "baz=;"));
+            BOOST_CHECK(boost::starts_with(setCookies[1], "foo=;"));
+        } while (false);
+    }
+};
+
+
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(CookieTest, testSetCookie)
 TINYCORE_TEST_CASE(CookieTest, testGetCookie)
@@ -820,10 +1223,21 @@ TINYCORE_TEST_CASE(WebTest, testOptionalPath)
 TINYCORE_TEST_CASE(WebTest, testMultiHeader)
 TINYCORE_TEST_CASE(WebTest, testRedirect)
 TINYCORE_TEST_CASE(WebTest, testHeaderInject)
+TINYCORE_TEST_CASE(WebTest, testGetArgument)
+TINYCORE_TEST_CASE(WebTest, testNoGzip)
 TINYCORE_TEST_CASE(WebTest, testFlowControl)
 TINYCORE_TEST_CASE(WebTest, testEmptyFlush)
 TINYCORE_TEST_CASE(ErrorResponseTest, testDefault)
 TINYCORE_TEST_CASE(ErrorResponseTest, testWriteError)
 TINYCORE_TEST_CASE(ErrorResponseTest, testFailedWriteError)
+TINYCORE_TEST_CASE(HostMatchingTest, testHostMatching)
 TINYCORE_TEST_CASE(ClearHeaderTest, testClearHeader)
 TINYCORE_TEST_CASE(Header304Test, test304Headers)
+TINYCORE_TEST_CASE(StatusReasonTest, testStatus)
+TINYCORE_TEST_CASE(DateHeaderTest, testDateHeader)
+TINYCORE_TEST_CASE(RaiseWithReasonTest, testRaiseWithReason)
+TINYCORE_TEST_CASE(GzipTestCase, testGzip)
+TINYCORE_TEST_CASE(GzipTestCase, testGzipNotRequested)
+TINYCORE_TEST_CASE(GzipTestCase, testVaryAlreadyPresent)
+TINYCORE_TEST_CASE(PathArgsInPrepareTest, testPos)
+TINYCORE_TEST_CASE(ClearAllCookiesTest, testClearAllCookies)

@@ -30,7 +30,7 @@ class TC_COMMON_API RequestHandler: public std::enable_shared_from_this<RequestH
 public:
     typedef std::map<std::string, boost::any> ArgsType;
     typedef boost::ptr_vector<OutputTransform> TransformsType;
-    typedef std::vector<std::pair<std::string, std::string>> ListHeadersType;
+//    typedef std::vector<std::pair<std::string, std::string>> ListHeadersType;
     typedef std::map<std::string, boost::any> SettingsType;
     typedef boost::optional<SimpleCookie> CookiesType;
 //    typedef boost::optional<std::vector<SimpleCookie>> NewCookiesType;
@@ -45,13 +45,13 @@ public:
     void start(ArgsType &args);
     virtual void initialize(ArgsType &args);
     const SettingsType& getSettings() const;
-    virtual void onHead(StringVector args);
-    virtual void onGet(StringVector args);
-    virtual void onPost(StringVector args);
-    virtual void onDelete(StringVector args);
-    virtual void onPatch(StringVector args);
-    virtual void onPut(StringVector args);
-    virtual void onOptions(StringVector args);
+    virtual void onHead(const StringVector &args);
+    virtual void onGet(const StringVector &args);
+    virtual void onPost(const StringVector &args);
+    virtual void onDelete(const StringVector &args);
+    virtual void onPatch(const StringVector &args);
+    virtual void onPut(const StringVector &args);
+    virtual void onOptions(const StringVector &args);
 
     virtual void prepare();
     virtual void onFinish();
@@ -59,54 +59,64 @@ public:
     void clear();
     virtual void setDefaultHeaders();
 
-    void setStatus(int statusCode) {
-        ASSERT(HTTPResponses.find(statusCode) != HTTPResponses.end());
-        _statusCode = statusCode;
+    void setStatus(int statusCode);
+
+    void setStatus(int statusCode, const std::string &reason) {
+        if (reason.empty()) {
+            setStatus(statusCode);
+        } else {
+            _statusCode = statusCode;
+            _reason = reason;
+        }
     }
 
     int getStatus() const {
         return _statusCode;
     }
 
-    void setHeader(std::string name, const std::string &value) {
-        _headers[std::move(name)] = convertHeaderValue(value);
+    void setHeader(const std::string &name, const std::string &value) {
+        _headers[name] = convertHeaderValue(value);
     }
 
-    void setHeader(std::string name, const char *value) {
-        _headers[std::move(name)] = convertHeaderValue(value);
+    void setHeader(const std::string &name, const char *value) {
+        _headers[name] = convertHeaderValue(value);
     }
 
-    void setHeader(std::string name, const DateTime &value) {
-        _headers[std::move(name)] = convertHeaderValue(value);
-    }
-
-    template <typename T>
-    void setHeader(std::string name, T value) {
-        _headers[std::move(name)] = convertHeaderValue(value);
-    }
-
-    void addHeader(std::string name, const std::string &value) {
-        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
-    }
-
-    void addHeader(std::string name, const char *value) {
-        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
-    }
-
-    void addHeader(std::string name, const DateTime &value) {
-        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    void setHeader(const std::string &name, const DateTime &value) {
+        _headers[name] = convertHeaderValue(value);
     }
 
     template <typename T>
-    void addHeader(std::string name, T value) {
-        _listHeaders.emplace_back(std::move(name), convertHeaderValue(value));
+    void setHeader(const std::string &name, T value) {
+        _headers[name] = convertHeaderValue(value);
+    }
+
+    void addHeader(const std::string &name, const std::string &value) {
+        _headers.add(name, convertHeaderValue(value));
+    }
+
+    void addHeader(const std::string &name, const char *value) {
+        _headers.add(name, convertHeaderValue(value));
+    }
+
+    void addHeader(const std::string &name, const DateTime &value) {
+        _headers.add(name, convertHeaderValue(value));
+    }
+
+    template <typename T>
+    void addHeader(const std::string &name, T value) {
+        _headers.add(name, convertHeaderValue(value));
     }
 
     void clearHeader(const std::string &name) {
-        auto iter = _headers.find(name);
-        if (iter != _headers.end()) {
-            _headers.erase(iter);
+        if (_headers.has(name)) {
+            _headers.erase(name);
         }
+    }
+
+    bool hasArgument(const std::string &name) const {
+        auto &arguments = _request->getArguments();
+        return arguments.find(name) != arguments.end();
     }
 
     std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
@@ -182,7 +192,7 @@ public:
 
     void finish();
     void sendError(int statusCode = 500, std::exception_ptr error= nullptr);
-    virtual void writeError(int statusCode = 500, std::exception_ptr error= nullptr);
+    virtual void writeError(int statusCode, std::exception_ptr error);
     void requireSetting(const std::string &name, const std::string &feature="this feature");
 
     template <typename... Args>
@@ -219,7 +229,7 @@ protected:
     }
 
     std::string convertHeaderValue(const DateTime &value) {
-        return convertHeaderValue(String::formatUTCDate(value, true));
+        return convertHeaderValue(HTTPUtil::formatTimestamp(value));
     }
 
     template <typename T>
@@ -252,11 +262,15 @@ protected:
     bool _finished{false};
     bool _autoFinish{true};
     TransformsType _transforms;
-    StringMap _headers;
-    ListHeadersType _listHeaders;
+    StringVector _pathArgs;
+    HTTPHeaders _headers;
+//    ListHeadersType _listHeaders;
     ByteArray _writeBuffer;
     int _statusCode;
     CookiesType _newCookie;
+    std::string _reason;
+
+    static const boost::regex _removeControlCharsRegex;
 };
 
 
@@ -321,7 +335,7 @@ public:
 class TC_COMMON_API Application {
 public:
     typedef PtrVector<URLSpec> HandlersType;
-    typedef boost::xpressive::sregex HostPatternType;
+    typedef boost::regex HostPatternType;
     typedef std::pair<HostPatternType, HandlersType> HostHandlerType;
     typedef boost::ptr_vector<HostHandlerType> HostHandlersType;
     typedef std::map<std::string, URLSpec *> NamedHandlersType;
@@ -366,7 +380,7 @@ public:
 
 //    static HandlersType defaultHandlers;
 protected:
-    HandlersType* getHostHandlers(std::shared_ptr<HTTPServerRequest> request);
+    std::vector<URLSpec*> getHostHandlers(std::shared_ptr<HTTPServerRequest> request);
 
     TransformsType _transforms;
     HostHandlersType _handlers;
@@ -381,14 +395,11 @@ protected:
 
 class TC_COMMON_API HTTPError: public Exception {
 public:
-    HTTPError(const char *file, int line, const char *func, int statusCode)
-            : HTTPError(file, line, func, statusCode, "") {
-
-    }
-
-    HTTPError(const char *file, int line, const char *func, int statusCode, const std::string &message)
+    HTTPError(const char *file, int line, const char *func, int statusCode, const std::string &message="",
+              const std::string &reason="")
             : Exception(file, line, func, message)
-            , _statusCode(statusCode) {
+            , _statusCode(statusCode)
+            , _reason(reason) {
 
     }
 
@@ -401,8 +412,13 @@ public:
     int getStatusCode() const {
         return _statusCode;
     }
+
+    const std::string& getReason() const {
+        return _reason;
+    }
 protected:
     int _statusCode;
+    std::string _reason;
 };
 
 
@@ -420,7 +436,7 @@ public:
     using RequestHandler::RequestHandler;
 
     void initialize(ArgsType &args) override;
-    void onGet(StringVector args) override;
+    void onGet(const StringVector &args) override;
 protected:
     std::string _url;
     bool _permanent{true};
@@ -443,15 +459,15 @@ protected:
 class TC_COMMON_API OutputTransform {
 public:
     virtual ~OutputTransform() {}
-    virtual void transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) =0;
+    virtual void transformFirstChunk(int &statusCode, HTTPHeaders &headers, ByteArray &chunk, bool finishing) =0;
     virtual void transformChunk(ByteArray &chunk, bool finishing) =0;
 };
 
 
 class TC_COMMON_API GZipContentEncoding: public OutputTransform {
 public:
-    GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request);
-    void transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) override;
+    explicit GZipContentEncoding(std::shared_ptr<HTTPServerRequest> request);
+    void transformFirstChunk(int &statusCode, HTTPHeaders &headers, ByteArray &chunk, bool finishing) override;
     void transformChunk(ByteArray &chunk, bool finishing) override;
 protected:
     static const StringSet _contentTypes;
@@ -465,11 +481,11 @@ protected:
 
 class TC_COMMON_API ChunkedTransferEncoding: public OutputTransform {
 public:
-    ChunkedTransferEncoding(std::shared_ptr<HTTPServerRequest> request) {
-        _chunking = request->supportsHTTP1_1();
+    explicit ChunkedTransferEncoding(std::shared_ptr<HTTPServerRequest> request) {
+        _chunking = request->supportsHTTP11();
     }
 
-    void transformFirstChunk(int &statusCode, StringMap &headers, ByteArray &chunk, bool finishing) override;
+    void transformFirstChunk(int &statusCode, HTTPHeaders &headers, ByteArray &chunk, bool finishing) override;
     void transformChunk(ByteArray &chunk, bool finishing) override;
 protected:
     bool _chunking;
@@ -497,6 +513,11 @@ public:
 
     URLSpec(std::string pattern, HandlerClassType handlerClass, std::string name);
     URLSpec(std::string pattern, HandlerClassType handlerClass, ArgsType args={}, std::string name={});
+
+    std::string toString() const {
+        return String::format("URLSpec(%s, %s, name=%s)", _pattern.c_str(), _handlerClass.target_type().name(),
+                              _name.c_str());
+    }
 
     template <typename... Args>
     std::string reverse(Args&&... args) {

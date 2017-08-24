@@ -11,32 +11,53 @@
 #include "tinycore/asyncio/httpclient.h"
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/asyncio/web.h"
-#include "tinycore/configuration/options.h"
+#include "tinycore/configuration/globalinit.h"
 
 
 struct GlobalFixture {
     GlobalFixture() {
-        sOptions->onEnter();
+        GlobalInit::initFromEnvironment();
     }
 
     ~GlobalFixture() {
-        sOptions->onExit();
+        GlobalInit::cleanup();
     }
 };
 
 
-class TC_COMMON_API AsyncTestCase {
+class TC_COMMON_API TestCase {
+public:
+    virtual ~TestCase();
+
+    virtual void setUp();
+
+    virtual void tearDown();
+
+    virtual void handleException(std::exception_ptr error);
+
+    void rethrow() {
+        if (_failure) {
+            std::exception_ptr failure;
+            failure.swap(_failure);
+            std::rethrow_exception(failure);
+        }
+    }
+protected:
+    std::exception_ptr _failure;
+};
+
+
+class TC_COMMON_API AsyncTestCase: public TestCase {
 public:
     typedef std::function<bool ()> ConditionCallback;
 
     virtual ~AsyncTestCase();
-    virtual void setUp();
-    virtual void tearDown();
 
-    void handleException(std::exception_ptr error) {
-        _failure = std::move(error);
-        stop();
-    }
+    void setUp() override;
+
+    void tearDown() override;
+
+    void handleException(std::exception_ptr error) override;
 
     void stop() {
         _stopArgs.clear();
@@ -49,28 +70,13 @@ public:
         stopImpl();
     }
 
-    void wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
-
-    template <typename T>
-    T waitResult(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
-        wait(std::move(timeout), std::move(condition));
-        boost::any result(std::move(_stopArgs));
-        return boost::any_cast<T>(result);
+    template <typename ResultT>
+    ResultT wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
+        boost::any result = wait(std::move(timeout), std::move(condition));
+        return boost::any_cast<ResultT>(result);
     }
 
-    boost::any waitAny(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
-        wait(std::move(timeout), std::move(condition));
-        boost::any result(std::move(_stopArgs));
-        return result;
-    }
-
-    void rethrow() {
-        if (_failure) {
-            std::exception_ptr failure;
-            failure.swap(_failure);
-            std::rethrow_exception(failure);
-        }
-    }
+    boost::any wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
 protected:
     const IOLoop* ioloop() const {
         return &_ioloop;
@@ -90,7 +96,6 @@ protected:
     IOLoop _ioloop;
     bool _stopped{false};
     bool _running{false};
-    std::exception_ptr _failure;
     boost::any _stopArgs;
     Timeout _timeout;
 };
@@ -118,6 +123,7 @@ public:
     virtual std::unique_ptr<Application> getApp() const =0;
     virtual bool getHTTPServerNoKeepAlive() const;
     virtual bool getHTTPServerXHeaders() const;
+    virtual std::string getHTTPServerProtocol() const;
     virtual std::shared_ptr<SSLOption> getHTTPServerSSLOption() const;
     virtual std::string getProtocol() const;
 
@@ -126,13 +132,10 @@ public:
     }
 protected:
     unsigned short getHTTPPort() const {
-        if (!_port) {
-            _port = getUnusedPort();
-        }
-        return _port.get();
+        return _port;
     }
 
-    mutable boost::optional<unsigned short> _port;
+    unsigned short _port;
     std::shared_ptr<HTTPClient> _httpClient;
     std::unique_ptr<Application> _app;
     std::shared_ptr<HTTPServer> _httpServer;

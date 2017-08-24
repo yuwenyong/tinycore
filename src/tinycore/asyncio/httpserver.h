@@ -8,7 +8,7 @@
 #include "tinycore/common/common.h"
 #include <chrono>
 #include "tinycore/asyncio/httputil.h"
-#include "tinycore/asyncio/netutil.h"
+#include "tinycore/asyncio/tcpserver.h"
 #include "tinycore/httputils/cookie.h"
 #include "tinycore/httputils/urlparse.h"
 
@@ -27,6 +27,7 @@ public:
                bool noKeepAlive = false,
                IOLoop *ioloop = nullptr,
                bool xheaders = false,
+               const std::string &protocol = "",
                std::shared_ptr<SSLOption> sslOption = nullptr);
 
     virtual ~HTTPServer();
@@ -36,6 +37,7 @@ protected:
     RequestCallbackType _requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
+    std::string _protocol;
 };
 
 
@@ -43,43 +45,79 @@ class HTTPConnection : public std::enable_shared_from_this<HTTPConnection> {
 public:
     typedef HTTPServer::RequestCallbackType RequestCallbackType;
     typedef std::function<void ()> WriteCallbackType;
+    typedef BaseIOStream::CloseCallbackType CloseCallbackType;
     typedef std::function<void (ByteArray)> HeaderCallbackType;
 
-    template <typename... Args>
-    class Wrapper {
+    class CloseCallbackWrapper {
     public:
-        Wrapper(std::shared_ptr<HTTPConnection> connection, std::function<void(Args...)> callback)
+        explicit CloseCallbackWrapper(std::shared_ptr<HTTPConnection> connection)
                 : _connection(std::move(connection))
-                , _callback(std::move(callback)) {
+                , _needClear(true) {
 
         }
 
-        Wrapper(Wrapper &&rhs)
+        CloseCallbackWrapper(CloseCallbackWrapper &&rhs) noexcept
                 : _connection(std::move(rhs._connection))
-                , _callback(std::move(rhs._callback)) {
-            rhs._callback = nullptr;
+                , _needClear(rhs._needClear) {
+            rhs._needClear = false;
         }
 
-        Wrapper& operator=(Wrapper &&rhs) {
+        CloseCallbackWrapper& operator=(CloseCallbackWrapper &&rhs) noexcept {
             _connection = std::move(rhs._connection);
-            _callback = std::move(rhs._callback);
-            rhs._callback = nullptr;
+            _needClear = rhs._needClear;
+            rhs._needClear = false;
+            return *this;
         }
 
-        ~Wrapper() {
-            if (_callback) {
-                _connection->clearCallbacks();
+        ~CloseCallbackWrapper() {
+            if (_needClear) {
+                _connection->_closeCallback = nullptr;
             }
         }
 
-        void operator()(Args... args) {
-            std::function<void(Args...)> callback = std::move(_callback);
-            _callback = nullptr;
-            callback(args...);
+        void operator()() {
+            _needClear = false;
+            _connection->onConnectionClose();
         }
     protected:
         std::shared_ptr<HTTPConnection> _connection;
-        std::function<void(Args...)> _callback;
+        bool _needClear;
+    };
+
+    class WriteCallbackWrapper {
+    public:
+        explicit WriteCallbackWrapper(std::shared_ptr<HTTPConnection> connection)
+                : _connection(std::move(connection))
+                , _needClear(true) {
+
+        }
+
+        WriteCallbackWrapper(WriteCallbackWrapper &&rhs) noexcept
+                : _connection(std::move(rhs._connection))
+                , _needClear(rhs._needClear) {
+            rhs._needClear = false;
+        }
+
+        WriteCallbackWrapper& operator=(WriteCallbackWrapper &&rhs) noexcept {
+            _connection = std::move(rhs._connection);
+            _needClear = rhs._needClear;
+            rhs._needClear = false;
+            return *this;
+        }
+
+        ~WriteCallbackWrapper() {
+            if (_needClear) {
+                _connection->_writeCallback = nullptr;
+            }
+        }
+
+        void operator()() {
+            _needClear = false;
+            _connection->onWriteComplete();
+        }
+    protected:
+        std::shared_ptr<HTTPConnection> _connection;
+        bool _needClear;
     };
 
     HTTPConnection(const HTTPConnection &) = delete;
@@ -89,13 +127,17 @@ public:
     HTTPConnection(std::shared_ptr<BaseIOStream> stream, std::string address,
                    RequestCallbackType &requestCallback,
                    bool noKeepAlive = false,
-                   bool xheaders = false);
+                   bool xheaders = false,
+                   const std::string &protocol="");
 
     ~HTTPConnection();
 
     void clearCallbacks() {
         _writeCallback = nullptr;
+        _closeCallback = nullptr;
     }
+
+    void setCloseCallback(CloseCallbackType callback);
 
     void close() {
         _stream->close();
@@ -125,6 +167,8 @@ public:
         return std::make_shared<HTTPConnection>(std::forward<Args>(args)...);
     }
 protected:
+    void onConnectionClose();
+
     void onWriteComplete();
 
     void finishRequest();
@@ -138,10 +182,12 @@ protected:
     RequestCallbackType &_requestCallback;
     bool _noKeepAlive;
     bool _xheaders;
+    std::string _protocol;
     std::shared_ptr<HTTPServerRequest> _request;
     std::weak_ptr<HTTPServerRequest> _requestObserver;
     bool _requestFinished{false};
     WriteCallbackType _writeCallback;
+    CloseCallbackType _closeCallback;
     HeaderCallbackType _headerCallback;
 };
 
@@ -168,7 +214,7 @@ public:
 
     ~HTTPServerRequest();
 
-    bool supportsHTTP1_1() const {
+    bool supportsHTTP11() const {
         return _version == "HTTP/1.1";
     }
 
@@ -285,12 +331,6 @@ public:
         return std::make_shared<HTTPServerRequest>(std::forward<Args>(args)...);
     }
 protected:
-    bool validIp(const std::string &ip) {
-        boost::system::error_code ec;
-        boost::asio::ip::address::from_string(ip, ec);
-        return !ec;
-    }
-
     std::string _method;
     std::string _uri;
     std::string _version;

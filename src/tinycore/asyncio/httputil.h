@@ -9,6 +9,7 @@
 #include <boost/regex.hpp>
 #include "tinycore/compress/zlib.h"
 #include "tinycore/debugging/trace.h"
+#include "tinycore/httputils/httplib.h"
 #include "tinycore/httputils/urlparse.h"
 
 
@@ -41,7 +42,7 @@ public:
 
     HTTPHeaders() {}
 
-    explicit HTTPHeaders(std::initializer_list<NameValueType> nameValues) {
+    HTTPHeaders(std::initializer_list<NameValueType> nameValues) {
         update(nameValues);
     }
 
@@ -50,9 +51,10 @@ public:
     }
 
     void add(const std::string &name, const std::string &value);
+    
     StringVector getList(const std::string &name) const;
 
-    void getAll(CallbackType callback) const {
+    void getAll(const CallbackType &callback) const {
         for (auto &name: _asList) {
             for (auto &value: name.second) {
                 callback(name.first, value);
@@ -97,6 +99,8 @@ public:
     }
 
     void parseLines(const std::string &headers);
+
+    std::string toString() const;
 
     static std::unique_ptr<HTTPHeaders> parse(const std::string &headers) {
         auto h = HTTPHeaders::create();
@@ -174,6 +178,15 @@ public:
     static void parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                        HTTPFileListMap &files);
 
+    static std::string formatTimestamp(const DateTime &ts);
+
+    static std::string formatTimestamp(time_t ts) {
+        return formatTimestamp(boost::posix_time::from_time_t(ts));
+    }
+
+    static std::string getHTTPReason(int statusCode) {
+        return HTTP_RESPONSES.find(statusCode) != HTTP_RESPONSES.end() ? HTTP_RESPONSES.at(statusCode) : "Unknown";
+    }
 protected:
     static StringVector parseParam(std::string s);
     static std::tuple<std::string, StringMap> parseHeader(const std::string &line);

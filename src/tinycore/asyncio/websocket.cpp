@@ -5,10 +5,11 @@
 #include "tinycore/asyncio/websocket.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/endian/conversion.hpp>
+#include "tinycore/asyncio/logutil.h"
+#include "tinycore/common/random.h"
 #include "tinycore/crypto/base64.h"
 #include "tinycore/crypto/hashlib.h"
 #include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
 #include "tinycore/utilities/string.h"
 
 
@@ -30,18 +31,6 @@ void WebSocketHandler::writeMessage(const Byte *message, size_t length, bool bin
     _wsConnection->writeMessage(message, length, binary);
 }
 
-void WebSocketHandler::writeMessage(const char *message, bool binary) {
-    _wsConnection->writeMessage((const Byte *)message, strlen(message), binary);
-}
-
-void WebSocketHandler::writeMessage(const std::string &message, bool binary) {
-    _wsConnection->writeMessage((const Byte *)message.data(), message.size(), binary);
-}
-
-void WebSocketHandler::writeMessage(const ByteArray &message, bool binary) {
-    _wsConnection->writeMessage(message.data(), message.size(), binary);
-}
-
 boost::optional<std::string> WebSocketHandler::selectSubProtocol(const StringVector &subProtocols) const {
     return boost::none;
 }
@@ -50,12 +39,22 @@ void WebSocketHandler::onOpen(const StringVector &args) {
 
 }
 
+void WebSocketHandler::ping(const Byte *data, size_t length) {
+    _wsConnection->writePing(data, length);
+}
+
+void WebSocketHandler::onPong(ByteArray data) {
+
+}
+
 void WebSocketHandler::onClose() {
 
 }
 
 void WebSocketHandler::close() {
-    _wsConnection->close();
+    if (_wsConnection) {
+        _wsConnection->close();
+    }
 }
 
 bool WebSocketHandler::allowDraft76() const {
@@ -111,7 +110,10 @@ void WebSocketHandler::execute(TransformsType &transforms, StringVector args) {
 
 #define WEBSOCKET_ASYNC() try
 #define WEBSOCKET_ASYNC_END catch (std::exception &e) { \
-    Log::error("Uncaught exception %s in %s", e.what(), _request->getPath().c_str()); \
+    LOG_ERROR(gAppLog, "Uncaught exception %s in %s", e.what(), _request->getPath().c_str()); \
+    abort(); \
+} catch(...) { \
+    LOG_ERROR(gAppLog, "Unknown exception in %s", _request->getPath().c_str()); \
     abort(); \
 }
 
@@ -119,7 +121,7 @@ void WebSocketProtocol76::acceptConnection() {
     try {
         handleWebSocketHeaders();
     } catch (ValueError &e) {
-        Log::debug("Malformed WebSocket request received");
+        LOG_DEBUG(gGenLog, "Malformed WebSocket request received");
         abort();
         return;
     }
@@ -175,6 +177,10 @@ void WebSocketProtocol76::writeMessage(const Byte *message, size_t length, bool 
     _stream->write(buffer.data(), buffer.size());
 }
 
+void WebSocketProtocol76::writePing(const Byte *data, size_t length) {
+    ThrowException(ValueError, "Ping messages not supported by this version of websockets");
+}
+
 void WebSocketProtocol76::close() {
     if (!_serverTerminated) {
         if (!_stream->closed()) {
@@ -202,7 +208,7 @@ void WebSocketProtocol76::handleChallenge(ByteArray data) {
         std::string challenge((const char *)data.data(), data.size());
         challengeResp = challengeResponse(challenge);
     } catch (ValueError &e) {
-        Log::debug("Malformed key data in WebSocket request");
+        LOG_DEBUG(gGenLog, "Malformed key data in WebSocket request");
         abort();
         return;
     }
@@ -268,7 +274,7 @@ void WebSocketProtocol76::onEndDelimiter(ByteArray data) {
         WEBSOCKET_ASYNC() {
             data.pop_back();
             _handler->onMessage(std::move(data));
-        } WEBSOCKET_ASYNC_END;
+        } WEBSOCKET_ASYNC_END
     }
     if (!_clientTerminated) {
         receiveMessage();
@@ -289,9 +295,9 @@ void WebSocketProtocol76::onLengthIndicator(ByteArray data) {
 void WebSocketProtocol13::acceptConnection() {
     try {
         handleWebSocketHeaders();
-        doAcceptConnection();
+        _acceptConnection();
     } catch (ValueError &e) {
-        Log::debug("Malformed WebSocket request received");
+        LOG_DEBUG(gGenLog, "Malformed WebSocket request received");
         abort();
         return;
     }
@@ -300,6 +306,10 @@ void WebSocketProtocol13::acceptConnection() {
 void WebSocketProtocol13::writeMessage(const Byte *message, size_t length, bool binary) {
     Byte opcode = (Byte)(binary ? 0x02 : 0x01);
     writeFrame(true, opcode, message, length);
+}
+
+void WebSocketProtocol13::writePing(const Byte *data, size_t length) {
+    writeFrame(true, 0x09, data, length);
 }
 
 void WebSocketProtocol13::close() {
@@ -322,6 +332,13 @@ void WebSocketProtocol13::close() {
     }
 }
 
+std::string WebSocketProtocol13::computeAcceptValue(const std::string &key) {
+    SHA1Object sha1;
+    sha1.update(key);
+    sha1.update("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    return Base64::b64encode(sha1.digest());
+}
+
 void WebSocketProtocol13::handleWebSocketHeaders() const {
     auto headers = _request->getHTTPHeaders();
     const StringVector fields = {"Host", "Sec-Websocket-Key", "Sec-Websocket-Version"};
@@ -332,14 +349,7 @@ void WebSocketProtocol13::handleWebSocketHeaders() const {
     }
 }
 
-std::string WebSocketProtocol13::challengeResponse() const {
-    SHA1Object sha1;
-    sha1.update(_request->getHTTPHeaders()->get("Sec-Websocket-Key"));
-    sha1.update("258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-    return Base64::b64encode(sha1.digest());
-}
-
-void WebSocketProtocol13::doAcceptConnection() {
+void WebSocketProtocol13::_acceptConnection() {
     std::string subProtocolHeader;
     auto subProtocols = String::split(_request->getHTTPHeaders()->get("Sec-WebSocket-Protocol", ""), ',');
     for (auto &subProtocol: subProtocols) {
@@ -366,24 +376,33 @@ void WebSocketProtocol13::doAcceptConnection() {
 }
 
 void WebSocketProtocol13::writeFrame(bool fin, Byte opcode, const Byte *data, size_t length) {
-    Byte finbit = (Byte)(fin ? 0x80 : 0x00);
+    auto finbit = (Byte)(fin ? 0x80 : 0x00);
     ByteArray frame;
     frame.push_back(finbit | opcode);
+    auto maskBit = (Byte)(_maskOutgoing ? 0x80 : 0x00);
     if (length < 126) {
-        frame.push_back((Byte)length);
+        frame.push_back((Byte)length | maskBit);
     } else if (length <= 0xFFFF) {
-        frame.push_back(126);
+        frame.push_back((Byte)126 | maskBit);
         uint16_t frameLength = (uint16_t)length;
         boost::endian::native_to_big_inplace(frameLength);
         frame.insert(frame.end(), (Byte *)&frameLength, (Byte *)&frameLength + sizeof(frameLength));
     } else {
-        frame.push_back(127);
+        frame.push_back((Byte)127 | maskBit);
         uint64_t frameLength = (uint64_t)length;
         boost::endian::native_to_big_inplace(frameLength);
         frame.insert(frame.end(), (Byte *)&frameLength, (Byte *)&frameLength + sizeof(frameLength));
     }
     if (length) {
-        frame.insert(frame.end(), data, data + length);
+        if (_maskOutgoing) {
+            std::array<Byte, 4> mask;
+            Random::randBytes(mask);
+            frame.insert(frame.end(), mask.begin(), mask.end());
+            frame.insert(frame.end(), data, data + length);
+            applyMask(mask, frame.data() + frame.size() - length, length);
+        } else {
+            frame.insert(frame.end(), data, data + length);
+        }
     }
     _stream->write(frame.data(), frame.size());
 }
@@ -398,16 +417,19 @@ void WebSocketProtocol13::onFrameStart(ByteArray data) {
         abort();
         return;
     }
-    if ((payloadLen & 0x80) == 0) {
-        abort();
-        return;
-    }
+    _maskedFrame = (payloadLen & 0x80) != 0;
     payloadLen &= 0x7f;
     if (payloadLen < 126) {
         _frameLength = payloadLen;
-        _stream->readBytes(4, [this, handler=_handler->shared_from_this()](ByteArray data) {
-            onMaskKey(std::move(data));
-        });
+        if (_maskedFrame) {
+            _stream->readBytes(4, [this, handler=_handler->shared_from_this()](ByteArray data) {
+                onMaskingKey(std::move(data));
+            });
+        } else {
+            _stream->readBytes(_frameLength, [this, handler=_handler->shared_from_this()](ByteArray data) {
+                onFrameData(std::move(data));
+            });
+        }
     } else if (payloadLen == 126) {
         _stream->readBytes(2, [this, handler=_handler->shared_from_this()](ByteArray data) {
             onFrameLength16(std::move(data));
@@ -421,29 +443,38 @@ void WebSocketProtocol13::onFrameStart(ByteArray data) {
 
 void WebSocketProtocol13::onFrameLength16(ByteArray data) {
     _frameLength = boost::endian::big_to_native(*(unsigned short *)data.data());
-    _stream->readBytes(4, [this, handler=_handler->shared_from_this()](ByteArray data) {
-        onMaskKey(std::move(data));
-    });
+    if (_maskedFrame) {
+        _stream->readBytes(4, [this, handler=_handler->shared_from_this()](ByteArray data) {
+            onMaskingKey(std::move(data));
+        });
+    } else {
+        _stream->readBytes(_frameLength, [this, handler=_handler->shared_from_this()](ByteArray data) {
+            onFrameData(std::move(data));
+        });
+    }
 }
 
 void WebSocketProtocol13::onFrameLength64(ByteArray data) {
     _frameLength = boost::endian::big_to_native(*(uint64_t *)data.data());
-    _stream->readBytes(4, [this, handler=_handler->shared_from_this()](ByteArray data) {
-        onMaskKey(std::move(data));
-    });
+    if (_maskedFrame) {
+        _stream->readBytes(4, [this, handler=_handler->shared_from_this()](ByteArray data) {
+            onMaskingKey(std::move(data));
+        });
+    } else {
+        _stream->readBytes(_frameLength, [this, handler=_handler->shared_from_this()](ByteArray data) {
+            onFrameData(std::move(data));
+        });
+    }
 }
 
-void WebSocketProtocol13::onMaskKey(ByteArray data) {
+void WebSocketProtocol13::onMaskingKey(ByteArray data) {
     std::copy(data.begin(), data.end(), _frameMask.begin());
     _stream->readBytes(_frameLength, [this, handler=_handler->shared_from_this()](ByteArray data) {
-        onFrameData(std::move(data));
+        onMaskedFrameData(std::move(data));
     });
 }
 
 void WebSocketProtocol13::onFrameData(ByteArray data) {
-    for (size_t i = 0; i != data.size(); ++i) {
-        data[i] ^= _frameMask[i % 4];
-    }
     Byte opcode;
     if (_frameOpcodeIsControl) {
         if (!_finalFrame) {
@@ -505,6 +536,358 @@ void WebSocketProtocol13::handleMessage(Byte opcode, ByteArray data) {
         writeFrame(true, 0x0A, data.data(), data.size());
     } else if (opcode == 0x0A) {
         // pong
+        WEBSOCKET_ASYNC() {
+            _handler->onPong(std::move(data));
+        } WEBSOCKET_ASYNC_END
+    } else {
+        abort();
+    }
+}
+
+
+WebSocketClientConnection::WebSocketClientConnection(IOLoop *ioloop, std::shared_ptr<HTTPRequest> request,
+                                                     ConnectCallbackType callback)
+        : _HTTPConnection(ioloop, nullptr, std::move(request), nullptr, 104857600)
+        , _connectCallback(StackContext::wrap<std::shared_ptr<WebSocketClientConnection>>(std::move(callback))) {
+#ifndef NDEBUG
+    sWatcher->inc(SYS_WEBSOCKETCLIENTCONNECTION_COUNT);
+#endif
+}
+
+WebSocketClientConnection::~WebSocketClientConnection() {
+#ifndef NDEBUG
+    sWatcher->dec(SYS_WEBSOCKETCLIENTCONNECTION_COUNT);
+#endif
+}
+
+void WebSocketClientConnection::close() {
+    if (_protocol) {
+        _protocol->close();
+    }
+}
+
+void WebSocketClientConnection::writeMessage(const Byte *message, size_t length, bool binary) {
+    _protocol->writeMessage(message, length, binary);
+}
+
+void WebSocketClientConnection::readMessage(ReadCallbackType callback) {
+    ASSERT(!_readCallback);
+    callback = StackContext::wrap<boost::optional<ByteArray>>(std::move(callback));
+    if (!_readQueue.empty()) {
+        boost::optional<ByteArray> message = std::move(_readQueue[0]);
+        _readQueue.pop_front();
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        _ioloop->spawnCallback([callback = std::move(callback), message=std::move(message)]() {
+            callback(std::move(message));
+        });
+#else
+        _ioloop->spawnCallback(std::bind([](ReadCallbackType &callback, boost::optional<ByteArray> &message) {
+            callback(std::move(message));
+        }, std::move(callback), std::move(message)));
+#endif
+    } else {
+        _readCallback = std::move(callback);
+    }
+}
+
+void WebSocketClientConnection::prepare() {
+    _callback = [this, self=shared_from_this()](HTTPResponse response) {
+        onHTTPResponse(std::move(response));
+    };
+    std::string key(16, {});
+    Random::randBytes((Byte *)key.data(), key.size());
+    _key = Base64::b64encode(key);
+    const std::string &url = _request->getURL();
+    std::string scheme, sep, rest;
+    std::tie(scheme, sep, rest) = String::partition(url, ":");
+    if (scheme == "ws") {
+        scheme = "http";
+    } else if (scheme == "wss") {
+        scheme = "https";
+    } else {
+        ThrowException(ValueError, String::format("Unsupported url scheme: %s", url.c_str()));
+    }
+    _request->setURL(scheme + sep + rest);
+    std::initializer_list<HTTPHeaders::NameValueType> headers = {
+            {"Upgrade", "websocket"},
+            {"Connection", "Upgrade"},
+            {"Sec-WebSocket-Key", _key},
+            {"Sec-WebSocket-Version", "13"}
+    };
+    _request->headers().update(headers);
+}
+
+void WebSocketClientConnection::handle1xx(int code) {
+    _callback = nullptr;
+    ASSERT(code == 101);
+    ASSERT(boost::to_lower_copy(_headers->at("Upgrade")) == "websocket");
+    ASSERT(boost::to_lower_copy(_headers->at("Connection")) == "upgrade");
+    std::string accept = WebSocketProtocol13::computeAcceptValue(_key);
+    ASSERT(_headers->at("Sec-Websocket-Accept") == accept);
+    _protocol = make_unique<WebSocketClientProtocol>(this, true);
+    _protocol->receiveFrame();
+    if (!_timeout.expired()) {
+        _ioloop->removeTimeout(_timeout);
+        _timeout.reset();
+    }
+    ConnectCallbackType callback(std::move(_connectCallback));
+    _connectCallback = nullptr;
+    auto self = getSelf<WebSocketClientConnection>();
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+    _ioloop->spawnCallback([callback = std::move(callback), self]() {
+        callback(std::move(self));
+    });
+#else
+    _ioloop->spawnCallback(std::bind([self](ConnectCallbackType &callback) {
+        callback(std::move(self));
+    }, std::move(callback)));
+#endif
+
+}
+
+void WebSocketClientConnection::onClose() {
+    onMessage(boost::none);
+    _HTTPConnection::onClose();
+    _callback = nullptr;
+}
+
+void WebSocketClientConnection::onHTTPResponse(HTTPResponse response) {
+    if (_connectCallback) {
+        ConnectCallbackType callback(std::move(_connectCallback));
+        _connectCallback = nullptr;
+        if (response.getError()) {
+            _error = response.getError();
+        }
+        auto self = getSelf<WebSocketClientConnection>();
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        _ioloop->spawnCallback([callback = std::move(callback), self]() {
+            callback(std::move(self));
+        });
+#else
+        _ioloop->spawnCallback(std::bind([self](ConnectCallbackType &callback) {
+                callback(std::move(self));
+            }, std::move(callback)));
+#endif
+    }
+}
+
+void WebSocketClientConnection::onMessage(boost::optional<ByteArray> message) {
+    if (_readCallback) {
+        ReadCallbackType callback = std::move(_readCallback);
+        _readCallback = nullptr;
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        _ioloop->spawnCallback([callback = std::move(callback), message=std::move(message)]() {
+            callback(std::move(message));
+        });
+#else
+        _ioloop->spawnCallback(std::bind([](ReadCallbackType &callback, boost::optional<ByteArray> &message) {
+            callback(std::move(message));
+        }, std::move(callback), std::move(message)));
+#endif
+    } else {
+        _readQueue.emplace_back(std::move(message));
+    }
+}
+
+
+void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback, IOLoop *ioloop) {
+    if (!ioloop) {
+        ioloop = IOLoop::current();
+    }
+    auto request = HTTPRequest::create(url);
+    auto connection = std::make_shared<WebSocketClientConnection>(ioloop, std::move(request), std::move(callback));
+    connection->start();
+}
+
+
+#define WEBSOCKET_ASYNC_END2 catch (std::exception &e) { \
+    LOG_ERROR(gAppLog, "Uncaught exception %s in %s", e.what(), _request->getURL().c_str()); \
+    abort(); \
+} catch(...) { \
+    LOG_ERROR(gAppLog, "Unknown exception in %s", _request->getURL().c_str()); \
+    abort(); \
+}
+
+
+void WebSocketClientProtocol::close() {
+    if (!_serverTerminated) {
+        if (!_stream->closed()) {
+            writeFrame(true, 0x08, nullptr, 0);
+        }
+        _serverTerminated = true;
+    }
+    if (_clientTerminated) {
+        if (!_waiting.expired()) {
+            _stream->ioloop()->removeTimeout(_waiting);
+            _waiting.reset();
+        }
+        _stream->close();
+    } else if (_waiting.expired()) {
+        _waiting = _stream->ioloop()->addTimeout(5.0f, [this, handler=_handler->shared_from_this()]() {
+            abort();
+        });
+    }
+}
+
+void WebSocketClientProtocol::writeFrame(bool fin, Byte opcode, const Byte *data, size_t length) {
+    auto finbit = (Byte)(fin ? 0x80 : 0x00);
+    ByteArray frame;
+    frame.push_back(finbit | opcode);
+    auto maskBit = (Byte)(_maskOutgoing ? 0x80 : 0x00);
+    if (length < 126) {
+        frame.push_back((Byte)length | maskBit);
+    } else if (length <= 0xFFFF) {
+        frame.push_back((Byte)126 | maskBit);
+        uint16_t frameLength = (uint16_t)length;
+        boost::endian::native_to_big_inplace(frameLength);
+        frame.insert(frame.end(), (Byte *)&frameLength, (Byte *)&frameLength + sizeof(frameLength));
+    } else {
+        frame.push_back((Byte)127 | maskBit);
+        uint64_t frameLength = (uint64_t)length;
+        boost::endian::native_to_big_inplace(frameLength);
+        frame.insert(frame.end(), (Byte *)&frameLength, (Byte *)&frameLength + sizeof(frameLength));
+    }
+    if (length) {
+        if (_maskOutgoing) {
+            std::array<Byte, 4> mask;
+            Random::randBytes(mask);
+            frame.insert(frame.end(), mask.begin(), mask.end());
+            frame.insert(frame.end(), data, data + length);
+            applyMask(mask, frame.data() + frame.size() - length, length);
+        } else {
+            frame.insert(frame.end(), data, data + length);
+        }
+    }
+    _stream->write(frame.data(), frame.size());
+}
+
+void WebSocketClientProtocol::onFrameStart(ByteArray data) {
+    Byte header = data[0], payloadLen = data[1];
+    _finalFrame = (header & 0x80) != 0;
+    Byte reservedBits = (Byte)(header & 0x70);
+    _frameOpcode = (Byte)(header & 0x0f);
+    _frameOpcodeIsControl = (_frameOpcode & 0x8) != 0;
+    if (reservedBits != 0) {
+        abort();
+        return;
+    }
+    _maskedFrame = (payloadLen & 0x80) != 0;
+    payloadLen &= 0x7f;
+    auto wrapper = std::make_shared<ReadCallbackWrapper>(this);
+    if (payloadLen < 126) {
+        _frameLength = payloadLen;
+        if (_maskedFrame) {
+            _stream->readBytes(4, std::bind(&ReadCallbackWrapper::onMaskingKey, std::move(wrapper),
+                                            std::placeholders::_1));
+        } else {
+            _stream->readBytes(_frameLength, std::bind(&ReadCallbackWrapper::onFrameData, std::move(wrapper),
+                                                       std::placeholders::_1));
+        }
+    } else if (payloadLen == 126) {
+        _stream->readBytes(2, std::bind(&ReadCallbackWrapper::onFrameLength16, std::move(wrapper),
+                                        std::placeholders::_1));
+    } else if (payloadLen == 127) {
+        _stream->readBytes(8, std::bind(&ReadCallbackWrapper::onFrameLength64, std::move(wrapper),
+                                        std::placeholders::_1));
+    }
+}
+
+void WebSocketClientProtocol::onFrameLength16(ByteArray data) {
+    _frameLength = boost::endian::big_to_native(*(unsigned short *)data.data());
+    auto wrapper = std::make_shared<ReadCallbackWrapper>(this);
+    if (_maskedFrame) {
+        _stream->readBytes(4, std::bind(&ReadCallbackWrapper::onMaskingKey, std::move(wrapper),
+                                        std::placeholders::_1));
+    } else {
+        _stream->readBytes(_frameLength, std::bind(&ReadCallbackWrapper::onFrameData, std::move(wrapper),
+                                                   std::placeholders::_1));
+    }
+}
+
+void WebSocketClientProtocol::onFrameLength64(ByteArray data) {
+    _frameLength = boost::endian::big_to_native(*(uint64_t *)data.data());
+    auto wrapper = std::make_shared<ReadCallbackWrapper>(this);
+    if (_maskedFrame) {
+        _stream->readBytes(4, std::bind(&ReadCallbackWrapper::onMaskingKey, std::move(wrapper),
+                                        std::placeholders::_1));
+    } else {
+        _stream->readBytes(_frameLength, std::bind(&ReadCallbackWrapper::onFrameData, std::move(wrapper),
+                                                   std::placeholders::_1));
+    }
+}
+
+void WebSocketClientProtocol::onMaskingKey(ByteArray data) {
+    std::copy(data.begin(), data.end(), _frameMask.begin());
+    auto wrapper = std::make_shared<ReadCallbackWrapper>(this);
+    _stream->readBytes(_frameLength, std::bind(&ReadCallbackWrapper::onMaskedFrameData, std::move(wrapper),
+                                               std::placeholders::_1));
+}
+
+void WebSocketClientProtocol::onFrameData(ByteArray data) {
+    Byte opcode;
+    if (_frameOpcodeIsControl) {
+        if (!_finalFrame) {
+            abort();
+            return;
+        }
+        opcode = _frameOpcode;
+    } else if (_frameOpcode == 0) {
+        if (_fragmentedMessageBuffer.empty()) {
+            abort();
+            return;
+        }
+        _fragmentedMessageBuffer.insert(_fragmentedMessageBuffer.end(), data.begin(), data.end());
+        if (_finalFrame) {
+            opcode = _fragmentedMessageOpcode;
+            data = std::move(_fragmentedMessageBuffer);
+            _fragmentedMessageBuffer.clear();
+        }
+    } else {
+        if (!_fragmentedMessageBuffer.empty()) {
+            abort();
+            return;
+        }
+        if (_finalFrame) {
+            opcode = _frameOpcode;
+        } else {
+            _fragmentedMessageOpcode = _frameOpcode;
+            _fragmentedMessageBuffer = std::move(data);
+        }
+    }
+    if (_finalFrame) {
+        handleMessage(opcode, std::move(data));
+    }
+    if (!_clientTerminated) {
+        receiveFrame();
+    }
+}
+
+void WebSocketClientProtocol::handleMessage(Byte opcode, ByteArray data) {
+    if (_clientTerminated) {
+        return;
+    }
+    if (opcode == 0x01) {
+        // string
+        WEBSOCKET_ASYNC() {
+            _handler->onMessage(std::move(data));
+        } WEBSOCKET_ASYNC_END2
+    } else if (opcode == 0x02) {
+        // binary
+        WEBSOCKET_ASYNC() {
+            _handler->onMessage(std::move(data));
+        } WEBSOCKET_ASYNC_END2
+    } else if (opcode == 0x08) {
+        // close
+        _clientTerminated = true;
+        close();
+    } else if (opcode == 0x09) {
+        // ping
+        writeFrame(true, 0x0A, data.data(), data.size());
+    } else if (opcode == 0x0A) {
+        // pong
+        WEBSOCKET_ASYNC() {
+            _handler->onPong(std::move(data));
+        } WEBSOCKET_ASYNC_END2
     } else {
         abort();
     }

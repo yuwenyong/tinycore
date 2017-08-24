@@ -86,6 +86,7 @@ void _Timeout::cancel() {
 }
 
 
+thread_local IOLoop* IOLoop::_current = nullptr;
 
 IOLoop::IOLoop()
         : _ioService()
@@ -98,25 +99,30 @@ IOLoop::~IOLoop() {
 }
 
 void IOLoop::start() {
+    LogUtil::initGlobalLoggers();
     if (_stopped) {
+        _stopped = false;
         return;
     }
     if (_ioService.stopped()) {
         _ioService.reset();
     }
+    IOLoop * oldCurrent = _current;
+    _current = this;
     WorkType work(_ioService);
     _signalSet.start();
     while (!_ioService.stopped()) {
         try {
             _ioService.run();
         } catch (SystemExit &e) {
-            Log::error(e.what());
+            LOG_ERROR(gAppLog, e.what());
             break;
         } catch (std::exception &e) {
-            Log::error("Unexpected Exception:%s", e.what());
+            LOG_ERROR(gAppLog, "Unexpected Exception:%s", e.what());
         }
     }
     _stopped = false;
+    _current = oldCurrent;
 }
 
 void IOLoop::removeTimeout(Timeout timeout) {
@@ -130,6 +136,37 @@ void IOLoop::addCallback(CallbackType callback) {
     callback = StackContext::wrap(std::move(callback));
     _ioService.post(std::move(callback));
 }
+
+void IOLoop::runSync(CallbackType func, const Timestamp &deadline) {
+    auto timeout = addTimeout(deadline, [this](){
+        stop();
+    });
+    runSync(std::move(func));
+    if (!timeout.expired()) {
+        removeTimeout(timeout);
+    }
+}
+
+void IOLoop::runSync(CallbackType func, const Duration &deadline) {
+    auto timeout = addTimeout(deadline, [this](){
+        stop();
+    });
+    runSync(std::move(func));
+    if (!timeout.expired()) {
+        removeTimeout(timeout);
+    }
+}
+
+void IOLoop::runSync(CallbackType func, float deadline) {
+    auto timeout = addTimeout(deadline, [this](){
+        stop();
+    });
+    runSync(std::move(func));
+    if (!timeout.expired()) {
+        removeTimeout(timeout);
+    }
+}
+
 
 _Timeout::CallbackType IOLoop::wrapTimeoutCallback(std::shared_ptr<_Timeout> timeout, TimeoutCallbackType callback) {
     callback = StackContext::wrap(std::move(callback));
@@ -151,18 +188,18 @@ _Timeout::CallbackType IOLoop::wrapTimeoutCallback(std::shared_ptr<_Timeout> tim
 
 void IOLoop::setupInterrupter() {
     signal(SIGINT, [this](){
-        Log::info("Capture SIGINT");
+        LOG_INFO(gAppLog, "Capture SIGINT");
         stop();
         return false;
     });
     signal(SIGTERM, [this](){
-        Log::info("Capture SIGTERM");
+        LOG_INFO(gAppLog, "Capture SIGTERM");
         stop();
         return false;
     });
 #if defined(SIGQUIT)
     signal(SIGQUIT, [this](){
-        Log::info("Capture SIGQUIT");
+        LOG_INFO(gAppLog, "Capture SIGQUIT");
         stop();
         return false;
     });
@@ -178,8 +215,8 @@ PeriodicCallback::PeriodicCallback(CallbackType callback, float callbackTime, IO
 
 PeriodicCallback::PeriodicCallback(CallbackType callback, Duration callbackTime, IOLoop *ioloop)
         : _callback(std::move(callback))
-        , _callbackTime(std::move(callbackTime))
-        , _ioloop(ioloop ? ioloop : sIOLoop)
+        , _callbackTime(callbackTime)
+        , _ioloop(ioloop ? ioloop : IOLoop::current())
         , _running(false) {
 #ifndef NDEBUG
     sWatcher->inc(SYS_PERIODICCALLBACK_COUNT);
@@ -199,7 +236,7 @@ void PeriodicCallback::run() {
     try {
         _callback();
     } catch (std::exception &e) {
-        Log::error("Error in periodic callback:%s", e.what());
+        LOG_ERROR(gAppLog, "Error in periodic callback:%s", e.what());
     }
     scheduleNext();
 }

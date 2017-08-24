@@ -2,64 +2,79 @@
 // Created by yuwenyong on 17-3-7.
 //
 
+#include <thread>
 #include "tinycore/tinycore.h"
 
 
-class TestSink: public BaseSink {
-public:
-    typedef boost::mpl::string<'T', 'e', 's', 't'> AppenderType;
-
-    TestSink(const StringVector &extraArgs) {
-        if (!extraArgs.empty()) {
-            _arg = extraArgs.front();
-        }
-    }
-
-    void onConsume(const DateTime &timeStamp, LogLevel logLevel, const std::string &channel,
-                   const std::string &message, const std::string &format) {
-        std::cout << '[' << _arg << ']'
-                  << '[' <<  boost::gregorian::to_iso_string(timeStamp.date()) << ' '
-                  << boost::posix_time::to_simple_string(timeStamp.time_of_day()) << ']'
-                  << '[' << channel << ']'
-                  << '<' << message << '>'
-                  << std::endl;
-        std::cout << ">>" << format << std::endl;
-    }
-protected:
-    std::string _arg{"TestSink"};
-};
-
-
 int main() {
-    sConfigMgr->setString("LogsDir", "logs");
-    sConfigMgr->setString("Appender.Console", "Console,2,7");
-    sConfigMgr->setString("Appender.File", "File,1,3,test.log");
-    sConfigMgr->setString("Appender.Test", "Test,1,7,MySink");
-    sConfigMgr->setString("Logger.logger1", "1,Console File");
-    sConfigMgr->setString("Logger.logger2", "2,Test File");
-    sConfigMgr->setString("Logger.logger3", "3,Console File Test");
-    Log::registerSink<TestSink>();
-    Log::initialize();
-    Logger *logger1, *logger2, *logger3;
-    logger1 = Log::getLogger("logger1");
-    logger2 = Log::getLogger("logger2");
-    logger3 = Log::getLogger("logger3");
-    logger1->debug("debug msg from %s", "logger1");
-    logger1->info("info msg from %s", "logger1");
-    logger1->warn("warn msg from %s", "logger1");
-    logger1->error("error msg from %s", "logger1");
-    logger1->fatal("fatal msg from %s", "logger1");
-    logger2->debug("debug msg from %s", "logger2");
-    logger2->info("info msg from %s", "logger2");
-    logger2->warn("warn msg from %s", "logger2");
-    logger2->error("error msg from %s", "logger2");
-    logger2->fatal("fatal msg from %s", "logger2");
-    logger3->debug("debug msg from %s", "logger3");
-    logger3->info("info msg from %s", "logger3");
-    logger3->warn("warn msg from %s", "logger3");
-    logger3->error("error msg from %s", "logger3");
-    logger3->fatal("fatal msg from %s", "logger3");
-    std::cout << String::format("Hehe:%s", "test") << std::endl;
-    Log::close();
+    std::cout << "Init" << std::endl;
+    ConfigParser config;
+    config.read("myconf.ini");
+//    auto sections = config.getSections();
+//    for (auto &s: sections) {
+//        std::cerr << s << std::endl;
+//    }
+//    auto items = config.getItems("Test");
+//    for (auto &i: items) {
+//        std::cerr << i.first << ":" << i.second << std::endl;
+//    }
+//    auto options = config.getOptions("Test3");
+//    for (auto &s: options) {
+//        std::cerr << s << std::endl;
+//    }
+//    std::cerr << config.getString("Test", "Option") << std::endl;
+//    std::cerr << config.getString("Test", "Option2") << std::endl;
+//    std::cerr << config.getString("Test", "Option3", "dd") << std::endl;
+//    std::cerr << config.getString("Test", "Option4") << std::endl;
+    config.removeOption("Test", "Option");
+    config.removeSection("Test2");
+//    config.set("Test", "Option", 1);
+//    config.set("Test", "Option2", "Test");
+//    config.set("Test2", "Option", "Hehe");
+    config.write("myconf.ini");
+    Logging::Settings settings;
+    settings["Sinks.Console"]["Destination"] = "Console";
+    settings["Sinks.Console"]["Asynchronous"] = true;
+    settings["Sinks.Console"]["Format"] = "ConsoleSink[%Severity%][%Channel%]%Message%";
+    settings["Sinks.Console"]["AutoFlush"] = true;
+
+    settings["Sinks.File"]["Destination"] = "File";
+    settings["Sinks.File"]["Format"] = "ComSink[%Severity%][%Channel%]%Message%";
+    settings["Sinks.File"]["FileName"] = "logs/test.log";
+    settings["Sinks.File"]["Filter"] = "%Channel% child_of \"root.com\"";
+    Logging::initFromSettings(settings);
+    Logger *accessLogger = Logging::getLogger("access");
+    Logger *appLogger = Logging::getLogger("app");
+    Logger *comLogger = Logging::getLogger("com");
+//    Logging::init();
+    ConsoleSink sink;
+    sink.setFilter("access", LOG_LEVEL_INFO);
+    sink.setFormatter("AccessSink[%Severity%][%Channel%]%Message%");
+    Logging::addSink(sink);
+
+    ConsoleSink sink2;
+    sink2.setFilter("%Channel% child_of \"root.com\"");
+//    sink2.setFormatter("[%TimeStamp(format=\"%Y.%m.%d %H:%M:%S.%f\")%][%Severity%][%File%:%Line%:%Func%]%Message%");
+    Logging::addSink(sink2);
+
+    RotatingFileSink sink3("logs/mylog_%3N.log");
+    sink3.setFilter("app", LOG_LEVEL_INFO);
+    sink3.setFormatter("AppSink[%Severity%][%Channel%]%Message%");
+    Logging::addSink(sink3);
+
+    ByteArray bytes;
+    for (int i = 0; i < 20; ++i) { bytes.push_back((Byte)i); }
+    LOG_ERROR("This is log %d", 1);
+    LOG_ERROR(bytes.data(), bytes.size(), 10);
+    LOG_ERROR(accessLogger, "This is log %d", 2);
+    LOG_DEBUG(accessLogger, "This is log %d", 3);
+    LOG_ERROR(accessLogger, bytes.data(), bytes.size());
+    LOG_ERROR(appLogger, "This is log %d", 4);
+    LOG_ERROR(comLogger, "This is log %d", 5);
+    Logger *accessChild = accessLogger->getChild("child");
+    LOG_ERROR(accessChild, "This is log %d", 6);
+    Logging::close();
+    std::cout << "Closed" << std::endl;
+//    std::this_thread::sleep_for(std::chrono::seconds(5));
     return 0;
 }

@@ -5,7 +5,7 @@
 #include "tinycore/httputils/httplib.h"
 
 
-const std::map<int, std::string> HTTPResponses = {
+const std::map<int, std::string> HTTP_RESPONSES = {
         {100, "Continue"},
         {101, "Switching Protocols"},
 

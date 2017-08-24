@@ -3,147 +3,80 @@
 //
 
 #include "tinycore/configuration/options.h"
-#include <iostream>
-#include "tinycore/asyncio/ioloop.h"
-#include "tinycore/configuration/configmgr.h"
-#include "tinycore/debugging/watcher.h"
-#include "tinycore/logging/log.h"
-#include "tinycore/utilities/objectmanager.h"
+#include <boost/functional/factory.hpp>
 
 
-Options::Options()
-        : _opts("Allowed options") {
-    define("version,v", "print version string");
-    define("help,h", "display help message");
-    define<std::string>("config,c", "specify config file");
-}
-
-void Options::parseCommandLine(int argc, const char * const argv[]) {
-    po::store(po::parse_command_line(argc, argv, _opts), _vm);
-    po::notify(_vm);
-    if (contain("help")) {
-        std::cout << _opts << std::endl;
-        exit(1);
+void OptionParser::parseCommandLine(int argc, const char * const argv[], bool final) {
+    auto opts = composeOptions();
+    po::store(po::parse_command_line(argc, argv, opts), _vm);
+    if (has("help")) {
+        helpCallback();
     }
-    if (contain("version")) {
-        std::cout << TINYCORE_VER << std::endl;
-        exit(2);
+    if (has("version")) {
+        versionCallback();
     }
-    if (contain("config")) {
-        sConfigMgr->loadInitial(get<std::string>("config"));
+    if (final) {
+        po::notify(_vm);
+        runParseCallbacks();
     }
-    onEnter();
 }
 
-void Options::onEnter() {
-    Log::initialize();
-    setupWatcherHook();
-    setupInterrupter();
+void OptionParser::parseConfigFile(const char *path, bool final) {
+    auto opts = composeOptions();
+    po::store(po::parse_config_file<char>(path, opts, true), _vm);
+    if (has("help")) {
+        helpCallback();
+    }
+    if (has("version")) {
+        versionCallback();
+    }
+    if (final) {
+        po::notify(_vm);
+        runParseCallbacks();
+    }
 }
 
-void Options::onExit() {
-    sObjectMgr->cleanup();
-    sWatcher->dumpAll();
-    Log::close();
+void OptionParser::praseEnvironment(const boost::function1<std::string, std::string> &name_mapper, bool final) {
+    auto opts = composeOptions();
+    if (!name_mapper.empty()) {
+        po::store(po::parse_environment(opts, name_mapper), _vm);
+    } else {
+        po::store(po::parse_environment(opts, [](std::string name){
+            return "";
+        }), _vm);
+    }
+    if (has("help")) {
+        helpCallback();
+    }
+    if (has("version")) {
+        versionCallback();
+    }
+    if (final) {
+        po::notify(_vm);
+        runParseCallbacks();
+    }
 }
 
-Options* Options::instance() {
-    static Options instance;
+OptionParser* OptionParser::instance() {
+    static OptionParser instance("Allowed options");
     return &instance;
 }
 
-void Options::setupWatcherHook() {
-#ifndef NDEBUG
-    sWatcher->addIncCallback(SYS_TIMEOUT_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create Timeout,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_TIMEOUT_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy Timeout,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_PERIODICCALLBACK_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create PeriodicCallback,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_PERIODICCALLBACK_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy PeriodicCallback,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_IOSTREAM_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create IOStream,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_IOSTREAM_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy IOStream,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_SSLIOSTREAM_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create SSLIOStream,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_SSLIOSTREAM_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy SSLIOStream,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_HTTPCONNECTION_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPConnection,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_HTTPCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPConnection,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPServerRequest,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_HTTPSERVERREQUEST_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPServerRequest,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_REQUESTHANDLER_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create RequestHandler,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_REQUESTHANDLER_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy RequestHandler,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_WEBSOCKETHANDLER_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create WebsocketHandler,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_WEBSOCKETHANDLER_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy WebsocketHandler,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_HTTPCLIENT_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPClient,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_HTTPCLIENT_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPClient,current count:%d", value);
-    });
-
-    sWatcher->addIncCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int increment, int value) {
-        Log::debug("Create HTTPClientConnection,current count:%d", value);
-    });
-    sWatcher->addDecCallback(SYS_HTTPCLIENTCONNECTION_COUNT, [](int oldValue, int decrement, int value) {
-        Log::debug("Destroy HTTPClientConnection,current count:%d", value);
-    });
-#endif
+po::options_description* OptionParser::getGroup(std::string group) {
+    auto iter = _groups.find(group);
+    if (iter != _groups.end()) {
+        return iter->second;
+    } else {
+        po::options_description *options = boost::factory<po::options_description *>()(group);
+        _groups.insert(group, options);
+        return options;
+    }
 }
 
-void Options::setupInterrupter() {
-//    if (!sConfigMgr->getBool("disableInterrupter", false)) {
-//        sIOLoop->signal(SIGINT, [this](){
-//            Log::info("Capture SIGINT");
-//            sIOLoop->stop();
-//            return -1;
-//        });
-//        sIOLoop->signal(SIGTERM, [this](){
-//            Log::info("Capture SIGTERM");
-//            sIOLoop->stop();
-//            return -1;
-//        });
-//#if defined(SIGQUIT)
-//        sIOLoop->signal(SIGQUIT, [this](){
-//            Log::info("Capture SIGQUIT");
-//            sIOLoop->stop();
-//            return -1;
-//        });
-//#endif
-//    }
+po::options_description OptionParser::composeOptions() const {
+    po::options_description opts(_opts);
+    for (const auto &group: _groups) {
+        opts.add(*group->second);
+    }
+    return opts;
 }

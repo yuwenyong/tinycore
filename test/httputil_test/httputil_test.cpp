@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(TestSpecialFilenames) {
             "a\\b.txt",
     };
     for (auto &filename: filenames) {
-        Log::info("try filename %s", filename.c_str());
+        LOG_INFO("try filename %s", filename.c_str());
         std::string name = boost::replace_all_copy(boost::replace_all_copy(filename, "\\", "\\\\"), "\"", "\\\"");
         auto data = String::format("--1234\r\nContent-Disposition: form-data;"\
         " name=\"files\"; filename=\"%s\"\r\n\r\nFoo\r\n--1234--", name.c_str());
@@ -167,4 +167,9 @@ BOOST_AUTO_TEST_CASE(TestMultiLine) {
                                       {"Foo",  "bar baz"},
                                       {"Foo",  "even more lines"}};
     BOOST_CHECK_EQUAL(collectValues, targetValues);
+}
+
+BOOST_AUTO_TEST_CASE(TestUnixTime) {
+    time_t timestamp = 1359312200;
+    BOOST_CHECK_EQUAL(HTTPUtil::formatTimestamp(timestamp), "Sun, 27 Jan 2013 18:43:20 GMT");
 }

@@ -4,6 +4,7 @@
 
 #include "tinycore/debugging/watcher.h"
 #include <boost/functional/factory.hpp>
+#include "tinycore/debugging/trace.h"
 
 
 void Watcher::set(const char *key, int value) {

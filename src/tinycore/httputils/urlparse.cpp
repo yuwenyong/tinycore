@@ -613,9 +613,9 @@ QueryArgListMap URLParse::parseQS(const std::string &queryString, bool keepBlank
     decltype(dict.begin()) iter;
     QueryArgList arguments = parseQSL(queryString, keepBlankValues, strictParsing);
     for (auto &nv: arguments) {
-        if (nv.second.empty()) {
-            continue;
-        }
+//        if (nv.second.empty()) {
+//            continue;
+//        }
         iter = dict.find(nv.first);
         if (iter != dict.end()) {
             iter->second.emplace_back(std::move(nv.second));
@@ -665,7 +665,7 @@ QueryArgList URLParse::parseQSL(const std::string &queryString, bool keepBlankVa
             name = unquote(name);
             boost::replace_all(value, "+", " ");
             value = unquote(value);
-            r.push_back(std::make_pair(std::move(name), std::move(value)));
+            r.emplace_back(std::make_pair(std::move(name), std::move(value)));
         }
     }
     return r;

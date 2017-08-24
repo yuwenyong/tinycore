@@ -6,69 +6,144 @@
 #define TINYCORE_LOGGER_H
 
 #include "tinycore/common/common.h"
-#include <boost/log/sources/severity_channel_logger.hpp>
+#include <boost/functional/factory.hpp>
+#include <boost/log/sources/channel_feature.hpp>
+#include <boost/log/sources/logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
+#include <boost/log/sources/severity_feature.hpp>
 #include <boost/log/keywords/channel.hpp>
 #include <boost/noncopyable.hpp>
+#include <boost/scope_exit.hpp>
+#include "tinycore/logging/attributes.h"
 #include "tinycore/utilities/string.h"
 
-namespace logging = boost::log;
+
 namespace src = boost::log::sources;
 namespace keywords = boost::log::keywords;
 
-enum LogLevel {
-    LOG_LEVEL_DISABLED,
-    LOG_LEVEL_DEBUG,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_FATAL,
+
+namespace logger_keywords {
+BOOST_PARAMETER_KEYWORD(file_ns, file)
+BOOST_PARAMETER_KEYWORD(line_ns, line)
+BOOST_PARAMETER_KEYWORD(func_ns, func)
+}
+
+
+template <typename BaseT>
+class PositionTaggerFeature: public BaseT {
+public:
+    typedef typename BaseT::char_type char_type;
+    typedef typename BaseT::threading_model threading_model;
+
+    typedef typename logging::strictest_lock<
+            boost::lock_guard<threading_model>,
+            typename BaseT::open_record_lock,
+            typename BaseT::add_attribute_lock,
+            typename BaseT::remove_attribute_lock
+    >::type open_record_lock;
+
+    PositionTaggerFeature() = default;
+
+    PositionTaggerFeature(PositionTaggerFeature const& that)
+            : BaseT(static_cast<BaseT const&>(that)) {
+
+    }
+
+    template< typename ArgsT >
+    PositionTaggerFeature(ArgsT const& args)
+            : BaseT(args) {
+
+    }
+
+protected:
+    template< typename ArgsT >
+    logging::record open_record_unlocked(ArgsT const& args) {
+        StringLiteral fileValue = args[logger_keywords::file | StringLiteral()];
+        size_t lineValue = args[logger_keywords::line | 0];
+        StringLiteral funcValue = args[logger_keywords::func | StringLiteral()];
+
+        logging::attribute_set &attrs = BaseT::attributes();
+        logging::attribute_set::iterator fileIter = attrs.end();
+        logging::attribute_set::iterator lineIter = attrs.end();
+        logging::attribute_set::iterator funcIter = attrs.end();
+
+        if (!fileValue.empty()) {
+            auto res = BaseT::add_attribute_unlocked("File", attrs::constant<StringLiteral>(fileValue));
+            if (res.second) {
+                fileIter = res.first;
+            }
+        }
+        if (lineValue != 0) {
+            auto res = BaseT::add_attribute_unlocked("Line", attrs::constant<size_t>(lineValue));
+            if (res.second) {
+                lineIter = res.first;
+            }
+        }
+        if (!funcValue.empty()) {
+            auto res = BaseT::add_attribute_unlocked("Func", attrs::constant<StringLiteral>(funcValue));
+            if (res.second) {
+                funcIter = res.first;
+            }
+        }
+
+        BOOST_SCOPE_EXIT_TPL(&fileIter, &lineIter, &funcIter, &attrs) {
+            if (fileIter != attrs.end()) {
+                attrs.erase(fileIter);
+            }
+            if (lineIter != attrs.end()) {
+                attrs.erase(lineIter);
+            }
+            if (funcIter != attrs.end()) {
+                attrs.erase(funcIter);
+            }
+        }BOOST_SCOPE_EXIT_END
+
+        return BaseT::open_record_unlocked(args);
+    }
 };
 
 
-template< typename CharT, typename TraitsT >
-std::basic_ostream< CharT, TraitsT >& operator<< (std::basic_ostream< CharT, TraitsT>& strm, LogLevel lvl) {
-    static const char* const str[] = {
-            "DISABLED",
-            "DEBUG",
-            "INFO ",
-            "WARN ",
-            "ERROR",
-            "FATAL",
-    };
-    if (static_cast<size_t>(lvl) < (sizeof(str) / sizeof(*str))) {
-        strm << str[lvl];
-    } else {
-        strm << static_cast<int>(lvl);
-    }
-    return strm;
-}
+struct PositionTagger: public boost::mpl::quote1<PositionTaggerFeature> {
+
+};
+
+
+template <typename LevelT = int, typename ChannelT = std::string>
+class PositionLoggerMT: public src::basic_composite_logger<
+        char, PositionLoggerMT<LevelT, ChannelT>,
+        src::multi_thread_model<logging::aux::light_rw_mutex>,
+        src::features<src::severity<LevelT>, src::channel<ChannelT>, PositionTagger>> {
+    BOOST_LOG_FORWARD_LOGGER_MEMBERS_TEMPLATE(PositionLoggerMT)
+};
 
 
 class Logger: public boost::noncopyable {
 public:
-    typedef src::severity_channel_logger_mt<LogLevel, std::string> LoggerType;
-    typedef logging::record LogRecord;
-
-    Logger(std::string name, LogLevel level=LOG_LEVEL_DISABLED)
-            : _name(std::move(name))
-            , _logger(keywords::channel=_name)
-            , _level(level) {
-
-    }
-
-    ~Logger();
+    friend class boost::factory<Logger*>;
 
     const std::string& getName() const {
         return _name;
     }
 
-    LogLevel getLoggerLevel() const {
-        return _level;
+    Logger* getChild(const std::string &suffix) const;
+
+    template <typename... Args>
+    void trace(const char *format, Args&&... args) {
+        write(LOG_LEVEL_TRACE, format, std::forward<Args>(args)...);
     }
 
-    void setLoggerLevel(LogLevel level) {
-        _level = level;
+    template <typename... Args>
+    void trace(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format, Args&&... args) {
+        write(file, line, func, LOG_LEVEL_TRACE, format, std::forward<Args>(args)...);
+    }
+
+    void trace(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_TRACE, data, length, limit);
+    }
+
+    void trace(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_TRACE, data, length, limit);
     }
 
     template <typename... Args>
@@ -77,13 +152,56 @@ public:
     }
 
     template <typename... Args>
+    void debug(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format, Args&&... args) {
+        write(file, line, func, LOG_LEVEL_DEBUG, format, std::forward<Args>(args)...);
+    }
+
+    void debug(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_DEBUG, data, length, limit);
+    }
+
+    void debug(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_DEBUG, data, length, limit);
+    }
+
+    template <typename... Args>
     void info(const char *format, Args&&... args) {
         write(LOG_LEVEL_INFO, format, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
-    void warn(const char *format, Args&&... args) {
-        write(LOG_LEVEL_WARN, format, std::forward<Args>(args)...);
+    void info(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format, Args&&... args) {
+        write(file, line, func, LOG_LEVEL_INFO, format, std::forward<Args>(args)...);
+    }
+
+    void info(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_INFO, data, length, limit);
+    }
+
+    void info(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+              size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_INFO, data, length, limit);
+    }
+
+    template <typename... Args>
+    void warning(const char *format, Args&&... args) {
+        write(LOG_LEVEL_WARNING, format, std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format,
+                 Args&&... args) {
+        write(file, line, func, LOG_LEVEL_WARNING, format, std::forward<Args>(args)...);
+    }
+
+    void warning(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_WARNING, data, length, limit);
+    }
+
+    void warning(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+                 size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_WARNING, data, length, limit);
     }
 
     template <typename... Args>
@@ -92,30 +210,73 @@ public:
     }
 
     template <typename... Args>
+    void error(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format, Args&&... args) {
+        write(file, line, func, LOG_LEVEL_ERROR, format, std::forward<Args>(args)...);
+    }
+
+    void error(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_ERROR, data, length, limit);
+    }
+
+    void error(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_ERROR, data, length, limit);
+    }
+
+    template <typename... Args>
     void fatal(const char *format, Args&&... args) {
         write(LOG_LEVEL_FATAL, format, std::forward<Args>(args)...);
     }
+
+    template <typename... Args>
+    void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, const char *format, Args&&... args) {
+        write(file, line, func, LOG_LEVEL_FATAL, format, std::forward<Args>(args)...);
+    }
+
+    void fatal(const Byte *data, size_t length, size_t limit=0) {
+        write(LOG_LEVEL_FATAL, data, length, limit);
+    }
+
+    void fatal(const StringLiteral &file, size_t line, const StringLiteral &func, const Byte *data, size_t length,
+               size_t limit=0) {
+        write(file, line, func, LOG_LEVEL_FATAL, data, length, limit);
+    }
 protected:
-    bool shouldLog(LogLevel level) const {
-        return _level != LOG_LEVEL_DISABLED && _level <= level;
+    explicit Logger(std::string name)
+            : _name(std::move(name))
+            , _logger(keywords::channel=_name) {
+
     }
 
     template <typename... Args>
     void write(LogLevel level, const char *format, Args&&... args) {
-        if (!shouldLog(level)) {
-            return;
-        }
-        LogRecord rec = _logger.open_record(keywords::severity=level);
+        logging::record rec = _logger.open_record(keywords::severity=level);
         if (rec) {
-            boost::log::record_ostream strm(rec);
+            logging::record_ostream strm(rec);
             strm << String::format(format, std::forward<Args>(args)...);
             _logger.push_record(std::move(rec));
         }
     }
 
+    template <typename... Args>
+    void write(const StringLiteral &file, size_t line, const StringLiteral &func, LogLevel level, const char *format,
+               Args&&... args) {
+        logging::record rec = _logger.open_record((keywords::severity=level, logger_keywords::file=file,
+                logger_keywords::line=line, logger_keywords::func=func));
+        if (rec) {
+            logging::record_ostream strm(rec);
+            strm << String::format(format, std::forward<Args>(args)...);
+            _logger.push_record(std::move(rec));
+        }
+    }
+
+    void write(LogLevel level, const Byte *data, size_t length, size_t limit=0);
+    void write(const StringLiteral &file, size_t line, const StringLiteral &func, LogLevel level,
+               const Byte *data, size_t length, size_t limit=0);
+
     std::string _name;
-    LoggerType _logger;
-    LogLevel _level{LOG_LEVEL_DISABLED};
+    PositionLoggerMT<LogLevel> _logger;
 };
+
 
 #endif //TINYCORE_LOGGER_H

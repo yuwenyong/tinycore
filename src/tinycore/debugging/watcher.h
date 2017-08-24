@@ -9,7 +9,7 @@
 #include <mutex>
 #include <boost/ptr_container/ptr_map.hpp>
 #include <boost/signals2.hpp>
-#include "tinycore/logging/log.h"
+#include "tinycore/logging/logging.h"
 #include "tinycore/utilities/string.h"
 
 
@@ -49,34 +49,26 @@ public:
     static Watcher* instance();
 protected:
     void dumpHeader(Logger *logger) const {
-        const char *border = "+----------------------------------------|--------------------+";
-        if (logger) {
-            logger->info(border);
-            logger->info("|%-40s|%-20s|", "ObjectKey", "CurrentValue");
-        } else {
-            Log::info(border);
-            Log::info("|%-40s|%-20s|", "ObjectKey", "CurrentValue");
+        if (logger == nullptr) {
+            logger = Logging::getRootLogger();
         }
+        LOG_INFO("+----------------------------------------|--------------------+");
+        LOG_INFO("|%-40s|%-20s|", "ObjectKey", "CurrentValue");
     }
 
     void dumpObject(const std::string &key, int value, Logger *logger) const {
-        const char *border = "+----------------------------------------|--------------------+";
-        if (logger) {
-            logger->info(border);
-            logger->info("|%-40s|%-20d|", key.c_str(), value);
-        } else {
-            Log::info(border);
-            Log::info("|%-40s|%-20d|", key.c_str(), value);
+        if (logger == nullptr) {
+            logger = Logging::getRootLogger();
         }
+        LOG_INFO("+----------------------------------------|--------------------+");
+        LOG_INFO("|%-40s|%-20d|", key.c_str(), value);
     }
 
     void dumpFooter(Logger *logger) const {
-        const char *border = "+----------------------------------------|--------------------+";
-        if (logger) {
-            logger->info(border);
-        } else {
-            Log::info(border);
+        if (logger == nullptr) {
+            logger = Logging::getRootLogger();
         }
+        LOG_INFO("+----------------------------------------|--------------------+");
     }
 
     mutable std::mutex _lock;
