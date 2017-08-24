@@ -449,9 +449,9 @@ void Application::addHandlers(std::string hostPattern, HandlersType &&hostHandle
         hostPattern.push_back('$');
     }
     std::unique_ptr<HostHandlerType> handler = make_unique<HostHandlerType>();
-    handler->first = HostPatternType::compile(hostPattern);
+    handler->first = hostPattern;
     HandlersType &handlers = handler->second;
-    if (!_handlers.empty() && _handlers.back().second.front().getPattern() == ".*$") {
+    if (!_handlers.empty() && _handlers.back().first.str() == ".*$") {
         auto iter = _handlers.end();
         std::advance(iter, -1);
         _handlers.insert(iter, handler.release());
@@ -538,7 +538,7 @@ std::vector<URLSpec*> Application::getHostHandlers(std::shared_ptr<HTTPServerReq
     }
     std::vector<URLSpec *> matches;
     for (auto &handler: _handlers) {
-        if (boost::xpressive::regex_match(host, handler.first)) {
+        if (boost::regex_match(host, handler.first)) {
             for (auto &spec: handler.second) {
                 matches.emplace_back(&spec);
             }
@@ -546,7 +546,7 @@ std::vector<URLSpec*> Application::getHostHandlers(std::shared_ptr<HTTPServerReq
     }
     if (matches.empty() && !request->getHTTPHeaders()->has("X-Real-Ip")) {
         for (auto &handler: _handlers) {
-            if (boost::xpressive::regex_match(_defaultHost, handler.first)) {
+            if (boost::regex_match(_defaultHost, handler.first)) {
                 for (auto &spec: handler.second) {
                     matches.emplace_back(&spec);
                 }

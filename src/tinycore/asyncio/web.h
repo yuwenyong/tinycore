@@ -114,6 +114,11 @@ public:
         }
     }
 
+    bool hasArgument(const std::string &name) const {
+        auto &arguments = _request->getArguments();
+        return arguments.find(name) != arguments.end();
+    }
+
     std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
     std::string getArgument(const std::string &name, const std::string &defaultValue, bool strip= true) const;
     StringVector getArguments(const std::string &name, bool strip= true) const;
@@ -330,7 +335,7 @@ public:
 class TC_COMMON_API Application {
 public:
     typedef PtrVector<URLSpec> HandlersType;
-    typedef boost::xpressive::sregex HostPatternType;
+    typedef boost::regex HostPatternType;
     typedef std::pair<HostPatternType, HandlersType> HostHandlerType;
     typedef boost::ptr_vector<HostHandlerType> HostHandlersType;
     typedef std::map<std::string, URLSpec *> NamedHandlersType;

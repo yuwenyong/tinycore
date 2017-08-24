@@ -299,7 +299,7 @@ void BaseCookie::parseString(const std::string &str, const boost::regex &patt) {
         }
         k = match["key"].str();
         v = match["val"].str();
-        i = match.position((boost::cmatch::size_type)0) + match.length((int)0);
+        i += match.position((boost::cmatch::size_type)0) + match.length((int)0);
         if (k[0] == '$') {
             if (m) {
                 (*m)[k.substr(1)] = std::move(v);
