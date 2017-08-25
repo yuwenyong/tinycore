@@ -71,12 +71,12 @@ public:
     }
 
     template <typename ResultT>
-    ResultT wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr) {
-        boost::any result = wait(std::move(timeout), std::move(condition));
+    ResultT wait(float timeout=5.0f, ConditionCallback condition= nullptr) {
+        boost::any result = wait(timeout, std::move(condition));
         return boost::any_cast<ResultT>(result);
     }
 
-    boost::any wait(boost::optional<float> timeout=5.0f, ConditionCallback condition= nullptr);
+    boost::any wait(float timeout=5.0f, ConditionCallback condition= nullptr);
 protected:
     const IOLoop* ioloop() const {
         return &_ioloop;
