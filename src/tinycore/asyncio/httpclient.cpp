@@ -170,7 +170,7 @@ void _HTTPConnection::start() {
             _stream = IOStream::create(std::move(socket), _ioloop, _maxBufferSize);
         }
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
-        if (timeout > 0.000001f) {
+        if (timeout != 0.0f) {
             IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
                 onTimeout();
             };

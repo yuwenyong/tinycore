@@ -657,6 +657,8 @@ void WebSocketClientConnection::onHTTPResponse(HTTPResponse response) {
         _connectCallback = nullptr;
         if (response.getError()) {
             _error = response.getError();
+        } else {
+            _error = MakeExceptionPtr(WebSocketError, "Non-websocket response");
         }
         auto self = getSelf<WebSocketClientConnection>();
 #if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
@@ -690,11 +692,12 @@ void WebSocketClientConnection::onMessage(boost::optional<ByteArray> message) {
 }
 
 
-void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback, IOLoop *ioloop) {
+void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback,
+                      float connectTimeout, IOLoop *ioloop) {
     if (!ioloop) {
         ioloop = IOLoop::current();
     }
-    auto request = HTTPRequest::create(url);
+    auto request = HTTPRequest::create(url, opts::_connectTimeout=connectTimeout);
     auto connection = std::make_shared<WebSocketClientConnection>(ioloop, std::move(request), std::move(callback));
     connection->start();
 }

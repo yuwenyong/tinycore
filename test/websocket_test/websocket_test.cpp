@@ -22,17 +22,30 @@ public:
 };
 
 
+class NonWebSocketHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(const StringVector &args) override {
+        write("ok");
+    }
+};
+
+
+using WebSocketConnectionPtr = std::shared_ptr<WebSocketClientConnection>;
+
+
 class WebSocketTest: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
                 url<EchoHandler>("/echo"),
+                url<NonWebSocketHandler>("/non_ws"),
         };
         return make_unique<Application>(std::move(handlers));
     }
 
     void testWebSocketCallbacks() {
-        using WebSocketConnectionPtr = std::shared_ptr<WebSocketClientConnection>;
         WebSocketConnect(String::format("ws://localhost:%d/echo", getHTTPPort()),
                          [this](WebSocketConnectionPtr connection) {
 //                             std::cerr << "On Connect" << std::endl;
@@ -48,9 +61,60 @@ public:
         ByteArray response = wait<ByteArray>();
         BOOST_CHECK_EQUAL(String::toString(response), "Hello");
     }
+
+    void testWebSocketHTTPFail() {
+        WebSocketConnect(String::format("ws://localhost:%d/notfound", getHTTPPort()),
+                         [this](WebSocketConnectionPtr connection) {
+                             stop(std::move(connection));
+                         });
+        WebSocketConnectionPtr ws = wait<WebSocketConnectionPtr>();
+        BOOST_CHECK(ws->getError());
+        try {
+            std::rethrow_exception(ws->getError());
+        } catch (_HTTPError &e) {
+            BOOST_CHECK_EQUAL(e.getCode(), 404);
+        } catch (...) {
+            BOOST_CHECK(false);
+        }
+    }
+
+    void testWebSocketHTTPSuccess() {
+        WebSocketConnect(String::format("ws://localhost:%d/non_ws", getHTTPPort()),
+                         [this](WebSocketConnectionPtr connection) {
+                             stop(std::move(connection));
+                         });
+        WebSocketConnectionPtr ws = wait<WebSocketConnectionPtr>();
+        BOOST_CHECK(ws->getError());
+        try {
+            std::rethrow_exception(ws->getError());
+        } catch (WebSocketError &e) {
+//            std::cerr << e.what() << std::endl;
+        } catch (...) {
+            BOOST_CHECK(false);
+        }
+    }
+
+    void testWebSocketNetworkFail() {
+        unsigned short port = getUnusedPort();
+        WebSocketConnect(String::format("ws://localhost:%d/", port),
+                         [this](WebSocketConnectionPtr connection) {
+                             stop(std::move(connection));
+                         }, 0.01f);
+        WebSocketConnectionPtr ws = wait<WebSocketConnectionPtr>();
+        BOOST_CHECK(ws->getError());
+        try {
+            std::rethrow_exception(ws->getError());
+        } catch (_HTTPError &e) {
+            BOOST_CHECK_EQUAL(e.getCode(), 599);
+        } catch (...) {
+            BOOST_CHECK(false);
+        }
+    }
 };
 
 
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(WebSocketTest, testWebSocketCallbacks)
-
+TINYCORE_TEST_CASE(WebSocketTest, testWebSocketHTTPFail)
+TINYCORE_TEST_CASE(WebSocketTest, testWebSocketHTTPSuccess)
+TINYCORE_TEST_CASE(WebSocketTest, testWebSocketNetworkFail)

@@ -16,6 +16,8 @@
 #define _NOT_SUPPORTED(func) void func() { ThrowException(Exception, #func " not supported for Web Sockets"); }
 
 
+DECLARE_EXCEPTION(WebSocketError, Exception);
+
 class WebSocketProtocol;
 
 
@@ -329,7 +331,7 @@ protected:
 
 
 void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback,
-                      IOLoop *ioloop= nullptr);
+                      float connectTimeout=20.0f, IOLoop *ioloop= nullptr);
 
 
 class TC_COMMON_API WebSocketClientProtocol {
