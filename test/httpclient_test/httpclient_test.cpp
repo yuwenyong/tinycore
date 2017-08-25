@@ -321,6 +321,22 @@ public:
             BOOST_CHECK(false);
         }
     }
+
+    void testReuseRequestFromResponse() {
+        std::string url = getURL("/hello");
+        _httpClient->fetch(url, [this](HTTPResponse response) {
+            stop(std::move(response));
+        });
+        HTTPResponse response = wait<HTTPResponse>();
+        BOOST_CHECK_EQUAL(response.getRequest()->getURL(), url);
+        _httpClient->fetch(response.getRequest(), [this](HTTPResponse response) {
+            stop(std::move(response));
+        });
+        HTTPResponse response2 = wait<HTTPResponse>();
+        const std::string *body = response.getBody();
+        BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+        BOOST_CHECK_EQUAL(*body, "Hello world!");
+    }
 };
 
 
@@ -336,6 +352,7 @@ TINYCORE_TEST_CASE(HTTPClientTestCase, testFollowRedirect)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testCredentialsInURL)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testHeaderCallback)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testHeaderCallbackStackContext)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testReuseRequestFromResponse)
 
 
 class HTTPResponseTestCase: public TestCase {
