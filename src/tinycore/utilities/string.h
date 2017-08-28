@@ -145,19 +145,19 @@ protected:
     template <typename... Args>
     static void formats(boost::format &formatter, const char *value, Args&&... args) {
         formatter % value;
-        format(formatter, std::forward<Args>(args)...);
+        formats(formatter, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
     static void formats(boost::format &formatter, const std::string &value, Args&&... args) {
         formatter % value;
-        format(formatter, std::forward<Args>(args)...);
+        formats(formatter, std::forward<Args>(args)...);
     }
 
     template <typename T, typename... Args>
     static void formats(boost::format &formatter, T &&value, Args&&... args) {
         formatter % std::to_string(value);
-        format(formatter, std::forward<Args>(args)...);
+        formats(formatter, std::forward<Args>(args)...);
     }
 
     static void formats(boost::format &formatter, const char *value) {

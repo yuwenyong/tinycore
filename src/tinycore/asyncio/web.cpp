@@ -11,6 +11,7 @@
 
 
 const boost::regex RequestHandler::_removeControlCharsRegex(R"([\x00-\x08\x0e-\x1f])");
+const boost::regex RequestHandler::_invalidHeaderCharRe(R"([\x00-\x1f])");
 
 
 RequestHandler::RequestHandler(Application *application, std::shared_ptr<HTTPServerRequest> request)
@@ -88,8 +89,9 @@ void RequestHandler::clear() {
             {"Date", HTTPUtil::formatTimestamp(time(nullptr))},
     });
     setDefaultHeaders();
-    if (!_request->supportsHTTP11()) {
-        if (_request->getHTTPHeaders()->get("Connection") == "Keep-Alive") {
+    if (!_request->supportsHTTP11() && !_request->getConnection()->getNoKeepAlive()) {
+        auto connHeader = _request->getHTTPHeaders()->get("Connection");
+        if (!connHeader.empty() && boost::to_lower_copy(connHeader) == "keep-alive") {
             setHeader("Connection", "Keep-Alive");
         }
     }
@@ -116,8 +118,7 @@ std::string RequestHandler::getArgument(const std::string &name, const char *def
     auto iter = arguments.find(name);
     if (iter == arguments.end()) {
         if (defaultValue == nullptr) {
-            std::string error = "Missing argument " + name;
-            ThrowException(HTTPError, 400, std::move(error));
+            ThrowException(MissingArgumentError, name);
         }
         return std::string(defaultValue);
     }
@@ -205,8 +206,9 @@ void RequestHandler::redirect(const std::string &url, bool permanent, boost::opt
         ASSERT(300 <= status && status <= 399);
     }
     setStatus(*status);
-    const boost::regex patt(R"([\x00-\x20]+)");
-    std::string location = URLParse::urlJoin(_request->getURI(), boost::regex_replace(url, patt, ""));
+//    const boost::regex patt(R"([\x00-\x20]+)");
+//    std::string location = URLParse::urlJoin(_request->getURI(), boost::regex_replace(url, patt, ""));
+    std::string location = URLParse::urlJoin(_request->getURI(), url);
     setHeader("Location", location);
     finish();
 }

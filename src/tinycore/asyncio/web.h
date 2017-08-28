@@ -217,8 +217,7 @@ public:
     static const StringSet supportedMethods;
 protected:
     std::string convertHeaderValue(const std::string &value) {
-        boost::regex unsafe(R"([\x00-\x1f])");
-        if (value.length() > 4000 || boost::regex_search(value, unsafe)) {
+        if (value.length() > 4000 || boost::regex_search(value, _invalidHeaderCharRe)) {
             ThrowException(ValueError, "Unsafe header value " + value);
         }
         return value;
@@ -271,6 +270,7 @@ protected:
     std::string _reason;
 
     static const boost::regex _removeControlCharsRegex;
+    static const boost::regex _invalidHeaderCharRe;
 };
 
 
@@ -419,6 +419,23 @@ public:
 protected:
     int _statusCode;
     std::string _reason;
+};
+
+
+class TC_COMMON_API MissingArgumentError: public HTTPError {
+public:
+    MissingArgumentError(const char *file, int line, const char *func, const std::string &argName)
+            : HTTPError(file, line, func, 400, "Missing argument " + argName)
+            , _argName(argName) {
+
+    }
+
+    const char *getTypeName() const override {
+        return "MissingArgumentError";
+    }
+
+protected:
+    std::string _argName;
 };
 
 

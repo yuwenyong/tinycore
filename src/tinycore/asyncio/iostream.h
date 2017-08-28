@@ -89,7 +89,7 @@ public:
 
     BaseIOStream(SocketType &&socket,
                  IOLoop * ioloop,
-                 size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE,
+                 size_t maxBufferSize=0,
                  size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
     virtual ~BaseIOStream();
 
@@ -141,6 +141,11 @@ public:
 
     bool closed() const {
         return _closing || _closed;
+    }
+
+    void setNodelay(bool value) {
+        boost::asio::ip::tcp::no_delay option(value);
+        _socket.set_option(option);
     }
 
     size_t getMaxBufferSize() const {

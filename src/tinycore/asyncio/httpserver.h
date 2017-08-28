@@ -28,7 +28,8 @@ public:
                IOLoop *ioloop = nullptr,
                bool xheaders = false,
                const std::string &protocol = "",
-               std::shared_ptr<SSLOption> sslOption = nullptr);
+               std::shared_ptr<SSLOption> sslOption = nullptr,
+               size_t maxBufferSize=0);
 
     virtual ~HTTPServer();
 
@@ -137,11 +138,13 @@ public:
         _closeCallback = nullptr;
     }
 
-    void setCloseCallback(CloseCallbackType callback);
+    void setCloseCallback(CloseCallbackType callback) {
+        _closeCallback = StackContext::wrap(std::move(callback));
+    }
 
     void close() {
         _stream->close();
-        clearCallbacks();
+        clearRequestState();
     }
 
     void start();
@@ -149,6 +152,10 @@ public:
     void write(const Byte *chunk, size_t length, WriteCallbackType callback= nullptr);
 
     void finish();
+
+    bool getNoKeepAlive() const {
+        return _noKeepAlive;
+    }
 
     bool getXHeaders() const {
         return _xheaders;
@@ -167,6 +174,12 @@ public:
         return std::make_shared<HTTPConnection>(std::forward<Args>(args)...);
     }
 protected:
+    void clearRequestState() {
+        _request.reset();
+        _requestFinished = false;
+        clearCallbacks();
+    }
+
     void onConnectionClose();
 
     void onWriteComplete();
