@@ -45,6 +45,7 @@ public:
         _body = args[opts::_body | boost::none];
         _authUserName = args[opts::_authUserName | boost::none];
         _authPassword = args[opts::_authPassword | ""];
+        _authMode = args[opts::_authMode | boost::none];
         _connectTimeout = args[opts::_connectTimeout | 20.0f];
         _requestTimeout = args[opts::_requestTimeout | 20.0f];
         _followRedirects = args[opts::_followRedirects | true];
@@ -102,6 +103,14 @@ public:
 
     const std::string* getAuthUserName() const {
         return _authUserName.get_ptr();
+    }
+
+    void setAuthMode(std::string authMode) {
+        _authMode = std::move(authMode);
+    }
+
+    const std::string* getAuthMode() const {
+        return _authMode.get_ptr();
     }
 
     void setAuthPassword(std::string authPassword) {
@@ -262,6 +271,7 @@ protected:
     boost::optional<std::string> _body;
     boost::optional<std::string> _authUserName;
     std::string _authPassword;
+    boost::optional<std::string> _authMode;
     float _connectTimeout;
     float _requestTimeout;
     bool _followRedirects;
@@ -323,6 +333,7 @@ public:
                     (body, (std::string))
                     (authUserName, (std::string))
                     (authPassword, (std::string))
+                    (authMode, (std::string))
                     (connectTimeout, (float))
                     (requestTimeout, (float))
                     (ifModifiedSince, (DateTime))
@@ -558,6 +569,8 @@ public:
 
     static const StringSet supportedMethods;
 protected:
+    std::shared_ptr<BaseIOStream> createStream() const;
+
     void onTimeout();
 
     void removeTimeout();
@@ -577,6 +590,10 @@ protected:
     void onHeaders(ByteArray data);
 
     void onBody(ByteArray data);
+
+    void onEndRequest() {
+        _stream->close();
+    }
 
     void onChunkLength(ByteArray data);
 

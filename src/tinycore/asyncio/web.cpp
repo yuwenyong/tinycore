@@ -244,14 +244,10 @@ void RequestHandler::finish() {
     if (!_headersWritten) {
         const std::string &method = _request->getMethod();
         if (_statusCode == 200 && (method == "GET" || method == "HEAD") && !_headers.has("Etag")) {
-            auto etag = computeEtag();
-            if (etag) {
-                setHeader("Etag", *etag);
-                std::string inm = _request->getHTTPHeaders()->get("If-None-Match");
-                if (inm.find(etag->c_str()) != std::string::npos) {
-                    _writeBuffer.clear();
-                    setStatus(304);
-                }
+            setEtagHeader();
+            if (checkEtagHeader()) {
+                _writeBuffer.clear();
+                setStatus(304);
             }
         }
         if (_statusCode == 304) {
@@ -349,32 +345,49 @@ void RequestHandler::execute(TransformsType &transforms, StringVector args) {
         }
         _pathArgs = std::move(args);
         prepare();
-        if (!_finished) {
-            if (method == "HEAD") {
-                onHead(_pathArgs);
-            } else if (method == "GET") {
-                onGet(_pathArgs);
-            } else if (method == "POST") {
-                onPost(_pathArgs);
-            } else if (method == "DELETE") {
-                onDelete(_pathArgs);
-            } else if (method == "PATCH") {
-                onPatch(_pathArgs);
-            } else if (method == "PUT") {
-                onPut(_pathArgs);
-            } else {
-                assert(method == "OPTIONS");
-                onOptions(_pathArgs);
-            }
-            if (_autoFinish && !_finished) {
-                finish();
-            }
+        if (_autoFinish) {
+            executeMethod();
         }
     } catch (...) {
         error = std::current_exception();
     }
     if (error) {
         handleRequestException(error);
+    }
+}
+
+//void RequestHandler::whenComplete() {
+//    std::exception_ptr error;
+//    try {
+//        executeMethod();
+//    } catch (...) {
+//        error = std::current_exception();
+//    }
+//    if (error) {
+//        handleRequestException(error);
+//    }
+//}
+
+void RequestHandler::executeMethod() {
+    if (!_finished) {
+        const std::string &method = _request->getMethod();
+        if (method == "HEAD") {
+            onHead(_pathArgs);
+        } else if (method == "GET") {
+            onGet(_pathArgs);
+        } else if (method == "POST") {
+            onPost(_pathArgs);
+        } else if (method == "DELETE") {
+            onDelete(_pathArgs);
+        } else if (method == "PATCH") {
+            onPatch(_pathArgs);
+        } else if (method == "PUT") {
+            onPut(_pathArgs);
+        } else {
+            assert(method == "OPTIONS");
+            onOptions(_pathArgs);
+        }
+        executeFinish();
     }
 }
 
@@ -397,28 +410,41 @@ void RequestHandler::log() {
 }
 
 void RequestHandler::handleRequestException(std::exception_ptr error) {
+    logException(error);
+    if (_finished) {
+        return;
+    }
     try {
         std::rethrow_exception(error);
     } catch (HTTPError &e) {
         std::string summary = requestSummary();
         int statusCode = e.getStatusCode();
-        LOG_WARNING(gGenLog, "%d %s: %s", statusCode, summary.c_str(), e.what());
         if (HTTP_RESPONSES.find(statusCode) == HTTP_RESPONSES.end() && e.getReason().empty()) {
             LOG_ERROR(gGenLog, "Bad HTTP status code: %d", statusCode);
             sendError(500, error);
         } else {
             sendError(statusCode, error);
         }
+    } catch (...) {
+        sendError(500, error);
+    }
+}
+
+void RequestHandler::logException(std::exception_ptr error) {
+    try {
+        std::rethrow_exception(error);
+    } catch (HTTPError &e) {
+        std::string summary = requestSummary();
+        int statusCode = e.getStatusCode();
+        LOG_WARNING(gGenLog, "%d %s: %s", statusCode, summary.c_str(), e.what());
     } catch (std::exception &e) {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
         LOG_ERROR(gAppLog, "Uncaught exception %s\n%s\n%s", e.what(), summary.c_str(), requestInfo.c_str());
-        sendError(500, error);
     } catch (...) {
         std::string summary = requestSummary();
         std::string requestInfo = _request->dump();
         LOG_ERROR(gAppLog, "Unknown exception\n%s\n%s", summary.c_str(), requestInfo.c_str());
-        sendError(500, error);
     }
 }
 
@@ -494,7 +520,7 @@ void Application::operator()(std::shared_ptr<HTTPServerRequest> request) {
                     args.push_back(match[i].str());
                 }
                 for (auto &s: args) {
-                    s = URLParse::unquotePlus(s);
+                    s = URLParse::unquote(s);
                 }
                 break;
             }

@@ -143,32 +143,7 @@ void _HTTPConnection::start() {
                 host = iter->second;
             }
         }
-        BaseIOStream::SocketType socket(_ioloop->getService());
-        if (scheme == "https") {
-            SSLParams sslParams(false);
-            if (_request->isValidateCert()) {
-                sslParams.setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
-                sslParams.setCheckHost(_parsedHostname);
-            } else {
-                sslParams.setVerifyMode(SSLVerifyMode::CERT_NONE);
-            }
-            auto caCerts = _request->getCACerts();
-            if (caCerts) {
-                sslParams.setVerifyFile(*caCerts);
-            }
-            auto clientKey = _request->getClientKey();
-            if (clientKey) {
-                sslParams.setKeyFile(*clientKey);
-            }
-            auto clientCert = _request->getClientCert();
-            if (clientCert) {
-                sslParams.setCertFile(*clientCert);
-            }
-            auto sslOption = SSLOption::create(sslParams);
-            _stream = SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop, _maxBufferSize);
-        } else {
-            _stream = IOStream::create(std::move(socket), _ioloop, _maxBufferSize);
-        }
+        _stream = createStream();
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout != 0.0f) {
             IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
@@ -192,6 +167,35 @@ void _HTTPConnection::start() {
 }
 
 const StringSet _HTTPConnection::supportedMethods = {"GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"};
+
+std::shared_ptr<BaseIOStream> _HTTPConnection::createStream() const {
+    BaseIOStream::SocketType socket(_ioloop->getService());
+    if (_parsed.getScheme() == "https") {
+        SSLParams sslParams(false);
+        if (_request->isValidateCert()) {
+            sslParams.setVerifyMode(SSLVerifyMode::CERT_REQUIRED);
+            sslParams.setCheckHost(_parsedHostname);
+        } else {
+            sslParams.setVerifyMode(SSLVerifyMode::CERT_NONE);
+        }
+        auto caCerts = _request->getCACerts();
+        if (caCerts) {
+            sslParams.setVerifyFile(*caCerts);
+        }
+        auto clientKey = _request->getClientKey();
+        if (clientKey) {
+            sslParams.setKeyFile(*clientKey);
+        }
+        auto clientCert = _request->getClientCert();
+        if (clientCert) {
+            sslParams.setCertFile(*clientCert);
+        }
+        auto sslOption = SSLOption::create(sslParams);
+        return SSLIOStream::create(std::move(socket), std::move(sslOption), _ioloop, _maxBufferSize);
+    } else {
+        return IOStream::create(std::move(socket), _ioloop, _maxBufferSize);
+    }
+}
 
 void _HTTPConnection::onTimeout() {
     _timeout.reset();
@@ -257,8 +261,12 @@ void _HTTPConnection::onConnect() {
         password = _request->getAuthPassword();
     }
     if (!userName.empty()) {
+        const std::string *authMode = _request->getAuthMode();
+        if (authMode && *authMode != "basic") {
+            ThrowException(ValueError, "unsupported auth mode " + *authMode);
+        }
         std::string auth = userName + ":" + password;
-        auth = "Basic " + Base64::b64encode(std::move(auth));
+        auth = "Basic " + Base64::b64encode(auth);
         headers["Authorization"] = auth;
     }
     auto userAgent = _request->getUserAgent();
@@ -298,12 +306,13 @@ void _HTTPConnection::onConnect() {
         }
         requestLines.emplace_back(std::move(line));
     });
-    std::string headerData = boost::join(requestLines, "\r\n");
-    headerData += "\r\n\r\n";
-    _stream->write((const Byte *)headerData.data(), headerData.size());
+    std::string requestStr = boost::join(requestLines, "\r\n");
+    requestStr += "\r\n\r\n";
     if (requestBody) {
-        _stream->write((const Byte *)requestBody->data(), requestBody->size());
+        requestStr += *requestBody;
     }
+    _stream->setNodelay(true);
+    _stream->write((const Byte *)requestStr.data(), requestStr.size());
     _stream->readUntilRegex("\r?\n\r?\n", std::bind(&_HTTPConnection::onHeaders, this, std::placeholders::_1));
 }
 
@@ -326,13 +335,13 @@ void _HTTPConnection::runCallback(HTTPResponse response) {
 void _HTTPConnection::handleException(std::exception_ptr error) {
     if (_callback) {
         removeTimeout();
-        try {
-            std::rethrow_exception(error);
-        } catch (std::exception &e) {
-            LOG_WARNING(gGenLog, "uncaught exception:%s", e.what());
-        } catch (...) {
-            LOG_WARNING(gGenLog, "unknown exception");
-        }
+//        try {
+//            std::rethrow_exception(error);
+//        } catch (std::exception &e) {
+//            LOG_WARNING(gGenLog, "uncaught exception:%s", e.what());
+//        } catch (...) {
+//            LOG_WARNING(gGenLog, "unknown exception");
+//        }
         runCallback(HTTPResponse(_request, 599, error, TimestampClock::now() - _startTime));
         if (_stream) {
             _stream->close();
@@ -474,7 +483,7 @@ void _HTTPConnection::onBody(ByteArray data) {
         } else {
             ThrowException(ValueError, "WebSocketClientConnection has no HTTPClient");
         }
-        _stream->close();
+        onEndRequest();
         return;
     }
     if (_decompressor) {
@@ -496,7 +505,7 @@ void _HTTPConnection::onBody(ByteArray data) {
     HTTPResponse response(originalRequest, _code.get(), _reason, *_headers, std::move(buffer), _request->getURL(),
                           TimestampClock::now() - _startTime);
     runCallback(std::move(response));
-    _stream->close();
+    onEndRequest();
 }
 
 void _HTTPConnection::onChunkLength(ByteArray data) {
