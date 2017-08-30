@@ -8,7 +8,7 @@
 #ifdef BOOST_PARAMETER_MAX_ARITY
 #undef BOOST_PARAMETER_MAX_ARITY
 #endif
-#define BOOST_PARAMETER_MAX_ARITY 25
+#define BOOST_PARAMETER_MAX_ARITY 26
 #include <boost/parameter.hpp>
 
 
@@ -19,6 +19,7 @@ BOOST_PARAMETER_NAME(headers)
 BOOST_PARAMETER_NAME(body)
 BOOST_PARAMETER_NAME(authUserName)
 BOOST_PARAMETER_NAME(authPassword)
+BOOST_PARAMETER_NAME(authMode)
 BOOST_PARAMETER_NAME(connectTimeout)
 BOOST_PARAMETER_NAME(requestTimeout)
 BOOST_PARAMETER_NAME(ifModifiedSince)
@@ -48,6 +49,7 @@ BOOST_PARAMETER_NAME(clientCert)
 #define ARG_body opts::_body
 #define ARG_authUserName opts::_authUserName
 #define ARG_authPassword opts::_authPassword
+#define ARG_authMode opts::_authMode
 #define ARG_connectTimeout opts::_connectTimeout
 #define ARG_requestTimeout opts::_requestTimeout
 #define ARG_ifModifiedSince opts::_ifModifiedSince

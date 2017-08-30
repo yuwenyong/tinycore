@@ -178,10 +178,16 @@ public:
     static void parseMultipartFormData(std::string boundary, const std::string &data, QueryArgListMap &arguments,
                                        HTTPFileListMap &files);
 
-    static std::string formatTimestamp(const DateTime &ts);
+    static std::string formatTimestamp(const DateTime &ts) {
+        return String::formatUTCDate(ts, true);
+    }
 
     static std::string formatTimestamp(time_t ts) {
         return formatTimestamp(boost::posix_time::from_time_t(ts));
+    }
+
+    static std::string formatTimestamp(const tm &ts) {
+        return formatTimestamp(boost::posix_time::ptime_from_tm(ts));
     }
 
     static std::string getHTTPReason(int statusCode) {

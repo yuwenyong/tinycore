@@ -200,6 +200,19 @@ public:
 
     virtual boost::optional<std::string> computeEtag() const;
 
+    void setEtagHeader() {
+        auto etag = computeEtag();
+        if (etag) {
+            setHeader("Etag", *etag);
+        }
+    }
+
+    bool checkEtagHeader() const {
+        auto etag = _headers.get("Etag");
+        std::string inm = _request->getHTTPHeaders()->get("If-None-Match");
+        return !etag.empty() && !inm.empty() && inm.find(etag.c_str()) != std::string::npos;
+    }
+
     std::shared_ptr<HTTPServerRequest> getRequest() const {
         return _request;
     }
@@ -217,8 +230,7 @@ public:
     static const StringSet supportedMethods;
 protected:
     std::string convertHeaderValue(const std::string &value) {
-        boost::regex unsafe(R"([\x00-\x1f])");
-        if (value.length() > 4000 || boost::regex_search(value, unsafe)) {
+        if (value.length() > 4000 || boost::regex_search(value, _invalidHeaderCharRe)) {
             ThrowException(ValueError, "Unsafe header value " + value);
         }
         return value;
@@ -238,6 +250,17 @@ protected:
     }
 
     virtual void execute(TransformsType &transforms, StringVector args);
+
+//    void whenComplete();
+
+    void executeMethod();
+
+    void executeFinish() {
+        if (_autoFinish && !_finished) {
+            finish();
+        }
+    }
+
     std::string generateHeaders() const;
     void log();
 
@@ -245,7 +268,9 @@ protected:
         return _request->getMethod() + " " + _request->getURI() + " (" + _request->getRemoteIp() + ")";
     }
 
-    void handleRequestException(std::exception_ptr e);
+    void handleRequestException(std::exception_ptr error);
+
+    virtual void logException(std::exception_ptr error);
 
     void clearHeadersFor304() {
         const StringVector headers = {"Allow", "Content-Encoding", "Content-Language",
@@ -271,6 +296,7 @@ protected:
     std::string _reason;
 
     static const boost::regex _removeControlCharsRegex;
+    static const boost::regex _invalidHeaderCharRe;
 };
 
 
@@ -422,6 +448,27 @@ protected:
 };
 
 
+class TC_COMMON_API MissingArgumentError: public HTTPError {
+public:
+    MissingArgumentError(const char *file, int line, const char *func, const std::string &argName)
+            : HTTPError(file, line, func, 400, "Missing argument " + argName)
+            , _argName(argName) {
+
+    }
+
+    const char* getTypeName() const override {
+        return "MissingArgumentError";
+    }
+
+    const std::string& getArgName() const {
+        return _argName;
+    }
+
+protected:
+    std::string _argName;
+};
+
+
 class TC_COMMON_API ErrorHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
@@ -523,7 +570,7 @@ public:
     std::string reverse(Args&&... args) {
         ASSERT(!_path.empty(), "Cannot reverse url regex %s", _pattern.c_str());
         ASSERT(sizeof...(Args) == _groupCount, "required number of arguments not found");
-        return String::formats(_path.c_str(), std::forward<Args>(args)...);
+        return formats(std::forward<Args>(args)...);
     }
 
     std::string reverse() {
@@ -552,6 +599,44 @@ public:
         return _args;
     }
 protected:
+    template <typename... Args>
+    std::string formats(Args&&... args) {
+        boost::format formatter(_path);
+        format(formatter, std::forward<Args>(args)...);
+        return formatter.str();
+    }
+
+    template <typename... Args>
+    void format(boost::format &formatter, const char *value, Args&&... args) {
+        formatter % URLParse::quote(value);
+        format(formatter, std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    void format(boost::format &formatter, const std::string &value, Args&&... args) {
+        formatter % URLParse::quote(value);
+        format(formatter, std::forward<Args>(args)...);
+    }
+
+    template <typename ValueT, typename... Args>
+    void format(boost::format &formatter, ValueT &&value, Args&&... args) {
+        formatter % URLParse::quote(std::to_string(value));
+        format(formatter, std::forward<Args>(args)...);
+    }
+
+    void format(boost::format &formatter, const char *value) {
+        formatter % URLParse::quote(value);
+    }
+
+    void format(boost::format &formatter, const std::string &value) {
+        formatter % URLParse::quote(value);
+    }
+
+    template <typename ValueT>
+    void format(boost::format &formatter, ValueT &&value) {
+        formatter % URLParse::quote(std::to_string(value));
+    }
+
     std::tuple<std::string, int> findGroups();
 
     std::string _pattern;

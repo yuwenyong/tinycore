@@ -165,8 +165,8 @@ std::string String::formatUTCDate(const DateTime &timeval, bool usegmt) {
     const Date date = timeval.date();
     const Time time = timeval.time_of_day();
     return format("%s, %02d %s %04d %02d:%02d:%02d %s", weekdayNames[date.day_of_week().as_number()],
-                  date.day(), monthNames[date.month()], date.year(), time.hours(), time.minutes(), time.seconds(),
-                  zone.c_str());
+                  date.day(), monthNames[date.month() - 1], date.year(), time.hours(), time.minutes(),
+                  time.seconds(), zone.c_str());
 }
 
 std::string String::translate(const std::string &s, const std::array<char, 256> &table,

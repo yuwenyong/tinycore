@@ -6,11 +6,12 @@
 #include "tinycore/asyncio/ioloop.h"
 
 
-TCPServer::TCPServer(IOLoop *ioloop, std::shared_ptr<SSLOption> sslOption)
+TCPServer::TCPServer(IOLoop *ioloop, std::shared_ptr<SSLOption> sslOption, size_t maxBufferSize)
         : _ioloop(ioloop ? ioloop : IOLoop::current())
         , _sslOption(std::move(sslOption))
         , _acceptor(_ioloop->getService())
-        , _socket(_ioloop->getService()){
+        , _socket(_ioloop->getService())
+        , _maxBufferSize(maxBufferSize){
 
 }
 
@@ -46,9 +47,9 @@ void TCPServer::onAccept(const boost::system::error_code &ec) {
         try {
             std::shared_ptr<BaseIOStream> stream;
             if (_sslOption) {
-                stream = SSLIOStream::create(std::move(_socket), _sslOption, _ioloop);
+                stream = SSLIOStream::create(std::move(_socket), _sslOption, _ioloop, _maxBufferSize);
             } else {
-                stream = IOStream::create(std::move(_socket), _ioloop);
+                stream = IOStream::create(std::move(_socket), _ioloop, _maxBufferSize);
             }
             stream->start();
             std::string remoteAddress = stream->getRemoteAddress();

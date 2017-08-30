@@ -100,9 +100,9 @@ std::string HTTPHeaders::toString() const {
 }
 
 std::string HTTPHeaders::normalizeName(const std::string &name) {
-    if (boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
-        return name;
-    }
+//    if (boost::regex_match(name, HTTPHeaders::_normalizedHeader)) {
+//        return name;
+//    }
     StringVector nameParts = String::split(name, '-');
     for (auto &namePart: nameParts) {
         String::capitalize(namePart);
@@ -198,13 +198,13 @@ void HTTPUtil::parseMultipartFormData(std::string boundary, const std::string &d
     }
 }
 
-std::string HTTPUtil::formatTimestamp(const DateTime &ts) {
-    static std::locale loc(std::cout.getloc(), new boost::posix_time::time_facet("%a, %d %b %Y %H:%M:%S GMT"));
-    std::stringstream ss;
-    ss.imbue(loc);
-    ss << ts;
-    return ss.str();
-}
+//std::string HTTPUtil::formatTimestamp(const DateTime &ts) {
+//    static std::locale loc(std::cout.getloc(), new boost::posix_time::time_facet("%a, %d %b %Y %H:%M:%S GMT"));
+//    std::stringstream ss;
+//    ss.imbue(loc);
+//    ss << ts;
+//    return ss.str();
+//}
 
 StringVector HTTPUtil::parseParam(std::string s) {
     StringVector parts;

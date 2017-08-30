@@ -9,6 +9,7 @@
 TINYCORE_TEST_INIT()
 
 BOOST_TEST_DONT_PRINT_LOG_VALUE(std::vector<int>)
+BOOST_TEST_DONT_PRINT_LOG_VALUE(StringVector)
 
 BOOST_AUTO_TEST_CASE(TestParseCommandLine) {
     OptionParser options("Allow Options");
@@ -63,5 +64,37 @@ BOOST_AUTO_TEST_CASE(TestSetAttrWithCallback) {
             "--foo=2"
     };
     options.parseCommandLine(sizeof(argv) / sizeof(const char *), argv);
+    BOOST_CHECK_EQUAL(values, targetValues);
+}
+
+BOOST_AUTO_TEST_CASE(TestMultipleString) {
+    StringVector values, targetValues = {"a", "b", "c"};
+    OptionParser options("Allow Options");
+    options.defineMulti<std::string>("foo", "foo");
+    const char *argv[] = {
+            "main",
+            "--foo=a",
+            "--foo=b",
+            "--foo=c",
+    };
+    options.parseCommandLine(sizeof(argv) / sizeof(const char *), argv);
+    values = options.get<StringVector>("foo");
+    BOOST_CHECK_EQUAL(values, targetValues);
+}
+
+BOOST_AUTO_TEST_CASE(TestMultipleInt) {
+    std::vector<int> values, targetValues = {1, 3, 5, 6, 7};
+    OptionParser options("Allow Options");
+    options.defineMulti<int>("foo", "foo");
+    const char *argv[] = {
+            "main",
+            "--foo=1",
+            "--foo=3",
+            "--foo=5",
+            "--foo=6",
+            "--foo=7",
+    };
+    options.parseCommandLine(sizeof(argv) / sizeof(const char *), argv);
+    values = options.get<std::vector<int>>("foo");
     BOOST_CHECK_EQUAL(values, targetValues);
 }

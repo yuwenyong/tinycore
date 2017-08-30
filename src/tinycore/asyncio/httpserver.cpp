@@ -19,8 +19,9 @@ HTTPServer::HTTPServer(RequestCallbackType requestCallback,
                        IOLoop *ioloop,
                        bool xheaders,
                        const std::string &protocol,
-                       std::shared_ptr<SSLOption> sslOption)
-        : TCPServer(ioloop, std::move(sslOption))
+                       std::shared_ptr<SSLOption> sslOption,
+                       size_t maxBufferSize)
+        : TCPServer(ioloop, std::move(sslOption), maxBufferSize)
         , _requestCallback(std::move(requestCallback))
         , _noKeepAlive(noKeepAlive)
         , _xheaders(xheaders)
@@ -68,15 +69,13 @@ HTTPConnection::~HTTPConnection() {
 #endif
 }
 
-void HTTPConnection::setCloseCallback(CloseCallbackType callback) {
-    _closeCallback = StackContext::wrap(std::move(callback));
-    auto wrapper = std::make_shared<CloseCallbackWrapper>(shared_from_this());
-    _stream->setCloseCallback(std::bind(&CloseCallbackWrapper::operator(), std::move(wrapper)));
-}
-
 void HTTPConnection::start() {
     BaseIOStream::ReadCallbackType callback = std::bind(&HTTPConnection::onHeaders, this, std::placeholders::_1);
     _headerCallback = StackContext::wrap<ByteArray>(std::move(callback));
+
+    auto wrapper = std::make_shared<CloseCallbackWrapper>(shared_from_this());
+    _stream->setCloseCallback(std::bind(&CloseCallbackWrapper::operator(), std::move(wrapper)));
+
     NullContext ctx;
     _stream->readUntil("\r\n\r\n", [this, self=shared_from_this()](ByteArray data) {
         _headerCallback(std::move(data));
@@ -84,7 +83,7 @@ void HTTPConnection::start() {
 }
 
 void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType callback) {
-    ASSERT(!_requestObserver.expired(), "Request closed");
+//    ASSERT(!_requestObserver.expired(), "Request closed");
     if (!_stream->closed()) {
         _writeCallback = StackContext::wrap(std::move(callback));
         if (_writeCallback) {
@@ -97,9 +96,10 @@ void HTTPConnection::write(const Byte *chunk, size_t length, WriteCallbackType c
 }
 
 void HTTPConnection::finish() {
-    ASSERT(!_requestObserver.expired(), "Request closed");
+//    ASSERT(!_requestObserver.expired(), "Request closed");
     _request = _requestObserver.lock();
     _requestFinished = true;
+    _stream->setNodelay(true);
     if (!_stream->writing()) {
         finishRequest();
     }
@@ -111,7 +111,7 @@ void HTTPConnection::onConnectionClose() {
         _closeCallback = nullptr;
         callback();
     }
-    clearCallbacks();
+    clearRequestState();
 }
 
 void HTTPConnection::onWriteComplete() {
@@ -127,7 +127,7 @@ void HTTPConnection::onWriteComplete() {
 
 void HTTPConnection::finishRequest() {
     bool disconnect;
-    if (_noKeepAlive) {
+    if (_noKeepAlive || !_request) {
         disconnect = true;
     } else {
         auto headers = _request->getHTTPHeaders();
@@ -145,9 +145,7 @@ void HTTPConnection::finishRequest() {
             disconnect = true;
         }
     }
-    _request.reset();
-    _requestFinished = false;
-    clearCallbacks();
+    clearRequestState();
     if (disconnect) {
         close();
         return;
@@ -157,6 +155,7 @@ void HTTPConnection::finishRequest() {
         _stream->readUntil("\r\n\r\n", [this, self=shared_from_this()](ByteArray data) {
             _headerCallback(std::move(data));
         });
+        _stream->setNodelay(false);
     } catch (StreamClosedError &e) {
         close();
     }
@@ -182,7 +181,12 @@ void HTTPConnection::onHeaders(ByteArray data) {
         if (!boost::starts_with(version, "HTTP/")) {
             throw _BadRequestException("Malformed HTTP version in HTTP Request-Line");
         }
-        auto headers = HTTPHeaders::parse(rest);
+        std::unique_ptr<HTTPHeaders> headers;
+        try {
+            headers = HTTPHeaders::parse(rest);
+        } catch (Exception &e) {
+            throw _BadRequestException("Malformed HTTP headers");
+        }
         _request = HTTPServerRequest::create(shared_from_this(), std::move(method), std::move(uri), std::move(version),
                                              std::move(headers), std::string(), _address, _protocol);
         _requestObserver = _request;
@@ -252,6 +256,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     }
     if (connection && connection->getXHeaders()) {
         std::string ip = _headers->get("X-Forwarded-For", _remoteIp);
+        ip = boost::trim_copy(String::split(ip, ',').back());
         ip = _headers->get("X-Real-Ip", ip);
         if (NetUtil::isValidIP(ip)) {
             _remoteIp = std::move(ip);
@@ -324,7 +329,7 @@ std::string HTTPServerRequest::dump() const {
     argsList.emplace_back("uri=" + _uri);
     argsList.emplace_back("version=" + _version);
     argsList.emplace_back("remoteIp=" + _remoteIp);
-    argsList.emplace_back("body=" + _body);
+//    argsList.emplace_back("body=" + _body);
     std::string args = boost::join(argsList, ",");
     StringVector headersList;
     _headers->getAll([&headersList](const std::string &name, const std::string &value){

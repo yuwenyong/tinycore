@@ -7,9 +7,15 @@
 #include "tinycore/tinycore.h"
 
 
+class WebSocketTest;
+
 class EchoHandler: public WebSocketHandler {
 public:
     using WebSocketHandler::WebSocketHandler;
+
+    void initialize(ArgsType &args) override {
+        _test = boost::any_cast<WebSocketTest *>(args["test"]);
+    }
 
 //    void onOpen(const StringVector &args) override {
 //        std::cerr << "On Open" << std::endl;
@@ -19,6 +25,10 @@ public:
 //        std::cerr << "On Message" << std::endl;
         writeMessage(data);
     }
+
+    void onClose() override;
+protected:
+    WebSocketTest *_test{nullptr};
 };
 
 
@@ -38,8 +48,11 @@ using WebSocketConnectionPtr = std::shared_ptr<WebSocketClientConnection>;
 class WebSocketTest: public AsyncHTTPTestCase {
 public:
     std::unique_ptr<Application> getApp() const override {
+        RequestHandler::ArgsType args = {
+                {"test", const_cast<WebSocketTest *>(this) }
+        };
         Application::HandlersType handlers = {
-                url<EchoHandler>("/echo"),
+                url<EchoHandler>("/echo", args),
                 url<NonWebSocketHandler>("/non_ws"),
         };
         return make_unique<Application>(std::move(handlers));
@@ -110,7 +123,27 @@ public:
             BOOST_CHECK(false);
         }
     }
+
+    void testWebSocketCloseBufferedData() {
+        WebSocketConnect(String::format("ws://localhost:%d/echo", getHTTPPort()),
+                         [this](WebSocketConnectionPtr connection) {
+//                             std::cerr << "On Connect" << std::endl;
+                             stop(std::move(connection));
+                         });
+        WebSocketConnectionPtr ws = wait<WebSocketConnectionPtr>();
+        ws->writeMessage("hello");
+        ws->writeMessage("world");
+        ws->getStream()->close();
+        std::string closed = wait<std::string>();
+        BOOST_CHECK_EQUAL(closed, "closed");
+//        std::cerr << "Success" << std::endl;
+    }
 };
+
+
+void EchoHandler::onClose() {
+    _test->stop(std::string{"closed"});
+}
 
 
 TINYCORE_TEST_INIT()
@@ -118,3 +151,4 @@ TINYCORE_TEST_CASE(WebSocketTest, testWebSocketCallbacks)
 TINYCORE_TEST_CASE(WebSocketTest, testWebSocketHTTPFail)
 TINYCORE_TEST_CASE(WebSocketTest, testWebSocketHTTPSuccess)
 TINYCORE_TEST_CASE(WebSocketTest, testWebSocketNetworkFail)
+TINYCORE_TEST_CASE(WebSocketTest, testWebSocketCloseBufferedData)

@@ -71,12 +71,12 @@ public:
     }
 
     template <typename ResultT>
-    ResultT wait(float timeout=5.0f, ConditionCallback condition= nullptr) {
-        boost::any result = wait(timeout, std::move(condition));
+    ResultT wait(boost::optional<float> timeout=boost::none, ConditionCallback condition= nullptr) {
+        boost::any result = wait(std::move(timeout), std::move(condition));
         return boost::any_cast<ResultT>(result);
     }
 
-    boost::any wait(float timeout=5.0f, ConditionCallback condition= nullptr);
+    boost::any wait(boost::optional<float> timeout=boost::none, ConditionCallback condition= nullptr);
 protected:
     const IOLoop* ioloop() const {
         return &_ioloop;
@@ -91,6 +91,15 @@ protected:
     unsigned short getUnusedPort() const {
         static unsigned short nextPort = 10000;
         return ++nextPort;
+    }
+
+    float getAsyncTestTimeout() const {
+        char * timeout = getenv("ASYNC_TEST_TIMEOUT");
+        if (timeout) {
+            return (float)atof(timeout);
+        } else {
+            return 5.0f;
+        }
     }
 
     IOLoop _ioloop;

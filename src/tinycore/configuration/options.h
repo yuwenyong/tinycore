@@ -46,8 +46,37 @@ public:
     template <typename ArgT>
     void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue=boost::none,
                 boost::function1<void, const ArgT&> callback= {}, const char *group= nullptr) {
-        define(name, help, defaultValue, std::move(callback), group, IsVector<ArgT>());
+        po::typed_value<ArgT> *value= po::value<ArgT>();
+        if (defaultValue) {
+            value->default_value(defaultValue.get());
+        }
+        if (callback) {
+            value->notifier(std::move(callback));
+        }
+        if (group) {
+            auto opt = getGroup(group);
+            opt->add_options()(name, value, help);
+        } else {
+            _opts.add_options()(name, value, help);
+        }
     }
+
+    template <typename ArgT>
+    void defineMulti(const char *name, const char *help, boost::function1<void, const std::vector<ArgT>&> callback= {},
+                     const char *group= nullptr) {
+        po::typed_value<std::vector<ArgT>> *value= po::value<std::vector<ArgT>>();
+        if (callback) {
+            value->notifier(std::move(callback));
+        }
+        value->composing();
+        if (group) {
+            auto opt = getGroup(group);
+            opt->add_options()(name, value, help);
+        } else {
+            _opts.add_options()(name, value, help);
+        }
+    }
+
 
     bool has(const char *name) const {
         return _vm.count(name) != 0;
@@ -75,43 +104,6 @@ public:
 
     static OptionParser * instance();
 protected:
-    template <typename ArgT>
-    void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue,
-                boost::function1<void, const ArgT&> callback, const char *group, std::true_type) {
-        po::typed_value<ArgT> *value= po::value<ArgT>();
-        if (defaultValue) {
-            value->default_value(defaultValue.get());
-        }
-        if (callback) {
-            value->notifier(std::move(callback));
-        }
-        value->composing();
-        if (group) {
-            auto opt = getGroup(group);
-            opt->add_options()(name, value, help);
-        } else {
-            _opts.add_options()(name, value, help);
-        }
-    }
-
-    template <typename ArgT>
-    void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue,
-                boost::function1<void, const ArgT&> callback, const char *group, std::false_type) {
-        po::typed_value<ArgT> *value= po::value<ArgT>();
-        if (defaultValue) {
-            value->default_value(defaultValue.get());
-        }
-        if (callback) {
-            value->notifier(std::move(callback));
-        }
-        if (group) {
-            auto opt = getGroup(group);
-            opt->add_options()(name, value, help);
-        } else {
-            _opts.add_options()(name, value, help);
-        }
-    }
-
     void runParseCallbacks() const {
         for (auto &callback: _parseCallbacks) {
             callback();

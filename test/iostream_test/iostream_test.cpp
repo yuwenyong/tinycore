@@ -181,9 +181,9 @@ public:
         }, [this](ByteArray data) {
            this->stop(std::move(data));
         });
-        this->ioloop()->addTimeout(0.01f, [this]() {
-            this->stop();
-        });
+//        this->ioloop()->addTimeout(0.01f, [this]() {
+//            this->stop();
+//        });
         data = this->template wait<ByteArray>();
         BOOST_CHECK_EQUAL(String::toString(data), "efgh");
         server->close();
@@ -295,8 +295,11 @@ public:
         std::shared_ptr<BaseIOStream> server, client;
         std::tie(server, client) = makeIOStreamPair();
         std::vector<ByteArray> chunks, targetChunks;
-        client->readUntilClose([this, &chunks](ByteArray data) {
-            chunks.emplace_back(std::move(data));
+        std::array<bool, 1> closed{false};
+        client->readUntilClose([this, &chunks, &closed](ByteArray data) {
+//            chunks.emplace_back(std::move(data));
+            ASSERT(data.empty());
+            closed[0] = true;
             this->stop();
         }, [this, &chunks](ByteArray data) {
             chunks.emplace_back(std::move(data));
@@ -304,14 +307,20 @@ public:
         });
         const char *data1 = "1234", *data2 = "5678";
         server->write((const Byte *)data1, strlen(data1));
-        this->wait();
-        server->write((const Byte *)data2, strlen(data2));
+        this->wait(boost::none, [&chunks]() {
+            return chunks.size() == 1;
+        });
+        server->write((const Byte *)data2, strlen(data2), [this]() {
+            this->stop();
+        });
         this->wait();
         server->close();
-        this->wait();
+        this->wait(boost::none, [&closed]() {
+            return closed[0];
+        });
         targetChunks.emplace_back((const Byte *)data1, (const Byte *)data1 + strlen(data1));
         targetChunks.emplace_back((const Byte *)data2, (const Byte *)data2 + strlen(data2));
-        targetChunks.emplace_back();
+//        targetChunks.emplace_back();
         BOOST_CHECK_EQUAL(chunks, targetChunks);
         client->close();
     }

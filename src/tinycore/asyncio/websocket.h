@@ -84,6 +84,10 @@ public:
 
     virtual bool allowDraft76() const;
 
+    void setNodelay(bool value) {
+        _stream->setNodelay(value);
+    }
+
     std::string getWebSocketScheme() const {
         return _request->getProtocol() == "https" ? "wss" : "ws";
     }
@@ -211,9 +215,13 @@ protected:
     void writeFrame(bool fin, Byte opcode, const Byte *data, size_t length);
 
     void receiveFrame() {
-        _stream->readBytes(2, [this, handler=_handler->shared_from_this()](ByteArray data) {
-            onFrameStart(std::move(data));
-        });
+        try {
+            _stream->readBytes(2, [this, handler=_handler->shared_from_this()](ByteArray data) {
+                onFrameStart(std::move(data));
+            });
+        } catch (StreamClosedError &e) {
+            abort();
+        }
     }
 
     void onFrameStart(ByteArray data);
@@ -417,7 +425,11 @@ public:
 
     void writeMessage(const Byte *message, size_t length, bool binary) {
         Byte opcode = (Byte)(binary ? 0x02 : 0x01);
-        writeFrame(true, opcode, message, length);
+        try {
+            writeFrame(true, opcode, message, length);
+        } catch (StreamClosedError &e) {
+            abort();
+        }
     }
 
     void writePing(const Byte *data, size_t length) {
@@ -444,8 +456,12 @@ protected:
     void writeFrame(bool fin, Byte opcode, const Byte *data, size_t length);
 
     void receiveFrame() {
-        auto wrapper = std::make_shared<ReadCallbackWrapper>(this);
-        _stream->readBytes(2, std::bind(&ReadCallbackWrapper::onFrameStart, std::move(wrapper), std::placeholders::_1));
+        try {
+            auto wrapper = std::make_shared<ReadCallbackWrapper>(this);
+            _stream->readBytes(2, std::bind(&ReadCallbackWrapper::onFrameStart, std::move(wrapper), std::placeholders::_1));
+        } catch (StreamClosedError &e) {
+            abort();
+        }
     }
 
     void onFrameStart(ByteArray data);

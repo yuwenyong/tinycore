@@ -90,6 +90,16 @@ public:
     }
 
     static std::string formatUTCDate(const DateTime &timeval, bool usegmt=false);
+
+    static DateTime parseUTCDate(const std::string &date) {
+        static std::locale loc(std::cin.getloc(), new boost::posix_time::time_input_facet("%a, %d %b %Y %H:%M:%S GMT"));
+        std::istringstream ss(date);
+        ss.imbue(loc);
+        DateTime dt;
+        ss >> dt;
+        return dt;
+    }
+
     static std::string translate(const std::string &s, const std::array<char, 256> &table,
                                  const std::vector<char> &deleteChars);
 
@@ -145,19 +155,19 @@ protected:
     template <typename... Args>
     static void formats(boost::format &formatter, const char *value, Args&&... args) {
         formatter % value;
-        format(formatter, std::forward<Args>(args)...);
+        formats(formatter, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
     static void formats(boost::format &formatter, const std::string &value, Args&&... args) {
         formatter % value;
-        format(formatter, std::forward<Args>(args)...);
+        formats(formatter, std::forward<Args>(args)...);
     }
 
     template <typename T, typename... Args>
     static void formats(boost::format &formatter, T &&value, Args&&... args) {
         formatter % std::to_string(value);
-        format(formatter, std::forward<Args>(args)...);
+        formats(formatter, std::forward<Args>(args)...);
     }
 
     static void formats(boost::format &formatter, const char *value) {

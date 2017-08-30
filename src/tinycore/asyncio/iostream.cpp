@@ -13,7 +13,7 @@
 BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBufferSize, size_t readChunkSize)
         : _socket(std::move(socket))
         , _ioloop(ioloop ? ioloop : IOLoop::current())
-        , _maxBufferSize(maxBufferSize)
+        , _maxBufferSize(maxBufferSize ? maxBufferSize : DEFAULT_MAX_BUFFER_SIZE)
         , _readBuffer(readChunkSize) {
 
 }
@@ -137,6 +137,20 @@ void BaseIOStream::close(std::exception_ptr error) {
             _error = error;
         }
         if (_readUntilClose) {
+            if (_streamingCallback && _readBuffer.getActiveSize()) {
+                ByteArray data(_readBuffer.getReadPointer(),
+                               _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+                runCallback([streamingCallback=_streamingCallback, data=std::move(data)](){
+                    streamingCallback(std::move(data));
+                });
+#else
+                runCallback(std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data) {
+                    streamingCallback(std::move(data));
+                }, _streamingCallback, std::move(data)));
+#endif
+                _readBuffer.readCompleted(_readBuffer.getActiveSize());
+            }
             ReadCallbackType callback(std::move(_readCallback));
             _readCallback = nullptr;
             _readUntilClose = false;

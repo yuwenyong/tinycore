@@ -14,7 +14,7 @@ class TC_COMMON_API TCPServer: public std::enable_shared_from_this<TCPServer> {
 public:
     typedef boost::asio::ip::tcp::acceptor AcceptorType;
 
-    TCPServer(IOLoop *ioloop = nullptr, std::shared_ptr<SSLOption> sslOption = nullptr);
+    TCPServer(IOLoop *ioloop = nullptr, std::shared_ptr<SSLOption> sslOption = nullptr, size_t maxBufferSize=0);
     virtual ~TCPServer();
     TCPServer(const TCPServer &) = delete;
     TCPServer &operator=(const TCPServer &) = delete;
@@ -46,6 +46,7 @@ protected:
     std::shared_ptr<SSLOption> _sslOption;
     AcceptorType _acceptor;
     BaseIOStream::SocketType _socket;
+    size_t _maxBufferSize;
 };
 
 #endif //TINYCORE_TCPSERVER_H

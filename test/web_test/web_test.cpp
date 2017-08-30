@@ -545,6 +545,7 @@ public:
         BOOST_CHECK_EQUAL(_app->reverseURL("optional_path", "foo"), "/optional_path/foo?");
 //        std::cerr << _app->reverseURL("optional_path", 42) << std::endl;
         BOOST_CHECK_EQUAL(_app->reverseURL("optional_path", 42), "/optional_path/42?");
+        BOOST_CHECK_EQUAL(_app->reverseURL("optional_path", "1 + 1"), "/optional_path/1%20%2B%201?");
     }
 
     void testOptionalPath() {
@@ -1020,11 +1021,7 @@ public:
     void testDateHeader() {
         do {
             HTTPResponse response = fetch("/");
-            std::stringstream ss(response.getHeaders().at("Date"));
-            auto *timeInput = new boost::posix_time::time_input_facet("%a, %d %b %Y %H:%M:%S GMT");
-            ss.imbue(std::locale(ss.getloc(), timeInput));
-            DateTime dt;
-            ss >> dt;
+            DateTime dt = String::parseUTCDate(response.getHeaders().at("Date"));
             DateTime now = boost::posix_time::second_clock::universal_time();
             BOOST_CHECK_LT(dt - now, boost::posix_time::seconds(2));
 //            std::cerr << "SUCCESS\n";
@@ -1209,6 +1206,357 @@ public:
 };
 
 
+class ExceptionHandlerTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            auto exc = getArgument("exc");
+            if (exc == "http") {
+                ThrowException(HTTPError, 410, "no longer here");
+            } else if (exc == "zero") {
+                ThrowException(ZeroDivisionError, "");
+            } else if (exc == "permission") {
+                ThrowException(PermissionError, "not allowed");
+            }
+        }
+
+        void writeError(int statusCode, std::exception_ptr error) override {
+            if (error) {
+                try {
+                    std::rethrow_exception(error);
+                } catch (PermissionError &e) {
+                    setStatus(403);
+                    write("PermissionError");
+                    return;
+                } catch (...) {
+
+                }
+            }
+            RequestHandler::writeError(statusCode, error);
+        }
+
+        void logException(std::exception_ptr error) override {
+            if (error) {
+                try {
+                    std::rethrow_exception(error);
+                } catch (PermissionError &e) {
+                    LOG_WARNING(gAppLog, "custom logging for PermissionError: %s", e.what());
+                    return;
+                } catch (...) {
+
+                }
+            }
+            RequestHandler::logException(error);
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testHTTPError() {
+        do {
+            HTTPResponse response = fetch("/?exc=http");
+            BOOST_CHECK_EQUAL(response.getCode(), 410);
+        } while (false);
+    }
+
+    void testUnknownError() {
+        do {
+            HTTPResponse response = fetch("/?exc=zero");
+            BOOST_CHECK_EQUAL(response.getCode(), 500);
+        } while (false);
+    }
+
+    void testKnownError() {
+        do {
+            HTTPResponse response = fetch("/?exc=permission");
+            BOOST_CHECK_EQUAL(response.getCode(), 403);
+        } while (false);
+    }
+};
+
+
+class GetArgumentErrorTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+
+            try {
+                getArgument("foo");
+                write(doc);
+            } catch (MissingArgumentError &e) {
+                doc.AddMember(StringRef("argName"), StringRef(e.getArgName().c_str()), a);
+                doc.AddMember(StringRef("logMessage"), StringRef(e.what()), a);
+                write(doc);
+            }
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testCatchError() {
+        do {
+            HTTPResponse response = fetch("/");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            std::cerr << *body << std::endl;
+            Document data;
+            data.Parse(body->c_str(), body->size());
+            BOOST_CHECK(data["argName"] == "foo");
+            BOOST_CHECK(boost::contains(data["logMessage"].GetString(), "Missing argument foo"));
+        } while (false);
+    }
+};
+
+
+class MultipleExceptionTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            Asynchronous();
+            IOLoop::current()->addCallback([]() {
+                ThrowException(ZeroDivisionError, "");
+            });
+            IOLoop::current()->addCallback([]() {
+                ThrowException(ZeroDivisionError, "");
+            });
+        }
+
+        void logException(std::exception_ptr error) override {
+            ++errorCount;
+//            RequestHandler::logException(error);
+        }
+
+        static int errorCount;
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testMultiException() {
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getCode(), 500);
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getCode(), 500);
+        } while (false);
+
+        BOOST_CHECK_GT(Handler::errorCount, 2);
+//        std::cerr << Handler::errorCount << std::endl;
+    }
+};
+
+int MultipleExceptionTest::Handler::errorCount = 0;
+
+
+class UnimplementedHTTPMethodsTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testUnimplementedStandardMethods() {
+        for (auto method: {"HEAD", "GET", "DELETE", "OPTIONS"}) {
+            HTTPResponse response = fetch("/", ARG_method=method);
+            BOOST_CHECK_EQUAL(response.getCode(), 405);
+        }
+
+        for (auto method: {"POST", "PUT"}) {
+            HTTPResponse response = fetch("/", ARG_method=method, ARG_body="");
+            BOOST_CHECK_EQUAL(response.getCode(), 405);
+        }
+    }
+};
+
+
+class UnimplementedNonStandardMethodsTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testUnimplementedPatch() {
+        do {
+            HTTPResponse response = fetch("/", ARG_method="PATCH", ARG_body="");
+            BOOST_CHECK_EQUAL(response.getCode(), 405);
+        } while (false);
+    }
+};
+
+
+class AllHTTPMethodsTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            onMethod();
+        }
+
+        void onPost(const StringVector &args) override {
+            onMethod();
+        }
+
+        void onPut(const StringVector &args) override {
+            onMethod();
+        }
+
+        void onDelete(const StringVector &args) override {
+            onMethod();
+        }
+
+        void onOptions(const StringVector &args) override {
+            onMethod();
+        }
+
+//        void onPatch(const StringVector &args) override {
+//            onMethod();
+//        }
+
+        void onMethod() {
+            write(_request->getMethod());
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testStandardMethods() {
+        do {
+            HTTPResponse response = fetch("/", ARG_method="HEAD");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "");
+        } while (false);
+
+        for (std::string method: {"GET", "DELETE", "OPTIONS"}) {
+            HTTPResponse response = fetch("/", ARG_method=method);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, method);
+        }
+
+        for (std::string method: {"POST", "PUT"}) {
+            HTTPResponse response = fetch("/", ARG_method=method, ARG_body="");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, method);
+        }
+    }
+};
+
+
+class PatchMethodTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onPatch(const StringVector &args) override {
+            write("patch");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testPatch() {
+        do {
+            HTTPResponse response = fetch("/", ARG_method="PATCH", ARG_body="");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "patch");
+        } while (false);
+    }
+};
+
+
+class FinishInPrepareTest: public AsyncHTTPTestCase {
+public:
+    class Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void prepare() override {
+            finish("done");
+        }
+
+        void onGet(const StringVector &args) override {
+            ThrowException(Exception, "should not reach this method");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<Handler>("/"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void testFinishInPrepare() {
+        do {
+            HTTPResponse response = fetch("/");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "done");
+        } while (false);
+    }
+};
+
+
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(CookieTest, testSetCookie)
 TINYCORE_TEST_CASE(CookieTest, testGetCookie)
@@ -1241,3 +1589,13 @@ TINYCORE_TEST_CASE(GzipTestCase, testGzipNotRequested)
 TINYCORE_TEST_CASE(GzipTestCase, testVaryAlreadyPresent)
 TINYCORE_TEST_CASE(PathArgsInPrepareTest, testPos)
 TINYCORE_TEST_CASE(ClearAllCookiesTest, testClearAllCookies)
+TINYCORE_TEST_CASE(ExceptionHandlerTest, testHTTPError)
+TINYCORE_TEST_CASE(ExceptionHandlerTest, testUnknownError)
+TINYCORE_TEST_CASE(ExceptionHandlerTest, testKnownError)
+TINYCORE_TEST_CASE(GetArgumentErrorTest, testCatchError)
+TINYCORE_TEST_CASE(MultipleExceptionTest, testMultiException)
+TINYCORE_TEST_CASE(UnimplementedHTTPMethodsTest, testUnimplementedStandardMethods)
+TINYCORE_TEST_CASE(UnimplementedNonStandardMethodsTest, testUnimplementedPatch)
+TINYCORE_TEST_CASE(AllHTTPMethodsTest, testStandardMethods)
+TINYCORE_TEST_CASE(PatchMethodTest, testPatch)
+TINYCORE_TEST_CASE(FinishInPrepareTest, testFinishInPrepare)

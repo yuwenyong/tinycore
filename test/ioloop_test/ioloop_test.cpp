@@ -56,6 +56,19 @@ public:
         wait();
         _ioloop.removeTimeout(handle);
     }
+
+    void testRemoveTimeoutCleanup() {
+        for (size_t i = 0; i < 2000; ++i) {
+            auto timeout = _ioloop.addTimeout(3600.0f, [](){});
+            _ioloop.removeTimeout(timeout);
+        }
+        _ioloop.addCallback([this]() {
+            _ioloop.addCallback([this]() {
+                stop();
+            });
+        });
+        wait();
+    }
 protected:
     Timestamp _startTime;
     Timestamp _stopTime;
@@ -101,5 +114,6 @@ TINYCORE_TEST_CASE(IOLoopTest, testAddCallbackWakeup)
 TINYCORE_TEST_CASE(IOLoopTest, testAddCallbackWakeupOtherThread)
 TINYCORE_TEST_CASE(IOLoopTest, testAddTimeoutTimedelta)
 TINYCORE_TEST_CASE(IOLoopTest, testRemoveTimeoutAfterFire)
+TINYCORE_TEST_CASE(IOLoopTest, testRemoveTimeoutCleanup)
 TINYCORE_TEST_CASE(IOLoopCurrentTest, testCurrent)
 TINYCORE_TEST_CASE(IOLoopRunSyncTest, testSyncResult)

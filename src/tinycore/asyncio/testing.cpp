@@ -42,12 +42,16 @@ void AsyncTestCase::handleException(std::exception_ptr error) {
     stop();
 }
 
-boost::any AsyncTestCase::wait(float timeout, ConditionCallback condition) {
+boost::any AsyncTestCase::wait(boost::optional<float> timeout, ConditionCallback condition) {
+    if (!timeout) {
+        timeout = getAsyncTestTimeout();
+    }
     if (!_stopped) {
-        if (timeout != 0.0f) {
-            _timeout = _ioloop.addTimeout(timeout, [this, timeout](){
+        if (*timeout != 0.0f) {
+            _timeout = _ioloop.addTimeout(*timeout, [this, timeout](){
                 try {
-                    ThrowException(TimeoutError, String::format("Async operation timed out after %f seconds", timeout));
+                    ThrowException(TimeoutError, String::format("Async operation timed out after %f seconds",
+                                                                *timeout));
                 } catch (...) {
                     _failure = std::current_exception();
                 }
