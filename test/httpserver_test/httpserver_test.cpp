@@ -276,21 +276,61 @@ public:
             BOOST_CHECK_EQUAL(lhs, rhs);
         } while (false);
     }
+};
 
-    void testEmptyRequest() {
+
+class HTTPServerRawTest: public AsyncHTTPTestCase {
+public:
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<EchoHandler>("/echo"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void setUp() override {
+        AsyncHTTPTestCase::setUp();
         BaseIOStream::SocketType socket(_ioloop.getService());
-        auto stream = IOStream::create(std::move(socket), &_ioloop);
-        stream->connect("localhost", getHTTPPort(), [this]() {
+        _stream = IOStream::create(std::move(socket), &_ioloop);
+        _stream->connect("localhost", getHTTPPort(), [this]() {
             stop();
         });
         wait();
-        stream->close();
+    }
+
+    void tearDown() override {
+        _stream->close();
+        AsyncHTTPTestCase::tearDown();
+    }
+
+    void testEmptyRequest() {
+        _stream->close();
         _ioloop.addTimeout(0.001f, [this]() {
             stop();
         });
         wait();
 //        std::cerr << "SUCCESS\n";
     }
+
+    void testMalformedFirstLine() {
+        ByteArray request = String::toByteArray("asdf\r\n\r\n");
+        _stream->write(request.data(), request.size());
+        _ioloop.addTimeout(0.01f, [this]() {
+            stop();
+        });
+        wait();
+    }
+
+    void testMalformedHeaders() {
+        ByteArray request = String::toByteArray("GET / HTTP/1.0\r\nasdf\r\n\r\n");
+        _stream->write(request.data(), request.size());
+        _ioloop.addTimeout(0.01f, [this]() {
+            stop();
+        });
+        wait();
+    }
+protected:
+    std::shared_ptr<BaseIOStream> _stream;
 };
 
 
@@ -324,27 +364,60 @@ public:
     }
 
     void testIpHeaders() {
-        Document doc;
-        HTTPHeaders headers;
+        do {
+            Document doc = fetchJSON("/");
+            BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        } while (false);
 
-        doc = fetchJSON("/");
-        BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        do {
+            HTTPHeaders headers;
+            headers["X-Real-IP"] = "4.4.4.4";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+            BOOST_CHECK(doc["remoteIp"] == "4.4.4.4");
+        } while (false);
 
-        headers["X-Real-IP"] = "4.4.4.4";
-        doc = fetchJSON("/", ARG_headers=headers);
-        BOOST_CHECK(doc["remoteIp"] == "4.4.4.4");
+        do {
+            HTTPHeaders headers;
+            headers["X-Forwarded-For"] = "127.0.0.1, 4.4.4.4";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+            BOOST_CHECK(doc["remoteIp"] == "4.4.4.4");
+        } while (false);
 
-        headers["X-Real-IP"] = "2620:0:1cfe:face:b00c::3";
-        doc = fetchJSON("/", ARG_headers=headers);
-        BOOST_CHECK(doc["remoteIp"] == "2620:0:1cfe:face:b00c::3");
+        do {
+            HTTPHeaders headers;
+            headers["X-Real-IP"] = "2620:0:1cfe:face:b00c::3";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+            BOOST_CHECK(doc["remoteIp"] == "2620:0:1cfe:face:b00c::3");
+        } while (false);
 
-        headers["X-Real-IP"] = "4.4.4.4<script>";
-        doc = fetchJSON("/", ARG_headers=headers);
-        BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        do {
+            HTTPHeaders headers;
+            headers["X-Forwarded-For"] = "::1, 2620:0:1cfe:face:b00c::3";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+            BOOST_CHECK(doc["remoteIp"] == "2620:0:1cfe:face:b00c::3");
+        } while (false);
 
-        headers["X-Real-IP"] = "www.google.com";
-        doc = fetchJSON("/", ARG_headers=headers);
-        BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        do {
+            HTTPHeaders headers;
+            headers["X-Real-IP"] = "4.4.4.4<script>";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+            BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        } while (false);
+
+        do {
+            HTTPHeaders headers;
+            headers["X-Forwarded-For"] = "4.4.4.4, 5.5.5.5<script>";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+//            std::cerr << String::fromJSON(doc) << std::endl;
+            BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        } while (false);
+
+        do {
+            HTTPHeaders headers;
+            headers["X-Real-IP"] = "www.google.com";
+            Document doc = fetchJSON("/", ARG_headers=headers);
+            BOOST_CHECK(doc["remoteIp"] == "127.0.0.1");
+        } while (false);
     }
 
     void testSchemeHeaders() {
@@ -664,7 +737,9 @@ TINYCORE_TEST_CASE(HTTPConnectionTest, test100Continue)
 TINYCORE_TEST_CASE(HTTPServerTest, testEmptyQueryString)
 TINYCORE_TEST_CASE(HTTPServerTest, testEmptyPostParameters)
 TINYCORE_TEST_CASE(HTTPServerTest, testDoubleSlash)
-TINYCORE_TEST_CASE(HTTPServerTest, testEmptyRequest)
+TINYCORE_TEST_CASE(HTTPServerRawTest, testEmptyRequest)
+TINYCORE_TEST_CASE(HTTPServerRawTest, testMalformedFirstLine)
+TINYCORE_TEST_CASE(HTTPServerRawTest, testMalformedHeaders)
 TINYCORE_TEST_CASE(XHeaderTest, testIpHeaders)
 TINYCORE_TEST_CASE(XHeaderTest, testSchemeHeaders)
 TINYCORE_TEST_CASE(SSLXHeaderTest, testRequestWithoutXProtocol)

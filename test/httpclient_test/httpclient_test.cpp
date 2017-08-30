@@ -82,6 +82,39 @@ public:
 };
 
 
+class AllMethodHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(const StringVector &args) override {
+        onMethod();
+    }
+
+    void onPost(const StringVector &args) override {
+        onMethod();
+    }
+
+    void onPut(const StringVector &args) override {
+        onMethod();
+    }
+
+    void onDelete(const StringVector &args) override {
+        onMethod();
+    }
+
+    void onOptions(const StringVector &args) override {
+        onMethod();
+    }
+
+    void onPatch(const StringVector &args) override {
+        onMethod();
+    }
+
+    void onMethod() {
+        write(_request->getMethod());
+    }
+};
+
 
 class HTTPClientTestCase: public AsyncHTTPTestCase {
 public:
@@ -94,6 +127,7 @@ public:
 //                url<HangHandler>("/hang"),
                 url<CountDownHandler>(R"(/countdown/([0-9]+))", "countdown"),
                 url<EchoPostHandler>("/echopost"),
+                url<AllMethodHandler>("/all_methods"),
         };
         std::string defaultHost;
         Application::TransformsType transforms;
@@ -233,6 +267,33 @@ public:
         } while (false);
     }
 
+    void testBasicAuthExplicitMode() {
+        do {
+            HTTPResponse response = fetch("/auth", ARG_authUserName="Aladdin", ARG_authPassword="open sesame",
+                                          ARG_authMode="basic");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
+        } while (false);
+    }
+
+    void testUnsupportAuthMode() {
+        do {
+            HTTPResponse response = fetch("/auth", ARG_authUserName="Aladdin", ARG_authPassword="open sesame",
+                                          ARG_authMode="asdf");
+            BOOST_REQUIRE(response.getError());
+            try {
+                std::rethrow_exception(response.getError());
+            } catch (ValueError &e) {
+                LOG_INFO(e.what());
+            } catch (HTTPError &e) {
+                LOG_INFO(e.what());
+            } catch (...) {
+                BOOST_CHECK(false);
+            }
+        } while (false);
+    }
+
     void testConnectTimeout() {
         // todo
     }
@@ -337,6 +398,29 @@ public:
         BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
         BOOST_CHECK_EQUAL(*body, "Hello world!");
     }
+
+    void testAllMethods() {
+        for (std::string method: {"GET", "DELETE", "OPTIONS"}) {
+            HTTPResponse response = fetch("/all_methods", ARG_method=method);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, method);
+        }
+
+        for (std::string method: {"POST", "PUT", "PATCH"}) {
+            HTTPResponse response = fetch("/all_methods", ARG_method=method, ARG_body="");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, method);
+        }
+
+        do {
+            HTTPResponse response = fetch("/all_methods", ARG_method="HEAD");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "");
+        } while (false);
+    }
 };
 
 
@@ -348,11 +432,14 @@ TINYCORE_TEST_CASE(HTTPClientTestCase, testChunked)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testChunkedClose)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testStreamingStackContext)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testBasicAuth)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testBasicAuthExplicitMode)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testUnsupportAuthMode)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testFollowRedirect)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testCredentialsInURL)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testHeaderCallback)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testHeaderCallbackStackContext)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testReuseRequestFromResponse)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testAllMethods)
 
 
 class HTTPResponseTestCase: public TestCase {
@@ -466,7 +553,8 @@ public:
 };
 
 
-class SimpleHTTPClientTestCase: public AsyncHTTPTestCase {
+template <typename BaseT>
+class SimpleHTTPClientTestMixin: public BaseT {
 public:
     std::unique_ptr<Application> getApp() const override {
         Application::HandlersType handlers = {
@@ -495,7 +583,7 @@ public:
         do {
             HTTPHeaders headers;
             headers["Accept-Encoding"] = "gzip";
-            HTTPResponse response = fetch("/chunk", ARG_useGzip=false, ARG_headers=std::move(headers));
+            HTTPResponse response = this->fetch("/chunk", ARG_useGzip=false, ARG_headers=std::move(headers));
             BOOST_CHECK_EQUAL(response.getHeaders().at("Content-Encoding"), "gzip");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
@@ -511,7 +599,7 @@ public:
 
     void testMaxRedirects() {
         do {
-            HTTPResponse response = fetch("/countdown/5", ARG_maxRedirects=3);
+            HTTPResponse response = this->fetch("/countdown/5", ARG_maxRedirects=3);
             BOOST_CHECK_EQUAL(response.getCode(), 302);
             BOOST_CHECK(boost::ends_with(response.getRequest()->getURL(), "/countdown/5"));
             BOOST_CHECK(boost::ends_with(response.getEffectiveURL(), "/countdown/2"));
@@ -521,7 +609,7 @@ public:
 
     void testSeeOtherRedirect() {
         do {
-            HTTPResponse response = fetch("/see_other_post", ARG_method="POST", ARG_body="302");
+            HTTPResponse response = this->fetch("/see_other_post", ARG_method="POST", ARG_body="302");
             BOOST_CHECK_EQUAL(response.getCode(), 200);
             BOOST_CHECK(boost::ends_with(response.getRequest()->getURL(), "/see_other_post"));
             BOOST_CHECK(boost::ends_with(response.getEffectiveURL(), "/see_other_get"));
@@ -529,7 +617,7 @@ public:
         } while (false);
 
         do {
-            HTTPResponse response = fetch("/see_other_post", ARG_method="POST", ARG_body="303");
+            HTTPResponse response = this->fetch("/see_other_post", ARG_method="POST", ARG_body="303");
             BOOST_CHECK_EQUAL(response.getCode(), 200);
             BOOST_CHECK(boost::ends_with(response.getRequest()->getURL(), "/see_other_post"));
             BOOST_CHECK(boost::ends_with(response.getEffectiveURL(), "/see_other_get"));
@@ -539,7 +627,7 @@ public:
 
     void testRequestTimeout() {
         do {
-            HTTPResponse response = fetch("/hang", ARG_requestTimeout=0.1f);
+            HTTPResponse response = this->fetch("/hang", ARG_requestTimeout=0.1f);
             BOOST_REQUIRE_EQUAL(response.getCode(), 599);
             auto requestTime = std::chrono::duration_cast<std::chrono::milliseconds>(response.getRequestTime());
             BOOST_CHECK_LE(std::chrono::milliseconds(99), requestTime);
@@ -555,16 +643,17 @@ public:
     }
 
     void testIPV6() {
-        _httpServer = std::make_shared<HTTPServer>(HTTPServerCB(*_app), getHTTPServerNoKeepAlive(), &_ioloop,
-                                                   getHTTPServerXHeaders(), "", getHTTPServerSSLOption());
-        _httpServer->listen(getHTTPPort(), "::1");
-        std::string url = boost::replace_all_copy(getURL("/hello"), "localhost", "[::1]");
-        _httpClient->fetch(url, [this](HTTPResponse response) {
-            stop(response);
-        });
+        this->_httpServer = std::make_shared<HTTPServer>(HTTPServerCB(*this->_app), this->getHTTPServerNoKeepAlive(),
+                                                         &this->_ioloop, this->getHTTPServerXHeaders(), "",
+                                                         this->getHTTPServerSSLOption());
+        this->_httpServer->listen(this->getHTTPPort(), "::1");
+        std::string url = boost::replace_all_copy(this->getURL("/hello"), "localhost", "[::1]");
+        this->_httpClient->fetch(url, [this](HTTPResponse response) {
+            this->stop(response);
+        }, ARG_validateCert=false);
 
         do {
-            HTTPResponse response = wait<HTTPResponse>();
+            HTTPResponse response = this->template wait<HTTPResponse>();
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "Hello world!");
@@ -573,33 +662,33 @@ public:
 
     void testMultiContentLengthAccepted() {
         do {
-            HTTPResponse response = fetch("/content_length?value=2,2");
+            HTTPResponse response = this->fetch("/content_length?value=2,2");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "ok");
         } while (false);
 
         do {
-            HTTPResponse response = fetch("/content_length?value=2,%202,2");
+            HTTPResponse response = this->fetch("/content_length?value=2,%202,2");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "ok");
         } while (false);
 
         do {
-            HTTPResponse response = fetch("/content_length?value=2,4");
+            HTTPResponse response = this->fetch("/content_length?value=2,4");
             BOOST_CHECK_EQUAL(response.getCode(), 599);
         } while (false);
 
         do {
-            HTTPResponse response = fetch("/content_length?value=2,%202,3");
+            HTTPResponse response = this->fetch("/content_length?value=2,%202,3");
             BOOST_CHECK_EQUAL(response.getCode(), 599);
         } while (false);
     }
 
     void testHeadRequest() {
         do {
-            HTTPResponse response = fetch("/head", ARG_method="HEAD");
+            HTTPResponse response = this->fetch("/head", ARG_method="HEAD");
             BOOST_CHECK_EQUAL(response.getCode(), 200);
             BOOST_CHECK_EQUAL(response.getHeaders().at("Content-length"), "7");
             BOOST_CHECK_EQUAL(response.getBody()->size(), 0);
@@ -608,7 +697,7 @@ public:
 
     void testOptionsRequest() {
         do {
-            HTTPResponse response = fetch("/options", ARG_method="OPTIONS");
+            HTTPResponse response = this->fetch("/options", ARG_method="OPTIONS");
             BOOST_CHECK_EQUAL(response.getCode(), 200);
             BOOST_CHECK_EQUAL(response.getHeaders().at("Content-length"), "2");
             BOOST_CHECK_EQUAL(response.getHeaders().at("access-control-allow-origin"), "*");
@@ -620,13 +709,13 @@ public:
 
     void testNoContent() {
         do {
-            HTTPResponse response = fetch("/no_content");
+            HTTPResponse response = this->fetch("/no_content");
             BOOST_CHECK_EQUAL(response.getCode(), 204);
             BOOST_CHECK_EQUAL(response.getHeaders().at("Content-length"), "0");
         } while (false);
 
         do {
-            HTTPResponse response = fetch("/no_content?error=1");
+            HTTPResponse response = this->fetch("/no_content?error=1");
             BOOST_CHECK_EQUAL(response.getCode(), 599);
         } while (false);
     }
@@ -634,19 +723,19 @@ public:
     void testHostHeader() {
         boost::regex hostRe(R"(^localhost:[0-9]+$)");
         do {
-            HTTPResponse response = fetch("/host_echo");
+            HTTPResponse response = this->fetch("/host_echo");
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK(boost::regex_match(*body, hostRe));
         } while (false);
 
         do {
-            auto url = getURL("/host_echo");
+            auto url = this->getURL("/host_echo");
             boost::replace_all(url, "http:://", "http://me:secret@");
-            _httpClient->fetch(url, [this](HTTPResponse response) {
-                stop(std::move(response));
-            });
-            HTTPResponse response = wait<HTTPResponse>();
+            this->_httpClient->fetch(url, [this](HTTPResponse response) {
+                this->stop(std::move(response));
+            }, ARG_validateCert=false);
+            HTTPResponse response = this->template wait<HTTPResponse>();
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK(boost::regex_match(*body, hostRe));
@@ -655,15 +744,19 @@ public:
 
     void testConnectionRefused() {
         do {
-            auto port = getUnusedPort();
-            _httpClient->fetch(String::format("http://localhost:%u/", port), [this] (HTTPResponse response) {
-                stop(std::move(response));
-            });
-            HTTPResponse response = wait<HTTPResponse>();
+            auto port = this->getUnusedPort();
+            this->_httpClient->fetch(String::format("http://localhost:%u/", port), [this] (HTTPResponse response) {
+                this->stop(std::move(response));
+            }, ARG_validateCert=false);
+            HTTPResponse response = this->template wait<HTTPResponse>();
             BOOST_CHECK_EQUAL(response.getCode(), 599);
         } while (false);
     }
 };
+
+
+using SimpleHTTPClientTestCase = SimpleHTTPClientTestMixin<AsyncHTTPTestCase>;
+using SimpleHTTPSClientTestCase = SimpleHTTPClientTestMixin<AsyncHTTPSTestCase>;
 
 
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testGzip)
@@ -677,6 +770,18 @@ TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testOptionsRequest)
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testNoContent)
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testHostHeader)
 TINYCORE_TEST_CASE(SimpleHTTPClientTestCase, testConnectionRefused)
+
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testGzip)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testMaxRedirects)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testSeeOtherRedirect)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testRequestTimeout)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testIPV6)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testMultiContentLengthAccepted)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testHeadRequest)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testOptionsRequest)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testNoContent)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testHostHeader)
+TINYCORE_TEST_CASE(SimpleHTTPSClientTestCase, testConnectionRefused)
 
 
 class HTTP100ContinueTestCase: public AsyncHTTPTestCase {

@@ -144,8 +144,10 @@ public:
     }
 
     void setNodelay(bool value) {
-        boost::asio::ip::tcp::no_delay option(value);
-        _socket.set_option(option);
+        if (!closed()) {
+            boost::asio::ip::tcp::no_delay option(value);
+            _socket.set_option(option);
+        }
     }
 
     size_t getMaxBufferSize() const {

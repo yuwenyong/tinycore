@@ -270,7 +270,7 @@ protected:
 
     void handleRequestException(std::exception_ptr error);
 
-    void logException(std::exception_ptr error);
+    virtual void logException(std::exception_ptr error);
 
     void clearHeadersFor304() {
         const StringVector headers = {"Allow", "Content-Encoding", "Content-Language",
@@ -456,8 +456,12 @@ public:
 
     }
 
-    const char *getTypeName() const override {
+    const char* getTypeName() const override {
         return "MissingArgumentError";
+    }
+
+    const std::string& getArgName() const {
+        return _argName;
     }
 
 protected:

@@ -79,6 +79,7 @@ DECLARE_EXCEPTION(NotImplementedError, Exception);
 DECLARE_EXCEPTION(TimeoutError, Exception);
 DECLARE_EXCEPTION(ZeroDivisionError, Exception);
 DECLARE_EXCEPTION(ParsingError, Exception);
+DECLARE_EXCEPTION(PermissionError, Exception);
 
 
 class TC_COMMON_API AssertionError: public Exception {
