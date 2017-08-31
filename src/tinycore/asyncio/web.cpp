@@ -257,7 +257,7 @@ void RequestHandler::finish() {
             setHeader("Content-Length", _writeBuffer.size());
         }
     }
-    _request->getConnection()->getStream()->setCloseCallback(nullptr);
+    _request->getConnection()->setCloseCallback(nullptr);
     flush(true);
     _request->finish();
     log();
@@ -270,8 +270,8 @@ void RequestHandler::sendError(int statusCode, std::exception_ptr error) {
         LOG_ERROR(gGenLog, "Cannot send error response after headers written");
         if (!_finished) {
             finish();
-            return;
         }
+        return;
     }
     clear();
     std::string reason;
