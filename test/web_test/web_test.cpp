@@ -1370,7 +1370,7 @@ public:
         } while (false);
 
         BOOST_CHECK_GT(Handler::errorCount, 2);
-//        std::cerr << Handler::errorCount << std::endl;
+        std::cerr << Handler::errorCount << std::endl;
     }
 };
 

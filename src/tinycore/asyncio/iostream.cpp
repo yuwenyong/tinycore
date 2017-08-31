@@ -178,6 +178,8 @@ void BaseIOStream::onConnect(const boost::system::error_code &ec) {
         if (ec != boost::asio::error::operation_aborted) {
             LOG_WARNING(gGenLog, "Connect error %d :%s", ec.value(), ec.message());
             close(std::make_exception_ptr(boost::system::system_error(ec)));
+        } else {
+            maybeRunCloseCallback();
         }
         return;
     } else {
@@ -229,6 +231,8 @@ void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferr
         if (ec != boost::asio::error::operation_aborted) {
             LOG_WARNING(gGenLog, "Write error %d :%s", ec.value(), ec.message());
             close(std::make_exception_ptr(boost::system::system_error(ec)));
+        } else {
+            maybeRunCloseCallback();
         }
         return;
     }
@@ -275,7 +279,9 @@ void BaseIOStream::maybeRunCloseCallback() {
             clearCallbacks();
         }
     } else {
-        clearCallbacks();
+        if (_pendingCallbacks == 0) {
+            clearCallbacks();
+        }
     }
 }
 
@@ -323,6 +329,8 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t tr
                 LOG_WARNING(gGenLog, "Read error %d :%s", ec.value(), ec.message());
             }
             close(std::make_exception_ptr(boost::system::system_error(ec)));
+        } else {
+            maybeRunCloseCallback();
         }
         return 0;
     }
