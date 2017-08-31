@@ -113,7 +113,12 @@ std::string HTTPHeaders::normalizeName(const std::string &name) {
 void HTTPUtil::parseBodyArguments(const std::string &contentType, const std::string &body, QueryArgListMap &arguments,
                                   HTTPFileListMap &files) {
     if (boost::starts_with(contentType, "application/x-www-form-urlencoded")) {
-        auto uriArguments = URLParse::parseQS(body, true);
+        QueryArgListMap uriArguments;
+        try {
+            uriArguments = URLParse::parseQS(body, true);
+        } catch (std::exception &e) {
+            LOG_WARNING(gGenLog, "Invalid x-www-form-urlencoded body: %s", e.what());
+        }
         for (auto &nv: uriArguments) {
             if (!nv.second.empty()) {
                 for (auto &value: nv.second) {

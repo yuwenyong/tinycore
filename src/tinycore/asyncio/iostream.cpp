@@ -277,7 +277,11 @@ void BaseIOStream::maybeRunCloseCallback() {
             _closeCallback = nullptr;
             runCallback(std::move(callback));
             clearCallbacks();
+        } else {
+            _readCallback = nullptr;
+            _writeCallback = nullptr;
         }
+        _writeQueue.clear();
     } else {
         if (_pendingCallbacks == 0) {
             clearCallbacks();
