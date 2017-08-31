@@ -1335,7 +1335,7 @@ public:
 
         void onGet(const StringVector &args) override {
             Asynchronous();
-            IOLoop::current()->addCallback([this]() {
+            IOLoop::current()->addCallback([]() {
                 ThrowException(ZeroDivisionError, "");
             });
             IOLoop::current()->addCallback([]() {
