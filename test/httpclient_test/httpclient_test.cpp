@@ -421,6 +421,32 @@ public:
             BOOST_CHECK_EQUAL(*body, "");
         } while (false);
     }
+
+    void testBody() {
+        do {
+            HTTPResponse response = fetch("/hello", ARG_body="data");
+            BOOST_REQUIRE(response.getError());
+            try {
+                std::rethrow_exception(response.getError());
+            } catch (AssertionError &e) {
+                BOOST_CHECK(boost::contains(e.what(), "must be empty"));
+            } catch (...) {
+                BOOST_CHECK(false);
+            }
+        } while (false);
+
+        do {
+            HTTPResponse response = fetch("/hello", ARG_method="POST");
+            BOOST_REQUIRE(response.getError());
+            try {
+                std::rethrow_exception(response.getError());
+            } catch (AssertionError &e) {
+                BOOST_CHECK(boost::contains(e.what(), "must not be empty"));
+            } catch (...) {
+                BOOST_CHECK(false);
+            }
+        } while (false);
+    }
 };
 
 
@@ -440,6 +466,7 @@ TINYCORE_TEST_CASE(HTTPClientTestCase, testHeaderCallback)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testHeaderCallbackStackContext)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testReuseRequestFromResponse)
 TINYCORE_TEST_CASE(HTTPClientTestCase, testAllMethods)
+TINYCORE_TEST_CASE(HTTPClientTestCase, testBody)
 
 
 class HTTPResponseTestCase: public TestCase {

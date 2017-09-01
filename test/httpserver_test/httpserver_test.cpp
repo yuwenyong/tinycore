@@ -276,6 +276,17 @@ public:
             BOOST_CHECK_EQUAL(lhs, rhs);
         } while (false);
     }
+
+    void testMalformedBody() {
+        do {
+            HTTPHeaders headers = {{"Content-Type", "application/x-www-form-urlencoded"}};
+            HTTPResponse response = fetch("/echo", ARG_method="POST", ARG_headers=headers, ARG_body="\xe9");
+            BOOST_CHECK_EQUAL(response.getCode(), 200);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "{}");
+        } while (false);
+    }
 };
 
 
@@ -737,6 +748,7 @@ TINYCORE_TEST_CASE(HTTPConnectionTest, test100Continue)
 TINYCORE_TEST_CASE(HTTPServerTest, testEmptyQueryString)
 TINYCORE_TEST_CASE(HTTPServerTest, testEmptyPostParameters)
 TINYCORE_TEST_CASE(HTTPServerTest, testDoubleSlash)
+//TINYCORE_TEST_CASE(HTTPServerTest, testMalformedBody)
 TINYCORE_TEST_CASE(HTTPServerRawTest, testEmptyRequest)
 TINYCORE_TEST_CASE(HTTPServerRawTest, testMalformedFirstLine)
 TINYCORE_TEST_CASE(HTTPServerRawTest, testMalformedHeaders)
