@@ -219,8 +219,11 @@ void HTTPConnection::onRequestBody(ByteArray data) {
     auto headers = _request->getHTTPHeaders();
     const std::string &method = _request->getMethod();
     if (method == "POST" || method == "PATCH" || method == "PUT") {
-        HTTPUtil::parseBodyArguments(headers->get("Content-Type", ""), _request->getBody(), _request->arguments(),
+        HTTPUtil::parseBodyArguments(headers->get("Content-Type", ""), _request->getBody(), _request->bodyArguments(),
                                      _request->files());
+        for (const auto &kv: _request->getBodyArguments()) {
+            _request->addArguments(kv.first, kv.second);
+        }
     }
     _request->setConnection(shared_from_this());
     _requestCallback(std::move(_request));
@@ -274,6 +277,7 @@ HTTPServerRequest::HTTPServerRequest(std::shared_ptr<HTTPConnection> connection,
     }
     std::tie(_path, std::ignore, _query) = String::partition(_uri, "?");
     _arguments = URLParse::parseQS(_query, true);
+    _queryArguments = _arguments;
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPSERVERREQUEST_COUNT);
 #endif

@@ -329,6 +329,22 @@ public:
         }
     }
 
+    QueryArgListMap& queryArguments() {
+        return _queryArguments;
+    }
+
+    const QueryArgListMap& getQueryArguments() const {
+        return _queryArguments;
+    }
+
+    QueryArgListMap& bodyArguments() {
+        return _bodyArguments;
+    }
+
+    const QueryArgListMap& getBodyArguments() const {
+        return _bodyArguments;
+    }
+
     HTTPFileListMap& files() {
         return _files;
     }
@@ -359,6 +375,8 @@ protected:
     std::string _path;
     std::string _query;
     QueryArgListMap _arguments;
+    QueryArgListMap _queryArguments;
+    QueryArgListMap _bodyArguments;
     mutable CookiesType _cookies;
 };
 

@@ -119,9 +119,39 @@ public:
         return arguments.find(name) != arguments.end();
     }
 
-    std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const;
-    std::string getArgument(const std::string &name, const std::string &defaultValue, bool strip= true) const;
-    StringVector getArguments(const std::string &name, bool strip= true) const;
+    std::string getArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const {
+        return getArgument(name, _request->getArguments(), defaultValue, strip);
+    }
+
+    StringVector getArguments(const std::string &name, bool strip= true) const {
+        return getArguments(name, _request->getArguments(), strip);
+    }
+
+    bool hasBodyArgument(const std::string &name) const {
+        auto &arguments = _request->getBodyArguments();
+        return arguments.find(name) != arguments.end();
+    }
+
+    std::string getBodyArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const {
+        return getArgument(name, _request->getBodyArguments(), defaultValue, strip);
+    }
+
+    StringVector getBodyArguments(const std::string &name, bool strip= true) const {
+        return getArguments(name, _request->getBodyArguments(), strip);
+    }
+
+    bool hasQueryArgument(const std::string &name) const {
+        auto &arguments = _request->getQueryArguments();
+        return arguments.find(name) != arguments.end();
+    }
+
+    std::string getQueryArgument(const std::string &name, const char *defaultValue= nullptr, bool strip= true) const {
+        return getArgument(name, _request->getQueryArguments(), defaultValue, strip);
+    }
+
+    StringVector getQueryArguments(const std::string &name, bool strip= true) const {
+        return getArguments(name, _request->getQueryArguments(), strip);
+    }
 
     const SimpleCookie& cookies() const {
         return _request->cookies();
@@ -143,9 +173,9 @@ public:
         setCookie(name, "", domain, &expires, path);
     }
 
-    void clearAllCookies() {
-        cookies().getAll([this](const std::string &name, const Morsel &morsel) {
-            clearCookie(name);
+    void clearAllCookies(const char *path= "/", const char *domain= nullptr) {
+        cookies().getAll([this, path, domain](const std::string &name, const Morsel &morsel) {
+            clearCookie(name, path, domain);
         });
     }
 
@@ -248,6 +278,11 @@ protected:
     std::string convertHeaderValue(T value) {
         return convertHeaderValue(std::to_string(value));
     }
+
+    std::string getArgument(const std::string &name, const QueryArgListMap &source, const char *defaultValue= nullptr,
+                            bool strip= true) const;
+
+    StringVector getArguments(const std::string &name, const QueryArgListMap &source, bool strip= true) const;
 
     virtual void execute(TransformsType &transforms, StringVector args);
 

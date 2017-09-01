@@ -28,6 +28,9 @@ WebSocketHandler::~WebSocketHandler() {
 }
 
 void WebSocketHandler::writeMessage(const Byte *message, size_t length, bool binary) {
+    if (closed()) {
+        ThrowException(WebSocketClosedError, "");
+    }
     _wsConnection->writeMessage(message, length, binary);
 }
 
@@ -40,6 +43,9 @@ void WebSocketHandler::onOpen(const StringVector &args) {
 }
 
 void WebSocketHandler::ping(const Byte *data, size_t length) {
+    if (closed()) {
+        ThrowException(WebSocketClosedError, "");
+    }
     _wsConnection->writePing(data, length);
 }
 
@@ -52,7 +58,7 @@ void WebSocketHandler::onClose() {
 }
 
 void WebSocketHandler::close() {
-    if (_wsConnection) {
+    if (!closed()) {
         _wsConnection->close();
     }
 }
@@ -403,7 +409,7 @@ void WebSocketProtocol13::writeFrame(bool fin, Byte opcode, const Byte *data, si
             Random::randBytes(mask);
             frame.insert(frame.end(), mask.begin(), mask.end());
             frame.insert(frame.end(), data, data + length);
-            applyMask(mask, frame.data() + frame.size() - length, length);
+            WebSocketMask(mask, frame.data() + frame.size() - length, length);
         } else {
             frame.insert(frame.end(), data, data + length);
         }
@@ -585,7 +591,7 @@ WebSocketClientConnection::~WebSocketClientConnection() {
 }
 
 void WebSocketClientConnection::close() {
-    if (_protocol) {
+    if (!closed()) {
         _protocol->close();
     }
 }
@@ -716,12 +722,11 @@ void WebSocketClientConnection::onMessage(boost::optional<ByteArray> message) {
 }
 
 
-void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback,
-                      float connectTimeout, IOLoop *ioloop) {
+void WebSocketConnect(std::shared_ptr<HTTPRequest> request, WebSocketClientConnection::ConnectCallbackType callback,
+                      IOLoop *ioloop) {
     if (!ioloop) {
         ioloop = IOLoop::current();
     }
-    auto request = HTTPRequest::create(url, opts::_connectTimeout=connectTimeout);
     auto connection = std::make_shared<WebSocketClientConnection>(ioloop, std::move(request), std::move(callback));
     connection->start();
 }
@@ -780,7 +785,7 @@ void WebSocketClientProtocol::writeFrame(bool fin, Byte opcode, const Byte *data
             Random::randBytes(mask);
             frame.insert(frame.end(), mask.begin(), mask.end());
             frame.insert(frame.end(), data, data + length);
-            applyMask(mask, frame.data() + frame.size() - length, length);
+            WebSocketMask(mask, frame.data() + frame.size() - length, length);
         } else {
             frame.insert(frame.end(), data, data + length);
         }

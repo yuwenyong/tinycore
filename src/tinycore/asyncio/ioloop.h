@@ -9,6 +9,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include "tinycore/asyncio/logutil.h"
+#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/utilities/objectmanager.h"
 
 
@@ -95,7 +96,8 @@ public:
     void addCallback(CallbackType callback);
 
     void spawnCallback(CallbackType callback) {
-        _ioService.post(std::move(callback));
+        NullContext ctx;
+        addCallback(std::move(callback));
     }
 
     void signal(int signalNumber, SignalCallbackType callback= nullptr) {

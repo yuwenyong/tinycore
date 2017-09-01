@@ -3,7 +3,6 @@
 //
 
 #include "tinycore/asyncio/ioloop.h"
-#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
 

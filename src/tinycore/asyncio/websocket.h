@@ -17,6 +17,7 @@
 
 
 DECLARE_EXCEPTION(WebSocketError, Exception);
+DECLARE_EXCEPTION(WebSocketClosedError, WebSocketError);
 
 class WebSocketProtocol;
 
@@ -82,6 +83,8 @@ public:
 
     void close();
 
+    inline bool closed() const;
+
     virtual bool allowDraft76() const;
 
     void setNodelay(bool value) {
@@ -111,6 +114,13 @@ public:
 };
 
 
+inline void WebSocketMask(const std::array<Byte, 4> &mask, Byte *data, size_t length) {
+    for (size_t i = 0; i != length; ++i) {
+        data[i] ^= mask[i % 4];
+    }
+}
+
+
 class TC_COMMON_API WebSocketProtocol {
 public:
     explicit WebSocketProtocol(WebSocketHandler *handler)
@@ -122,12 +132,8 @@ public:
 
     virtual ~WebSocketProtocol() {}
 
-    void setClientTerminated(bool clientTerminated) {
-        _clientTerminated = clientTerminated;
-    }
-
-    bool getClientTerminated() const {
-        return _clientTerminated;
+    bool closed() const {
+        return _serverTerminated;
     }
 
     virtual void acceptConnection() = 0;
@@ -152,6 +158,11 @@ protected:
     bool _clientTerminated{false};
     bool _serverTerminated{false};
 };
+
+
+bool WebSocketHandler::closed() const {
+    return !_wsConnection || _wsConnection->closed();
+}
 
 
 class TC_COMMON_API WebSocketProtocol76: public WebSocketProtocol {
@@ -232,14 +243,8 @@ protected:
 
     void onMaskingKey(ByteArray data);
 
-    void applyMask(const std::array<Byte, 4> &mask, Byte *data, size_t length) {
-        for (size_t i = 0; i != length; ++i) {
-            data[i] ^= mask[i % 4];
-        }
-    }
-
     void onMaskedFrameData(ByteArray data) {
-        applyMask(_frameMask, data.data(), data.size());
+        WebSocketMask(_frameMask, data.data(), data.size());
         onFrameData(std::move(data));
     }
 
@@ -286,6 +291,8 @@ public:
     std::exception_ptr getError() const {
         return _error;
     }
+
+    inline bool closed() const;
 
     void close();
 
@@ -338,8 +345,14 @@ protected:
 };
 
 
-void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback,
-                      float connectTimeout=20.0f, IOLoop *ioloop= nullptr);
+void WebSocketConnect(std::shared_ptr<HTTPRequest> request, WebSocketClientConnection::ConnectCallbackType callback,
+                      IOLoop *ioloop= nullptr);
+
+inline void WebSocketConnect(const std::string &url, WebSocketClientConnection::ConnectCallbackType callback,
+                             float connectTimeout=20.0f, IOLoop *ioloop= nullptr) {
+    auto request = HTTPRequest::create(url, opts::_connectTimeout=connectTimeout);
+    WebSocketConnect(std::move(request), std::move(callback), ioloop);
+}
 
 
 class TC_COMMON_API WebSocketClientProtocol {
@@ -415,12 +428,8 @@ public:
 
     }
 
-    void setClientTerminated(bool clientTerminated) {
-        _clientTerminated = clientTerminated;
-    }
-
-    bool getClientTerminated() const {
-        return _clientTerminated;
+    bool closed() const {
+        return _serverTerminated;
     }
 
     void writeMessage(const Byte *message, size_t length, bool binary) {
@@ -472,14 +481,8 @@ protected:
 
     void onMaskingKey(ByteArray data);
 
-    void applyMask(const std::array<Byte, 4> &mask, Byte *data, size_t length) {
-        for (size_t i = 0; i != length; ++i) {
-            data[i] ^= mask[i % 4];
-        }
-    }
-
     void onMaskedFrameData(ByteArray data) {
-        applyMask(_frameMask, data.data(), data.size());
+        WebSocketMask(_frameMask, data.data(), data.size());
         onFrameData(std::move(data));
     }
 
@@ -505,5 +508,8 @@ protected:
     Timeout _waiting;
 };
 
+bool WebSocketClientConnection::closed() const {
+    return !_protocol || _protocol->closed();
+}
 
 #endif //TINYCORE_WEBSOCKET_H
