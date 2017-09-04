@@ -42,6 +42,10 @@ void WebSocketHandler::onOpen(const StringVector &args) {
 
 }
 
+void WebSocketHandler::onMessage(ByteArray data) {
+
+}
+
 void WebSocketHandler::ping(const Byte *data, size_t length) {
     if (closed()) {
         ThrowException(WebSocketClosedError, "");

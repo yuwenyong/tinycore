@@ -518,10 +518,10 @@ void Application::operator()(std::shared_ptr<HTTPServerRequest> request) {
                 auto argIter = _settings.find("defaultHandlerArgs");
                 if (argIter != _settings.end()) {
                     auto &handlerArgs = boost::any_cast<RequestHandler::ArgsType&>(argIter->second);
-                    handlerClass(this, std::move(request), handlerArgs);
+                    handler = handlerClass(this, std::move(request), handlerArgs);
                 } else {
                     RequestHandler::ArgsType handlerArgs;
-                    handlerClass(this, std::move(request), handlerArgs);
+                    handler = handlerClass(this, std::move(request), handlerArgs);
                 }
             } else {
                 RequestHandler::ArgsType handlerArgs = {

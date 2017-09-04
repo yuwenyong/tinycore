@@ -61,7 +61,7 @@ public:
     }
 
     virtual void onOpen(const StringVector &args);
-    virtual void onMessage(ByteArray data) = 0;
+    virtual void onMessage(ByteArray data);
 
     void ping(const Byte *data, size_t length);
 
