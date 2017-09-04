@@ -153,4 +153,11 @@ public:
 };
 
 
+inline void WebSocketMask(const std::array<Byte, 4> &mask, Byte *data, size_t length) {
+    for (size_t i = 0; i != length; ++i) {
+        data[i] ^= mask[i % 4];
+    }
+}
+
+
 #endif //TINYCORE_NETUTIL_H
