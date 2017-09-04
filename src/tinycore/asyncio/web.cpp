@@ -92,7 +92,8 @@ void RequestHandler::clear() {
     if (!_request->supportsHTTP11() && !_request->getConnection()->getNoKeepAlive()) {
         auto connHeader = _request->getHTTPHeaders()->get("Connection");
         if (!connHeader.empty() && boost::to_lower_copy(connHeader) == "keep-alive") {
-            setHeader("Connection", "Keep-Alive");
+//            setHeader("Connection", "Keep-Alive");
+            _headers["Connection"] = "Keep-Alive";
         }
     }
 //    _writeBuffer.clear();
@@ -111,54 +112,6 @@ void RequestHandler::setStatus(int statusCode) {
     } catch (std::out_of_range &e) {
         ThrowException(ValueError, String::format("unknown status code %d", statusCode));
     }
-}
-
-std::string RequestHandler::getArgument(const std::string &name, const char *defaultValue, bool strip) const {
-    auto &arguments = _request->getArguments();
-    auto iter = arguments.find(name);
-    if (iter == arguments.end()) {
-        if (defaultValue == nullptr) {
-            ThrowException(MissingArgumentError, name);
-        }
-        return std::string(defaultValue);
-    }
-    std::string value = iter->second.back();
-    boost::regex_replace(value, _removeControlCharsRegex, " ");
-    if (strip) {
-        boost::trim(value);
-    }
-    return value;
-}
-
-std::string RequestHandler::getArgument(const std::string &name, const std::string &defaultValue, bool strip) const {
-    auto &arguments = _request->getArguments();
-    auto iter = arguments.find(name);
-    if (iter == arguments.end()) {
-        return defaultValue;
-    }
-    std::string value = iter->second.back();
-    boost::regex_replace(value, _removeControlCharsRegex, " ");
-    if (strip) {
-        boost::trim(value);
-    }
-    return value;
-}
-
-StringVector RequestHandler::getArguments(const std::string &name, bool strip) const {
-    StringVector values;
-    auto &arguments = _request->getArguments();
-    auto iter = arguments.find(name);
-    if (iter == arguments.end()) {
-        return values;
-    }
-    values = iter->second;
-    for (auto &value: values) {
-        boost::regex_replace(value, _removeControlCharsRegex, " ");
-        if (strip) {
-            boost::trim(value);
-        }
-    }
-    return values;
 }
 
 void RequestHandler::setCookie(const std::string &name, const std::string &value, const char *domain,
@@ -299,7 +252,7 @@ void RequestHandler::sendError(int statusCode, std::exception_ptr error) {
 
 void RequestHandler::writeError(int statusCode, std::exception_ptr error) {
     auto &settings = getSettings();
-    auto iter = settings.find("debug");
+    auto iter = settings.find("serveTraceback");
     if (error && iter != settings.end() && boost::any_cast<bool>(iter->second)) {
         setHeader("Content-Type", "text/plain");
         try {
@@ -334,6 +287,39 @@ boost::optional<std::string> RequestHandler::computeEtag() const {
 const StringSet RequestHandler::supportedMethods = {
         "GET", "HEAD", "POST", "DELETE", "PATCH", "PUT", "OPTIONS"
 };
+
+std::string RequestHandler::getArgument(const std::string &name, const QueryArgListMap &source,
+                                        const char *defaultValue, bool strip) const {
+    auto iter = source.find(name);
+    if (iter == source.end()) {
+        if (defaultValue == nullptr) {
+            ThrowException(MissingArgumentError, name);
+        }
+        return std::string(defaultValue);
+    }
+    std::string value = iter->second.back();
+    boost::regex_replace(value, _removeControlCharsRegex, " ");
+    if (strip) {
+        boost::trim(value);
+    }
+    return value;
+}
+
+StringVector RequestHandler::getArguments(const std::string &name, const QueryArgListMap &source, bool strip) const {
+    StringVector values;
+    auto iter = source.find(name);
+    if (iter == source.end()) {
+        return values;
+    }
+    values = iter->second;
+    for (auto &value: values) {
+        boost::regex_replace(value, _removeControlCharsRegex, " ");
+        if (strip) {
+            boost::trim(value);
+        }
+    }
+    return values;
+}
 
 void RequestHandler::execute(TransformsType &transforms, StringVector args) {
     _transforms.transfer(_transforms.end(), transforms);
@@ -526,10 +512,23 @@ void Application::operator()(std::shared_ptr<HTTPServerRequest> request) {
             }
         }
         if (!handler) {
-            RequestHandler::ArgsType handlerArgs = {
-                    {"statusCode", 404}
-            };
-            handler = RequestHandlerFactory<ErrorHandler>()(this, std::move(request), handlerArgs);
+            auto iter = _settings.find("defaultHandlerClass");
+            if (iter != _settings.end()) {
+                auto &handlerClass = boost::any_cast<const URLSpec::HandlerClassType&>(iter->second);
+                auto argIter = _settings.find("defaultHandlerArgs");
+                if (argIter != _settings.end()) {
+                    auto &handlerArgs = boost::any_cast<RequestHandler::ArgsType&>(argIter->second);
+                    handler = handlerClass(this, std::move(request), handlerArgs);
+                } else {
+                    RequestHandler::ArgsType handlerArgs;
+                    handler = handlerClass(this, std::move(request), handlerArgs);
+                }
+            } else {
+                RequestHandler::ArgsType handlerArgs = {
+                        {"statusCode", 404}
+                };
+                handler = RequestHandlerFactory<ErrorHandler>()(this, std::move(request), handlerArgs);
+            }
         }
     }
     handler->execute(transforms, std::move(args));

@@ -3,6 +3,7 @@
 //
 
 #include <iostream>
+#include <vector>
 
 using namespace std;
 
@@ -49,8 +50,11 @@ void fchange(Args&&... args) {
 
 
 int main() {
-    int x = 0;
-    fchange(x);
-    std::cerr << x << std::endl;
+    std::vector<unsigned char> data = {'\xe9'};
+//    const char * s = "abc\0de";
+    std::string ss((const char *)data.data(), data.size());
+    printf("%d %d\n", (int)(ss.c_str()[0]), (int)(ss.c_str())[1]);
+    printf("%s\n", ss.c_str());
+    std::cout << ss.c_str() << std::endl;
     return 0;
 }

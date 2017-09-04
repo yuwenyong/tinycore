@@ -32,7 +32,7 @@ public:
             return *this;
         }
 
-        operator std::string() const {
+        explicit operator std::string() const {
             return *_value;
         }
     protected:
@@ -40,7 +40,7 @@ public:
         StringVector *_values{nullptr};
     };
 
-    HTTPHeaders() {}
+    HTTPHeaders() = default;
 
     HTTPHeaders(std::initializer_list<NameValueType> nameValues) {
         update(nameValues);
@@ -66,7 +66,7 @@ public:
 
     HTTPHeadersSetter operator[](const std::string &name) {
         std::string normName = HTTPHeaders::normalizeName(name);
-        return HTTPHeadersSetter(&_items[normName], &_asList[normName]);
+        return {&_items[normName], &_asList[normName]};
     }
 
     bool has(const std::string &name) const {

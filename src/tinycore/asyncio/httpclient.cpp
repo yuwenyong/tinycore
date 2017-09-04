@@ -143,7 +143,6 @@ void _HTTPConnection::start() {
                 host = iter->second;
             }
         }
-        _stream = createStream();
         float timeout = std::min(_request->getConnectTimeout(), _request->getRequestTimeout());
         if (timeout != 0.0f) {
             IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
@@ -151,6 +150,7 @@ void _HTTPConnection::start() {
             };
             _timeout = _ioloop->addTimeout(timeout, StackContext::wrap(std::move(timeoutCallback)));
         }
+        _stream = createStream();
         if (_client) {
             _stream->setCloseCallback(std::bind(&_HTTPConnection::onClose, this));
         } else {
@@ -213,6 +213,9 @@ void _HTTPConnection::removeTimeout() {
 
 void _HTTPConnection::onConnect() {
     removeTimeout();
+    if (!_callback) {
+        return;
+    }
     float requestTimeout = _request->getRequestTimeout();
     if (requestTimeout > 0.000001f) {
         IOLoop::TimeoutCallbackType timeoutCallback = [this]() {
@@ -276,9 +279,9 @@ void _HTTPConnection::onConnect() {
     auto requestBody = _request->getBody();
     if (!_request->isAllowNonstandardMethods()) {
         if (method == "POST" || method == "PATCH" || method == "PUT") {
-            ASSERT(requestBody != nullptr);
+            ASSERT(requestBody != nullptr, "Body must not be empty for \"%s\" request", method.c_str());
         } else {
-            ASSERT(requestBody == nullptr);
+            ASSERT(requestBody == nullptr, "Body must be empty for \"%s\" request", method.c_str());
         }
     }
     if (requestBody) {

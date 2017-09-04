@@ -13,6 +13,16 @@ BOOST_TEST_DONT_PRINT_LOG_VALUE(Time)
 
 using namespace rapidjson;
 
+
+class HelloHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void onGet(const StringVector &args) override {
+        write("hello");
+    }
+};
+
 class SetCookieHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
@@ -509,8 +519,62 @@ class GetArgumentHandler: public RequestHandler {
 public:
     using RequestHandler::RequestHandler;
 
-    void onGet(const StringVector &args) override {
-        write(getArgument("foo", "default"));
+    void prepare() override {
+        std::string source = getArgument("source", "");
+        std::string arg;
+        if (source == "query") {
+            arg = getQueryArgument("foo", "default");
+        } else if (source == "body") {
+            arg = getBodyArgument("foo", "default");
+        } else {
+            arg = getArgument("foo", "default");
+        }
+        finish(arg);
+    }
+};
+
+
+class GetArgumentsHandler: public RequestHandler {
+public:
+    using RequestHandler::RequestHandler;
+
+    void prepare() override {
+        Document doc;
+        Document::AllocatorType &a = doc.GetAllocator();
+        doc.SetObject();
+
+        StringVector args;
+        Value defaultArgs;
+        defaultArgs.SetArray();
+        args = getArguments("foo");
+        for (auto &arg: args) {
+            Value value;
+            value.SetString(arg, a);
+            defaultArgs.PushBack(value, a);
+        }
+        doc.AddMember(StringRef("default"), defaultArgs, a);
+
+        Value queryArgs;
+        queryArgs.SetArray();
+        args = getQueryArguments("foo");
+        for (auto &arg: args) {
+            Value value;
+            value.SetString(arg, a);
+            queryArgs.PushBack(value, a);
+        }
+        doc.AddMember(StringRef("query"), queryArgs, a);
+
+        Value bodyArgs;
+        bodyArgs.SetArray();
+        args = getBodyArguments("foo");
+        for (auto &arg: args) {
+            Value value;
+            value.SetString(arg, a);
+            bodyArgs.PushBack(value, a);
+        }
+        doc.AddMember(StringRef("body"), bodyArgs, a);
+
+        finish(doc);
     }
 };
 
@@ -524,6 +588,7 @@ public:
                 url<_RedirectHandler>("/redirect"),
                 url<HeaderInjectHandler>("/header_injection"),
                 url<GetArgumentHandler>("/get_argument"),
+                url<GetArgumentsHandler>("/get_arguments"),
                 url<FlowControlHandler>("/flow_control"),
                 url<EmptyFlushCallbackHandler>("/empty_flush"),
         };
@@ -620,6 +685,105 @@ public:
 
         do {
             HTTPResponse response = fetch("/get_argument");
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "default");
+        } while (false);
+
+        do {
+            StringMap args = {{"foo", "hello"}};
+            HTTPResponse response = fetch("/get_argument?foo=bar", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "hello");
+        } while (false);
+
+        do {
+            StringMap args = {{"foo", "hello"}};
+            HTTPResponse response = fetch("/get_arguments?foo=bar", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            Document json;
+//            std::cerr << *body << std::endl;
+            json.Parse(body->c_str(), body->size());
+
+            Document doc;
+            Document::AllocatorType &a = doc.GetAllocator();
+            doc.SetObject();
+
+            Value defaultArgs;
+            defaultArgs.SetArray();
+            defaultArgs.PushBack(StringRef("bar"), a);
+            defaultArgs.PushBack(StringRef("hello"), a);
+            doc.AddMember(StringRef("default"), defaultArgs, a);
+
+            Value queryArgs;
+            queryArgs.SetArray();
+            queryArgs.PushBack(StringRef("bar"), a);
+            doc.AddMember(StringRef("query"), queryArgs, a);
+
+            Value bodyArgs;
+            bodyArgs.SetArray();
+            bodyArgs.PushBack(StringRef("hello"), a);
+            doc.AddMember(StringRef("body"), bodyArgs, a);
+            BOOST_CHECK_EQUAL(json, doc);
+        } while (false);
+    }
+
+    void testGetQueryArguments() {
+        do {
+            StringMap args = {{"foo", "hello"}};
+            HTTPResponse response = fetch("/get_argument?source=query&foo=bar", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "bar");
+        } while (false);
+
+        do {
+            StringMap args = {{"foo", "hello"}};
+            HTTPResponse response = fetch("/get_argument?source=query&foo=", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "");
+        } while (false);
+
+        do {
+            StringMap args = {{"foo", "hello"}};
+            HTTPResponse response = fetch("/get_argument?source=query", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "default");
+        } while (false);
+    }
+
+    void testGetBodyArguments() {
+        do {
+            StringMap args = {{"foo", "bar"}};
+            HTTPResponse response = fetch("/get_argument?source=body&foo=hello", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "bar");
+        } while (false);
+
+        do {
+            StringMap args = {{"foo", ""}};
+            HTTPResponse response = fetch("/get_argument?source=body&foo=hello", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "");
+        } while (false);
+
+        do {
+            StringMap args;
+            HTTPResponse response = fetch("/get_argument?source=body&foo=hello", ARG_method="POST",
+                                          ARG_body=URLParse::urlEncode(args));
             const std::string *body = response.getBody();
             BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
             BOOST_CHECK_EQUAL(*body, "default");
@@ -1557,6 +1721,94 @@ public:
 };
 
 
+class Default404Test: public AsyncHTTPTestCase {
+public:
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<RequestHandler>("/foo"),
+        };
+        return make_unique<Application>(std::move(handlers));
+    }
+
+    void test404() {
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getCode(), 404);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "<html><title>404: Not Found</title><body>404: Not Found</body></html>");
+        } while (false);
+    }
+};
+
+
+class Custom404Test: public AsyncHTTPTestCase {
+public:
+    class Custom404Handler: public RequestHandler {
+    public:
+        using RequestHandler::RequestHandler;
+
+        void onGet(const StringVector &args) override {
+            setStatus(404);
+            write("custom 404 response");
+        }
+    };
+
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<RequestHandler>("/foo"),
+        };
+        std::string defaultHost;
+        Application::TransformsType transforms;
+        URLSpec::HandlerClassType handler = RequestHandlerFactory<Custom404Handler>();
+        Application::SettingsType settings = {
+                {"defaultHandlerClass", std::move(handler)},
+        };
+        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms),
+                                        std::move(settings));
+    }
+
+    void test404() {
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getCode(), 404);
+            const std::string *body = response.getBody();
+            BOOST_REQUIRE_NE(body, static_cast<const std::string *>(nullptr));
+            BOOST_CHECK_EQUAL(*body, "custom 404 response");
+        } while (false);
+    }
+};
+
+
+class DefaultHandlerArgumentsTest: public AsyncHTTPTestCase {
+public:
+    std::unique_ptr<Application> getApp() const override {
+        Application::HandlersType handlers = {
+                url<RequestHandler>("/foo"),
+        };
+        std::string defaultHost;
+        Application::TransformsType transforms;
+        URLSpec::HandlerClassType handler = RequestHandlerFactory<ErrorHandler>();
+        RequestHandler::ArgsType handlerArgs = {
+                {"statusCode", 403}
+        };
+        Application::SettingsType settings = {
+                {"defaultHandlerClass", std::move(handler)},
+                {"defaultHandlerArgs", std::move(handlerArgs)}
+        };
+        return make_unique<Application>(std::move(handlers), std::move(defaultHost), std::move(transforms),
+                                        std::move(settings));
+    }
+
+    void test404() {
+        do {
+            HTTPResponse response = fetch("/");
+            BOOST_CHECK_EQUAL(response.getCode(), 403);
+        } while (false);
+    }
+};
+
+
 TINYCORE_TEST_INIT()
 TINYCORE_TEST_CASE(CookieTest, testSetCookie)
 TINYCORE_TEST_CASE(CookieTest, testGetCookie)
@@ -1572,6 +1824,8 @@ TINYCORE_TEST_CASE(WebTest, testMultiHeader)
 TINYCORE_TEST_CASE(WebTest, testRedirect)
 TINYCORE_TEST_CASE(WebTest, testHeaderInject)
 TINYCORE_TEST_CASE(WebTest, testGetArgument)
+TINYCORE_TEST_CASE(WebTest, testGetQueryArguments)
+TINYCORE_TEST_CASE(WebTest, testGetBodyArguments)
 TINYCORE_TEST_CASE(WebTest, testNoGzip)
 TINYCORE_TEST_CASE(WebTest, testFlowControl)
 TINYCORE_TEST_CASE(WebTest, testEmptyFlush)
@@ -1599,3 +1853,6 @@ TINYCORE_TEST_CASE(UnimplementedNonStandardMethodsTest, testUnimplementedPatch)
 TINYCORE_TEST_CASE(AllHTTPMethodsTest, testStandardMethods)
 TINYCORE_TEST_CASE(PatchMethodTest, testPatch)
 TINYCORE_TEST_CASE(FinishInPrepareTest, testFinishInPrepare)
+TINYCORE_TEST_CASE(Default404Test, test404)
+TINYCORE_TEST_CASE(Custom404Test, test404)
+TINYCORE_TEST_CASE(DefaultHandlerArgumentsTest, test404)

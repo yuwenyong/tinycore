@@ -3,7 +3,6 @@
 //
 
 #include "tinycore/asyncio/ioloop.h"
-#include "tinycore/asyncio/stackcontext.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
 
@@ -99,7 +98,9 @@ IOLoop::~IOLoop() {
 }
 
 void IOLoop::start() {
-    LogUtil::initGlobalLoggers();
+    if (gAccessLog == nullptr) {
+        LogUtil::initGlobalLoggers();
+    }
     if (_stopped) {
         _stopped = false;
         return;
@@ -119,6 +120,8 @@ void IOLoop::start() {
             break;
         } catch (std::exception &e) {
             LOG_ERROR(gAppLog, "Unexpected Exception:%s", e.what());
+        } catch (...) {
+            LOG_ERROR(gAppLog, "Unknown Exception:%s");
         }
     }
     _stopped = false;
