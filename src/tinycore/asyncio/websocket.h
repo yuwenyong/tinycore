@@ -114,13 +114,6 @@ public:
 };
 
 
-inline void WebSocketMask(const std::array<Byte, 4> &mask, Byte *data, size_t length) {
-    for (size_t i = 0; i != length; ++i) {
-        data[i] ^= mask[i % 4];
-    }
-}
-
-
 class TC_COMMON_API WebSocketProtocol {
 public:
     explicit WebSocketProtocol(WebSocketHandler *handler)
