@@ -91,6 +91,22 @@ public:
         return Timeout(timeout);
     }
 
+    Timeout callLater(float deadline, TimeoutCallbackType callback) {
+        return addTimeout(deadline, std::move(callback));
+    }
+
+    Timeout callLater(const Duration &deadline, TimeoutCallbackType callback) {
+        return addTimeout(deadline, std::move(callback));
+    }
+
+    Timeout callAt(time_t deadline, TimeoutCallbackType callback) {
+        return addTimeout(Timestamp{std::chrono::seconds(deadline)}, std::move(callback));
+    }
+
+    Timeout callAt(const Timestamp &deadline, TimeoutCallbackType callback) {
+        return addTimeout(deadline, std::move(callback));
+    }
+
     void removeTimeout(Timeout timeout);
 
     void addCallback(CallbackType callback);

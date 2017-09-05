@@ -10,11 +10,13 @@
 #include "tinycore/debugging/watcher.h"
 
 
-BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBufferSize, size_t readChunkSize)
+BaseIOStream::BaseIOStream(SocketType &&socket, IOLoop *ioloop, size_t maxBufferSize, size_t readChunkSize,
+                           size_t maxWriteBufferSize)
         : _socket(std::move(socket))
         , _ioloop(ioloop ? ioloop : IOLoop::current())
         , _maxBufferSize(maxBufferSize ? maxBufferSize : DEFAULT_MAX_BUFFER_SIZE)
-        , _readBuffer(readChunkSize) {
+        , _maxWriteBufferSize(maxWriteBufferSize)
+        , _readBuffer(readChunkSize ? readChunkSize : DEFAULT_READ_CHUNK_SIZE) {
 
 }
 
@@ -37,21 +39,37 @@ void BaseIOStream::connect(const std::string &address, unsigned short port, Conn
     realConnect(address, port);
 }
 
-void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType callback) {
+void BaseIOStream::readUntilRegex(const std::string &regex, ReadCallbackType callback, size_t maxBytes) {
     setReadCallback(std::move(callback));
     _readRegex = boost::regex(regex);
-    tryInlineRead();
+    _readMaxBytes = maxBytes;
+    try {
+        tryInlineRead();
+    } catch (UnsatisfiableReadError &e) {
+        LOG_INFO(gGenLog, "Unsatisfiable read, closing connection");
+        close(std::make_exception_ptr(e));
+        throw;
+    }
 }
 
-void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback) {
+void BaseIOStream::readUntil(std::string delimiter, ReadCallbackType callback, size_t maxBytes) {
     setReadCallback(std::move(callback));
     _readDelimiter = std::move(delimiter);
-    tryInlineRead();
+    _readMaxBytes = maxBytes;
+    try {
+        tryInlineRead();
+    } catch (UnsatisfiableReadError &e) {
+        LOG_INFO(gGenLog, "Unsatisfiable read, closing connection");
+        close(std::make_exception_ptr(e));
+        throw;
+    }
 }
 
-void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback) {
+void BaseIOStream::readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback,
+                             bool partial) {
     setReadCallback(std::move(callback));
     _readBytes = numBytes;
+    _readPartial = partial;
     _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     tryInlineRead();
 }
@@ -61,33 +79,9 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
     _streamingCallback = StackContext::wrap<ByteArray>(std::move(streamingCallback));
     if (closed()) {
         if (_streamingCallback) {
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-            _readBuffer.readCompleted(_readBuffer.getActiveSize());
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            runCallback([streamingCallback=_streamingCallback, data=std::move(data)](){
-                streamingCallback(std::move(data));
-            });
-#else
-            runCallback(std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data) {
-            streamingCallback(std::move(data));
-        }, _streamingCallback, std::move(data)));
-#endif
+            runReadCallback(_readBuffer.getActiveSize(), true);
         }
-        callback = std::move(_readCallback);
-        ByteArray data;
-        if (_readBuffer.getActiveSize()) {
-            data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-            _readBuffer.readCompleted(_readBuffer.getActiveSize());
-        }
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        runCallback([callback=std::move(callback), data=std::move(data)](){
-            callback(std::move(data));
-        });
-#else
-        runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
-            callback(std::move(data));
-        }, std::move(callback), std::move(data)));
-#endif
+        runReadCallback(_readBuffer.getActiveSize(), false);
         _streamingCallback = nullptr;
         _readCallback = nullptr;
         return;
@@ -99,6 +93,9 @@ void BaseIOStream::readUntilClose(ReadCallbackType callback, StreamingCallbackTy
 void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType callback) {
     checkClosed();
     if (length) {
+        if (_maxWriteBufferSize && _writeBufferSize + length > _maxWriteBufferSize) {
+            ThrowException(StreamBufferFullError, "Reached maximum read buffer size");
+        }
         constexpr size_t WRITE_BUFFER_CHUNK_SIZE = 128 * 1024;
         if (length > WRITE_BUFFER_CHUNK_SIZE) {
             size_t chunkSize;
@@ -113,6 +110,7 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
             packet.write(data, length);
             _writeQueue.push_back(std::move(packet));
         }
+        _writeBufferSize += length;
     }
     _writeCallback = StackContext::wrap(std::move(callback));
     if (!_connecting) {
@@ -129,6 +127,7 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
 
 void BaseIOStream::setCloseCallback(CloseCallbackType callback) {
     _closeCallback = StackContext::wrap(std::move(callback));
+    maybeAddErrorListener();
 }
 
 void BaseIOStream::close(std::exception_ptr error) {
@@ -138,33 +137,10 @@ void BaseIOStream::close(std::exception_ptr error) {
         }
         if (_readUntilClose) {
             if (_streamingCallback && _readBuffer.getActiveSize()) {
-                ByteArray data(_readBuffer.getReadPointer(),
-                               _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-                runCallback([streamingCallback=_streamingCallback, data=std::move(data)](){
-                    streamingCallback(std::move(data));
-                });
-#else
-                runCallback(std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data) {
-                    streamingCallback(std::move(data));
-                }, _streamingCallback, std::move(data)));
-#endif
-                _readBuffer.readCompleted(_readBuffer.getActiveSize());
+                runReadCallback(_readBuffer.getActiveSize(), true);
             }
-            ReadCallbackType callback(std::move(_readCallback));
-            _readCallback = nullptr;
             _readUntilClose = false;
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + _readBuffer.getActiveSize());
-            _readBuffer.readCompleted(_readBuffer.getActiveSize());
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            runCallback([callback=std::move(callback), data=std::move(data)](){
-                callback(std::move(data));
-            });
-#else
-            runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data) {
-                callback(std::move(data));
-            }, std::move(callback), std::move(data)));
-#endif
+            runReadCallback(_readBuffer.getActiveSize(), false);
         }
         _closing = true;
         closeSocket();
@@ -203,15 +179,19 @@ void BaseIOStream::onConnect(const boost::system::error_code &ec) {
 
 void BaseIOStream::onRead(const boost::system::error_code &ec, size_t transferredBytes) {
     _state &= ~S_READ;
+    boost::optional<size_t> pos;
     try {
-        if (readToBuffer(ec, transferredBytes) == 0) {
-            return;
-        }
+        pos = readToBuffer(ec, transferredBytes);
+    } catch (UnsatisfiableReadError &e) {
+        LOG_INFO(gGenLog, "Unsatisfiable read, closing connection");
+        close(std::make_exception_ptr(e));
+        return;
     } catch (std::exception &e) {
         close();
         return;
     }
-    if (readFromBuffer()) {
+    if (pos) {
+        readFromBuffer(pos.get());
         return;
     }
     if (closed()) {
@@ -241,6 +221,7 @@ void BaseIOStream::onWrite(const boost::system::error_code &ec, size_t transferr
         if (!_writeQueue.front().getActiveSize()) {
             _writeQueue.pop_front();
         }
+        _writeBufferSize -= transferredBytes;
     }
     if (_writeQueue.empty() && _writeCallback) {
         WriteCallbackType callback;
@@ -326,7 +307,47 @@ void BaseIOStream::runCallback(CallbackType callback) {
     _ioloop->addCallback(std::bind(&Wrapper1::operator(), std::move(op)));
 }
 
-size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t transferredBytes) {
+void BaseIOStream::runReadCallback(size_t size, bool streaming) {
+    ReadCallbackType callback;
+    if (streaming) {
+        callback = _streamingCallback;
+    } else {
+        callback = std::move(_readCallback);
+        _readCallback = nullptr;
+        _streamingCallback = nullptr;
+    }
+    if (callback) {
+        ByteArray data;
+        if (size) {
+            data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + size);
+            _readBuffer.readCompleted(size);
+        }
+#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
+        runCallback([callback=std::move(callback), data=std::move(data)](){
+            callback(std::move(data));
+        });
+#else
+        runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
+            callback(std::move(data));
+        }, std::move(callback), std::move(data)));
+#endif
+    } else {
+        maybeAddErrorListener();
+    }
+}
+
+void BaseIOStream::runStreamingCallback() {
+    if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
+        size_t bytesToConsume = _readBuffer.getActiveSize();
+        if (_readBytes) {
+            bytesToConsume = std::min(_readBytes.get(), bytesToConsume);
+            _readBytes.get() -= bytesToConsume;
+        }
+        runReadCallback(bytesToConsume, true);
+    }
+}
+
+boost::optional<size_t> BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t transferredBytes) {
     if (ec) {
         if (ec != boost::asio::error::operation_aborted) {
             if (ec != boost::asio::error::eof) {
@@ -336,111 +357,62 @@ size_t BaseIOStream::readToBuffer(const boost::system::error_code &ec, size_t tr
         } else {
             maybeRunCloseCallback();
         }
-        return 0;
+        return boost::none;
     }
     _readBuffer.writeCompleted(transferredBytes);
     if (_readBuffer.getBufferSize() > _maxBufferSize) {
         LOG_ERROR(gGenLog, "Reached maximum read buffer size");
         close();
-        ThrowException(IOError, "Reached maximum read buffer size");
+        ThrowException(StreamBufferFullError, "Reached maximum read buffer size");
     }
-    return transferredBytes;
+    runStreamingCallback();
+    return findReadPos();
 }
 
-bool BaseIOStream::readFromBuffer() {
-    if (_streamingCallback && _readBuffer.getActiveSize() > 0) {
-        size_t bytesToConsume = _readBuffer.getActiveSize();
-        if (_readBytes) {
-            bytesToConsume = std::min(_readBytes.get(), bytesToConsume);
-            _readBytes.get() -= bytesToConsume;
-        }
-        ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + bytesToConsume);
-        _readBuffer.readCompleted(bytesToConsume);
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        runCallback([streamingCallback=_streamingCallback, data=std::move(data)](){
-            streamingCallback(std::move(data));
-        });
-#else
-        runCallback(std::bind([](StreamingCallbackType &streamingCallback, ByteArray &data) {
-            streamingCallback(std::move(data));
-        }, _streamingCallback, std::move(data)));
-#endif
-    }
-    if (_readBytes && _readBuffer.getActiveSize() >= _readBytes.get()) {
-        size_t numBytes = _readBytes.get();
-        ReadCallbackType callback(std::move(_readCallback));
-        _readCallback = nullptr;
-        _streamingCallback = nullptr;
-        _readBytes = boost::none;
-        ByteArray data;
-        if (numBytes > 0) {
-            data.assign(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + numBytes);
-            _readBuffer.readCompleted(numBytes);
-        }
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-        runCallback([callback=std::move(callback), data=std::move(data)](){
-            callback(std::move(data));
-        });
-#else
-        runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data) {
-            callback(std::move(data));
-        }, std::move(callback), std::move(data)));
-#endif
-        return true;
+void BaseIOStream::readFromBuffer(size_t pos) {
+    _readCallback = nullptr;
+    _streamingCallback = nullptr;
+    _readBytes = boost::none;
+    _readPartial = false;
+    runReadCallback(pos, false);
+}
+
+boost::optional<size_t> BaseIOStream::findReadPos() {
+    if (_readBytes && (_readBuffer.getActiveSize() >= _readBytes.get()
+                       || (_readPartial && _readBuffer.getActiveSize() > 0))) {
+        size_t numBytes = std::min(_readBytes.get(), _readBuffer.getActiveSize());
+        return numBytes;
     } else if (_readDelimiter) {
         const char *loc = StrNStr((const char *)_readBuffer.getReadPointer(), _readBuffer.getActiveSize(),
                                   _readDelimiter->c_str());
         if (loc) {
             size_t readBytes = loc - (const char *)_readBuffer.getReadPointer() + _readDelimiter->size();
-            ReadCallbackType callback(std::move(_readCallback));
-            _readCallback = nullptr;
-            _streamingCallback = nullptr;
-            _readDelimiter = boost::none;
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
-            _readBuffer.readCompleted(readBytes);
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            runCallback([callback=std::move(callback), data=std::move(data)](){
-                callback(std::move(data));
-            });
-#else
-            runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
-                callback(std::move(data));
-            }, std::move(callback), std::move(data)));
-#endif
-            return true;
+            checkMaxBytes(_readDelimiter.get(), readBytes);
+            return readBytes;
         }
+        checkMaxBytes(_readDelimiter.get(), _readBuffer.getActiveSize());
     } else if (_readRegex) {
         boost::cmatch m;
         if (boost::regex_search((const char *) _readBuffer.getReadPointer(),
                                 (const char *) _readBuffer.getReadPointer() + _readBuffer.getActiveSize(), m,
                                 _readRegex.get())) {
-            auto readBytes = m.position((size_t) 0) + m.length();
-            ReadCallbackType callback(std::move(_readCallback));
-            _readCallback = nullptr;
-            _streamingCallback = nullptr;
-            _readRegex = boost::none;
-            ByteArray data(_readBuffer.getReadPointer(), _readBuffer.getReadPointer() + readBytes);
-            _readBuffer.readCompleted((size_t) readBytes);
-#if !defined(BOOST_NO_CXX14_INITIALIZED_LAMBDA_CAPTURES)
-            runCallback([callback = std::move(callback), data = std::move(data)]() {
-                callback(std::move(data));
-            });
-#else
-            runCallback(std::bind([](ReadCallbackType &callback, ByteArray &data){
-                callback(std::move(data));
-            }, std::move(callback), std::move(data)));
-#endif
-            return true;
+            size_t readBytes = (size_t)m.position((size_t) 0) + m.length();
+            checkMaxBytes(_readRegex->str(), readBytes);
+            return readBytes;
         }
+        checkMaxBytes(_readRegex->str(), _readBuffer.getActiveSize());
     }
-    return false;
+    return boost::none;
 }
 
 void BaseIOStream::maybeAddErrorListener() {
-    if (_state == S_NONE && _pendingCallbacks == 0) {
+    if (_pendingCallbacks != 0) {
+        return;
+    }
+    if (_state == S_NONE) {
         if (closed()) {
             maybeRunCloseCallback();
-        } else {
+        } else if (_closeCallback) {
             readFromSocket();
         }
     }
@@ -450,8 +422,9 @@ void BaseIOStream::maybeAddErrorListener() {
 IOStream::IOStream(SocketType &&socket,
                    IOLoop *ioloop,
                    size_t maxBufferSize,
-                   size_t readChunkSize)
-        : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize) {
+                   size_t readChunkSize,
+                   size_t maxWriteBufferSize)
+        : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize, maxWriteBufferSize) {
 #ifndef NDEBUG
     sWatcher->inc(SYS_IOSTREAM_COUNT);
 #endif
@@ -510,9 +483,11 @@ void IOStream::writeToSocket() {
             return;
         } else if (bytesSent < bytesToSend) {
             buffer.readCompleted(bytesSent);
+            _writeBufferSize -= bytesSent;
             break;
         }
         _writeQueue.pop_front();
+        _writeBufferSize -= bytesSent;
         if (_writeQueue.empty()) {
             onWrite(ec, 0);
             return;
@@ -552,8 +527,9 @@ SSLIOStream::SSLIOStream(SocketType &&socket,
                          std::shared_ptr<SSLOption>  sslOption,
                          IOLoop *ioloop,
                          size_t maxBufferSize,
-                         size_t readChunkSize)
-        : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize)
+                         size_t readChunkSize,
+                         size_t maxWriteBufferSize)
+        : BaseIOStream(std::move(socket), ioloop, maxBufferSize, readChunkSize, maxWriteBufferSize)
         , _sslOption(std::move(sslOption))
         , _sslSocket(_socket, _sslOption->context()) {
 #ifndef NDEBUG

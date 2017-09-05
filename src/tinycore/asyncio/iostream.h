@@ -22,6 +22,8 @@
 
 
 DECLARE_EXCEPTION(StreamClosedError, IOError);
+DECLARE_EXCEPTION(UnsatisfiableReadError, Exception);
+DECLARE_EXCEPTION(StreamBufferFullError, Exception);
 
 
 constexpr size_t DEFAULT_READ_CHUNK_SIZE = 4096;
@@ -90,7 +92,8 @@ public:
     BaseIOStream(SocketType &&socket,
                  IOLoop * ioloop,
                  size_t maxBufferSize=0,
-                 size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
+                 size_t readChunkSize=0,
+                 size_t maxWriteBufferSize=0);
     virtual ~BaseIOStream();
 
     const IOLoop* ioloop() const {
@@ -123,9 +126,10 @@ public:
     virtual void readFromSocket() = 0;
 
     void connect(const std::string &address, unsigned short port, ConnectCallbackType callback= nullptr);
-    void readUntilRegex(const std::string &regex, ReadCallbackType callback);
-    void readUntil(std::string delimiter, ReadCallbackType callback);
-    void readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
+    void readUntilRegex(const std::string &regex, ReadCallbackType callback, size_t maxBytes=0);
+    void readUntil(std::string delimiter, ReadCallbackType callback, size_t maxBytes=0);
+    void readBytes(size_t numBytes, ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr,
+                   bool partial=false);
     void readUntilClose(ReadCallbackType callback, StreamingCallbackType streamingCallback= nullptr);
     void write(const Byte *data, size_t length, WriteCallbackType callback=nullptr);
     void setCloseCallback(CloseCallbackType callback);
@@ -172,8 +176,13 @@ protected:
         _readCallback = StackContext::wrap<ByteArray>(std::move(callback));
     }
 
+    void runReadCallback(size_t size, bool streaming);
+
     void tryInlineRead() {
-        if (readFromBuffer()) {
+        runStreamingCallback();
+        auto pos = findReadPos();
+        if (pos) {
+            readFromBuffer(pos.get());
             return;
         }
         checkClosed();
@@ -182,8 +191,20 @@ protected:
         }
     }
 
-    size_t readToBuffer(const boost::system::error_code &ec, size_t transferredBytes);
-    bool readFromBuffer();
+    boost::optional<size_t> readToBuffer(const boost::system::error_code &ec, size_t transferredBytes);
+
+    void runStreamingCallback();
+
+    void readFromBuffer(size_t pos);
+
+    boost::optional<size_t> findReadPos();
+
+    void checkMaxBytes(const std::string &delimiter, size_t size) const {
+        if (_readMaxBytes && size > _readMaxBytes) {
+            ThrowException(UnsatisfiableReadError, String::format("delimiter %s not found within %ul bytes",
+                                                                  delimiter.c_str(), _readMaxBytes));
+        }
+    }
 
     void checkClosed() const {
         if (closed()) {
@@ -200,12 +221,16 @@ protected:
     SocketType _socket;
     IOLoop *_ioloop;
     size_t _maxBufferSize;
+    size_t _maxWriteBufferSize;
     std::exception_ptr _error;
     MessageBuffer _readBuffer;
     std::deque<MessageBuffer> _writeQueue;
+    size_t _writeBufferSize{0};
     boost::optional<std::string> _readDelimiter;
     boost::optional<boost::regex> _readRegex;
+    size_t _readMaxBytes{0};
     boost::optional<size_t> _readBytes;
+    bool _readPartial{false};
     bool _readUntilClose{false};
     ReadCallbackType _readCallback;
     StreamingCallbackType _streamingCallback;
@@ -224,8 +249,9 @@ class IOStream: public BaseIOStream {
 public:
     IOStream(SocketType &&socket,
              IOLoop *ioloop,
-             size_t maxBufferSize = DEFAULT_MAX_BUFFER_SIZE,
-             size_t readChunkSize = DEFAULT_READ_CHUNK_SIZE);
+             size_t maxBufferSize = 0,
+             size_t readChunkSize = 0,
+             size_t maxWriteBufferSize=0);
     virtual ~IOStream();
 
     void realConnect(const std::string &address, unsigned short port) override;
@@ -247,8 +273,9 @@ public:
     SSLIOStream(SocketType &&socket,
                 std::shared_ptr<SSLOption> sslOption,
                 IOLoop *ioloop,
-                size_t maxBufferSize=DEFAULT_MAX_BUFFER_SIZE,
-                size_t readChunkSize=DEFAULT_READ_CHUNK_SIZE);
+                size_t maxBufferSize=0,
+                size_t readChunkSize=0,
+                size_t maxWriteBufferSize=0);
     virtual ~SSLIOStream();
 
     void clearCallbacks() override;

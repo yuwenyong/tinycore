@@ -14,9 +14,13 @@ class TC_COMMON_API TCPServer: public std::enable_shared_from_this<TCPServer> {
 public:
     typedef boost::asio::ip::tcp::acceptor AcceptorType;
 
-    TCPServer(IOLoop *ioloop = nullptr, std::shared_ptr<SSLOption> sslOption = nullptr, size_t maxBufferSize=0);
+    explicit TCPServer(IOLoop *ioloop = nullptr, std::shared_ptr<SSLOption> sslOption = nullptr, size_t maxBufferSize=0,
+                       size_t readChunkSize=0);
+
     virtual ~TCPServer();
+
     TCPServer(const TCPServer &) = delete;
+
     TCPServer &operator=(const TCPServer &) = delete;
 
     void listen(unsigned short port, std::string address = "::");
@@ -47,6 +51,7 @@ protected:
     AcceptorType _acceptor;
     BaseIOStream::SocketType _socket;
     size_t _maxBufferSize;
+    size_t _readChunkSize;
 };
 
 #endif //TINYCORE_TCPSERVER_H
