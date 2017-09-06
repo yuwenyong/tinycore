@@ -5,6 +5,7 @@
 #include "tinycore/asyncio/ioloop.h"
 #include "tinycore/common/errors.h"
 #include "tinycore/debugging/watcher.h"
+#include "tinycore/utilities/random.h"
 
 
 _SignalSet::_SignalSet(IOLoop *ioloop)
@@ -98,6 +99,7 @@ IOLoop::~IOLoop() {
 }
 
 void IOLoop::start() {
+    Random::seed();
     if (gAccessLog == nullptr) {
         LogUtil::initGlobalLoggers();
     }
