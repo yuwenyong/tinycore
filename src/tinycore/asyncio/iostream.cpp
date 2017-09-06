@@ -127,7 +127,7 @@ void BaseIOStream::write(const Byte *data, size_t length,  WriteCallbackType cal
 
 void BaseIOStream::setCloseCallback(CloseCallbackType callback) {
     _closeCallback = StackContext::wrap(std::move(callback));
-    maybeAddErrorListener();
+//    maybeAddErrorListener();
 }
 
 void BaseIOStream::close(std::exception_ptr error) {
@@ -370,9 +370,9 @@ boost::optional<size_t> BaseIOStream::readToBuffer(const boost::system::error_co
 }
 
 void BaseIOStream::readFromBuffer(size_t pos) {
-    _readCallback = nullptr;
-    _streamingCallback = nullptr;
     _readBytes = boost::none;
+    _readDelimiter = boost::none;
+    _readRegex = boost::none;
     _readPartial = false;
     runReadCallback(pos, false);
 }
