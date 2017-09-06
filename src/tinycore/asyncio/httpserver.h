@@ -29,6 +29,7 @@ public:
                bool xheaders = false,
                const std::string &protocol = "",
                std::shared_ptr<SSLOption> sslOption = nullptr,
+               float idleConnectionTimeout = 0.0f,
                size_t maxBufferSize=0);
 
     virtual ~HTTPServer();
@@ -39,6 +40,7 @@ protected:
     bool _noKeepAlive;
     bool _xheaders;
     std::string _protocol;
+    float _idleConnectionTimeout;
 };
 
 
@@ -125,11 +127,13 @@ public:
 
     HTTPConnection &operator=(const HTTPConnection &) = delete;
 
-    HTTPConnection(std::shared_ptr<BaseIOStream> stream, std::string address,
+    HTTPConnection(std::shared_ptr<BaseIOStream> stream,
+                   std::string address,
                    RequestCallbackType &requestCallback,
                    bool noKeepAlive = false,
                    bool xheaders = false,
-                   const std::string &protocol="");
+                   const std::string &protocol="",
+                   float idleConnectionTimeout=0.0f);
 
     ~HTTPConnection();
 
@@ -196,6 +200,8 @@ protected:
     bool _noKeepAlive;
     bool _xheaders;
     std::string _protocol;
+    float _idleConnectionTimeout;
+    Timeout _timeout;
     std::shared_ptr<HTTPServerRequest> _request;
     std::weak_ptr<HTTPServerRequest> _requestObserver;
     bool _requestFinished{false};

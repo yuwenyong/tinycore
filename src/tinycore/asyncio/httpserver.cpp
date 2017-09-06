@@ -20,12 +20,14 @@ HTTPServer::HTTPServer(RequestCallbackType requestCallback,
                        bool xheaders,
                        const std::string &protocol,
                        std::shared_ptr<SSLOption> sslOption,
+                       float idleConnectionTimeout,
                        size_t maxBufferSize)
         : TCPServer(ioloop, std::move(sslOption), maxBufferSize)
         , _requestCallback(std::move(requestCallback))
         , _noKeepAlive(noKeepAlive)
         , _xheaders(xheaders)
-        , _protocol(protocol) {
+        , _protocol(protocol)
+        , _idleConnectionTimeout(idleConnectionTimeout != 0.0f ? idleConnectionTimeout : 3600.0f) {
 
 }
 
@@ -51,13 +53,15 @@ HTTPConnection::HTTPConnection(std::shared_ptr<BaseIOStream> stream,
                                RequestCallbackType &requestCallback,
                                bool noKeepAlive,
                                bool xheaders,
-                               const std::string &protocol)
+                               const std::string &protocol,
+                               float idleConnectionTimeout)
         : _stream(std::move(stream))
         , _address(std::move(address))
         , _requestCallback(requestCallback)
         , _noKeepAlive(noKeepAlive)
         , _xheaders(xheaders)
-        , _protocol(protocol) {
+        , _protocol(protocol)
+        , _idleConnectionTimeout(idleConnectionTimeout) {
 #ifndef NDEBUG
     sWatcher->inc(SYS_HTTPCONNECTION_COUNT);
 #endif
@@ -77,6 +81,11 @@ void HTTPConnection::start() {
     _stream->setCloseCallback(std::bind(&CloseCallbackWrapper::operator(), std::move(wrapper)));
 
     NullContext ctx;
+    if (_idleConnectionTimeout != 0.0f) {
+        _timeout = _stream->ioloop()->addTimeout(_idleConnectionTimeout, [self=shared_from_this()]() {
+            self->close();
+        });
+    }
     _stream->readUntil("\r\n\r\n", [this, self=shared_from_this()](ByteArray data) {
         _headerCallback(std::move(data));
     });
@@ -110,6 +119,10 @@ void HTTPConnection::onConnectionClose() {
         CloseCallbackType callback(std::move(_closeCallback));
         _closeCallback = nullptr;
         callback();
+    }
+    if (!_timeout.expired()) {
+        _stream->ioloop()->removeTimeout(_timeout);
+        _timeout.reset();
     }
     clearRequestState();
 }
@@ -152,6 +165,11 @@ void HTTPConnection::finishRequest() {
     }
     try {
         NullContext ctx;
+        if (_idleConnectionTimeout != 0.0f) {
+            _timeout = _stream->ioloop()->addTimeout(_idleConnectionTimeout, [self=shared_from_this()]() {
+                self->close();
+            });
+        }
         _stream->readUntil("\r\n\r\n", [this, self=shared_from_this()](ByteArray data) {
             _headerCallback(std::move(data));
         });
@@ -206,9 +224,17 @@ void HTTPConnection::onHeaders(ByteArray data) {
             });
             return;
         }
+        if (!_timeout.expired()) {
+            _stream->ioloop()->removeTimeout(_timeout);
+            _timeout.reset();
+        }
         _request->setConnection(shared_from_this());
         _requestCallback(std::move(_request));
     } catch (_BadRequestException &e) {
+        if (!_timeout.expired()) {
+            _stream->ioloop()->removeTimeout(_timeout);
+            _timeout.reset();
+        }
         LOG_INFO(gGenLog, "Malformed HTTP request from %s: %s", _address.c_str(), e.what());
         close();
     }
@@ -224,6 +250,10 @@ void HTTPConnection::onRequestBody(ByteArray data) {
         for (const auto &kv: _request->getBodyArguments()) {
             _request->addArguments(kv.first, kv.second);
         }
+    }
+    if (!_timeout.expired()) {
+        _stream->ioloop()->removeTimeout(_timeout);
+        _timeout.reset();
     }
     _request->setConnection(shared_from_this());
     _requestCallback(std::move(_request));

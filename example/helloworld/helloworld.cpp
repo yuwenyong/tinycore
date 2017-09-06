@@ -43,31 +43,32 @@ int main() {
 //    if (e) {
 //        handleError(e);
 //    }
-    std::stringstream s;
-    s.write("hehe", 4);
-    auto length = s.tellp() - s.tellg();
-    std::cout << "Length:" << length << std::endl;
-    std::string v;
+//    std::stringstream s;
+//    s.write("hehe", 4);
+//    auto length = s.tellp() - s.tellg();
+//    std::cout << "Length:" << length << std::endl;
+//    std::string v;
+    std::cout << TC_MAGIC << std::endl;
 //    v.resize(length);
 //    s.read((char *)v.data(), length);
 //    std::cout << v << std::endl;
-    s.ignore(length);
-    if (s.eof()) {
-        std::cout << "EOF" << std::endl;
-    } else {
-        std::cout << "NOT EOF" << std::endl;
-    }
-    length = s.tellp() - s.tellg();
-    std::cout << "Length2:" << length << std::endl;
-
-    s.write("HEHEH", 5);
-    length = s.tellp() - s.tellg();
-    std::cout << "Length3:" << length << std::endl;
-    v.resize(length);
-    s.read((char *)v.data(), length);
-    std::cout << v << std::endl;
-    length = s.tellp() - s.tellg();
-    std::cout << "Length4:" << length << std::endl;
+//    s.ignore(length);
+//    if (s.eof()) {
+//        std::cout << "EOF" << std::endl;
+//    } else {
+//        std::cout << "NOT EOF" << std::endl;
+//    }
+//    length = s.tellp() - s.tellg();
+//    std::cout << "Length2:" << length << std::endl;
+//
+//    s.write("HEHEH", 5);
+//    length = s.tellp() - s.tellg();
+//    std::cout << "Length3:" << length << std::endl;
+//    v.resize(length);
+//    s.read((char *)v.data(), length);
+//    std::cout << v << std::endl;
+//    length = s.tellp() - s.tellg();
+//    std::cout << "Length4:" << length << std::endl;
 
 //    s.ignore(v.size());
 //    s.clear();

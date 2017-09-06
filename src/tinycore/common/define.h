@@ -99,6 +99,23 @@ typedef uint8_t uint8;
 #   endif
 #endif
 
+
+#if defined(__linux__)
+#include <linux/version.h>
+#   if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,45)
+#       define TC_HAS_EPOLL 1
+#   endif
+#endif
+
+
+#if (defined(__MACH__) && defined(__APPLE__)) \
+  || defined(__FreeBSD__) \
+  || defined(__NetBSD__) \
+  || defined(__OpenBSD__)
+#   define TC_HAS_KQUEUE 1
+#endif
+
+
 #define TINYCORE_VERSION      "3.0.0"
 #define TINYCORE_VER          "tinycore/" TINYCORE_VERSION
 
