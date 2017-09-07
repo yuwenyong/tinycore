@@ -13,7 +13,7 @@ BOOST_TEST_DONT_PRINT_LOG_VALUE(StringVector)
 
 BOOST_AUTO_TEST_CASE(TestParseCommandLine) {
     OptionParser options("Allow Options");
-    options.define<unsigned short>("port", "listen port", 80);
+    options.addArgument<unsigned short>("port", "listen port", 80);
     const char *argv[] = {
             "main",
             "--port=443"
@@ -24,7 +24,7 @@ BOOST_AUTO_TEST_CASE(TestParseCommandLine) {
 
 BOOST_AUTO_TEST_CASE(TestParseConfigFile) {
     OptionParser options("Allow Options");
-    options.define<unsigned short>("port", "listen port", 80);
+    options.addArgument<unsigned short>("port", "listen port", 80);
     options.parseConfigFile("options_test.cfg");
     BOOST_CHECK_EQUAL(options.get<unsigned short>("port"), 443);
 }
@@ -56,7 +56,7 @@ BOOST_AUTO_TEST_CASE(TestParseCallbacks) {
 BOOST_AUTO_TEST_CASE(TestSetAttrWithCallback) {
     std::vector<int> values, targetValues{2};
     OptionParser options("Allow Options");
-    options.define<int>("foo", "foo", 1, [&values](const int &value) {
+    options.addArgument<int>("foo", "foo", 1, [&values](const int &value) {
         values.push_back(value);
     });
     const char *argv[] = {
@@ -70,7 +70,7 @@ BOOST_AUTO_TEST_CASE(TestSetAttrWithCallback) {
 BOOST_AUTO_TEST_CASE(TestMultipleString) {
     StringVector values, targetValues = {"a", "b", "c"};
     OptionParser options("Allow Options");
-    options.defineMulti<std::string>("foo", "foo");
+    options.addArguments<std::string>("foo", "foo");
     const char *argv[] = {
             "main",
             "--foo=a",
@@ -85,7 +85,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleString) {
 BOOST_AUTO_TEST_CASE(TestMultipleInt) {
     std::vector<int> values, targetValues = {1, 3, 5, 6, 7};
     OptionParser options("Allow Options");
-    options.defineMulti<int>("foo", "foo");
+    options.addArguments<int>("foo", "foo");
     const char *argv[] = {
             "main",
             "--foo=1",

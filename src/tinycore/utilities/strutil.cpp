@@ -57,7 +57,7 @@ size_t StrUtil::count(const std::string &s, std::function<bool(char)> pred) {
     return r;
 }
 
-PartitionResult StrUtil::partition(const std::string &s, const std::string &sep) {
+StrUtil::PartitionResult StrUtil::partition(const std::string &s, const std::string &sep) {
     auto pos = s.find(sep);
     if (pos == std::string::npos) {
         return std::make_tuple(s, "", "");
@@ -69,7 +69,7 @@ PartitionResult StrUtil::partition(const std::string &s, const std::string &sep)
     }
 }
 
-PartitionResult StrUtil::rpartition(const std::string &s, const std::string &sep) {
+StrUtil::PartitionResult StrUtil::rpartition(const std::string &s, const std::string &sep) {
     auto pos = s.find(sep);
     if (pos == std::string::npos) {
         return std::make_tuple("", "", s);

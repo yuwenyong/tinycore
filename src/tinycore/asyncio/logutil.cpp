@@ -39,13 +39,13 @@ void LogUtil::enablePrettyLogging(const OptionParser *options) {
 
 void LogUtil::defineLoggingOptions(OptionParser *options) {
 #ifdef NDEBUG
-    options->define<std::string>("log_level", "Set the log level", std::string("info"), {}, "logging");
+    options->addArgument<std::string>("log_level", "Set the log level", std::string("info"), {}, "logging");
 #else
-    options->define<std::string>("log_level", "Set the log level", std::string("debug"), {}, "logging");
+    options->addArgument<std::string>("log_level", "Set the log level", std::string("debug"), {}, "logging");
 #endif
-    options->define("log_to_console", "Send log output to stderr", "logging");
-    options->define<std::string>("log_file_prefix", "Path prefix for log files", {}, {}, "logging");
-    options->define<size_t>("log_file_max_size", "Max size of log files", 100 * 1000 * 1000, {}, "logging");
+    options->addArgument("log_to_console", "Send log output to stderr", "logging");
+    options->addArgument<std::string>("log_file_prefix", "Path prefix for log files", {}, {}, "logging");
+    options->addArgument<size_t>("log_file_max_size", "Max size of log files", 100 * 1000 * 1000, {}, "logging");
     options->addParseCallback([options] () {
        enablePrettyLogging(options);
     });

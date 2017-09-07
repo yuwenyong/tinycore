@@ -36,10 +36,10 @@ void OptionParser::parseConfigFile(const char *path, bool final) {
     }
 }
 
-void OptionParser::praseEnvironment(const boost::function1<std::string, std::string> &name_mapper, bool final) {
+void OptionParser::parseEnvironment(const boost::function1<std::string, std::string> &nameMapper, bool final) {
     auto opts = composeOptions();
-    if (!name_mapper.empty()) {
-        po::store(po::parse_environment(opts, name_mapper), _vm);
+    if (!nameMapper.empty()) {
+        po::store(po::parse_environment(opts, nameMapper), _vm);
     } else {
         po::store(po::parse_environment(opts, [](std::string name){
             return "";

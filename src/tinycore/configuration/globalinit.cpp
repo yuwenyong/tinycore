@@ -16,7 +16,7 @@ void GlobalInit::initFromEnvironment(const boost::function1<std::string, std::st
     assert(!_inited);
     LogUtil::initGlobalLoggers();
     LogUtil::defineLoggingOptions(sOptions);
-    sOptions->praseEnvironment(name_mapper);
+    sOptions->parseEnvironment(name_mapper);
     if (!Logging::isInitialized()) {
         Logging::init();
     }

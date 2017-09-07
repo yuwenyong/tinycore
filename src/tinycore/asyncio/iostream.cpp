@@ -412,7 +412,7 @@ void BaseIOStream::maybeAddErrorListener() {
     if (_state == S_NONE) {
         if (closed()) {
             maybeRunCloseCallback();
-        } else if (_closeCallback) {
+        } else {
             readFromSocket();
         }
     }

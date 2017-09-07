@@ -18,23 +18,13 @@ namespace po = boost::program_options;
 
 class TC_COMMON_API OptionParser {
 public:
-    template <typename T>
-    struct IsVector: public std::false_type {
-
-    };
-
-    template <typename T, typename A>
-    struct IsVector<std::vector<T, A>>: public std::true_type {
-
-    };
-
     explicit OptionParser(const std::string &caption)
             : _opts(caption) {
-        define("version,v", "print version string");
-        define("help,h", "display help message");
+        addArgument("version,v", "print version string");
+        addArgument("help,h", "display help message");
     }
 
-    void define(const char *name, const char *help, const char *group=nullptr) {
+    void addArgument(const char *name, const char *help, const char *group=nullptr) {
         if (group != nullptr) {
             auto opt = getGroup(group);
             opt->add_options()(name, help);
@@ -43,15 +33,15 @@ public:
         }
     }
 
-    template <typename ArgT>
-    void define(const char *name, const char *help, const boost::optional<ArgT> &defaultValue=boost::none,
-                boost::function1<void, const ArgT&> callback= {}, const char *group= nullptr) {
+    template<typename ArgT>
+    void addArgument(const char *name, const char *help, const boost::optional<ArgT> &defaultValue = boost::none,
+                     boost::function1<void, const ArgT &> action = {}, const char *group = nullptr) {
         po::typed_value<ArgT> *value= po::value<ArgT>();
         if (defaultValue) {
             value->default_value(defaultValue.get());
         }
-        if (callback) {
-            value->notifier(std::move(callback));
+        if (action) {
+            value->notifier(std::move(action));
         }
         if (group) {
             auto opt = getGroup(group);
@@ -61,12 +51,12 @@ public:
         }
     }
 
-    template <typename ArgT>
-    void defineMulti(const char *name, const char *help, boost::function1<void, const std::vector<ArgT>&> callback= {},
-                     const char *group= nullptr) {
-        po::typed_value<std::vector<ArgT>> *value= po::value<std::vector<ArgT>>();
-        if (callback) {
-            value->notifier(std::move(callback));
+    template<typename ArgT>
+    void addArguments(const char *name, const char *help, boost::function1<void, const std::vector<ArgT> &> action = {},
+                      const char *group = nullptr) {
+        po::typed_value <std::vector<ArgT>> *value = po::value<std::vector<ArgT>>();
+        if (action) {
+            value->notifier(std::move(action));
         }
         value->composing();
         if (group) {
@@ -76,7 +66,6 @@ public:
             _opts.add_options()(name, value, help);
         }
     }
-
 
     bool has(const char *name) const {
         return _vm.count(name) != 0;
@@ -95,11 +84,15 @@ public:
 
     void parseConfigFile(const char *path, bool final=true);
 
-    void praseEnvironment(const boost::function1<std::string, std::string> &name_mapper, bool final=true);
+    void parseEnvironment(const boost::function1<std::string, std::string> &nameMapper, bool final=true);
 
     template <typename CallbackT>
     void addParseCallback(CallbackT &&calback) {
         _parseCallbacks.emplace_back(std::forward<CallbackT>(calback));
+    }
+
+    void printHelp() {
+        std::cout << composeOptions() << std::endl;
     }
 
     static OptionParser * instance();
@@ -115,7 +108,7 @@ protected:
     po::options_description composeOptions() const;
 
     void helpCallback() {
-        std::cout << composeOptions() << std::endl;
+        printHelp();
         exit(1);
     }
 

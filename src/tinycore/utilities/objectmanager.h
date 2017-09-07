@@ -14,7 +14,7 @@
 
 class CleanupObject {
 public:
-    virtual ~CleanupObject() {};
+    virtual ~CleanupObject()= default;
     virtual void cleanup() = 0;
 };
 
@@ -23,7 +23,7 @@ class ObjectManager {
 public:
     typedef std::list<CleanupObject*> CleanupObjectContainer;
 
-    ObjectManager() {
+    explicit ObjectManager() {
 
     }
 
